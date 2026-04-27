@@ -1,0 +1,12 @@
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Disallow admin and private paths
+Disallow: /admin/
+Disallow: /coach/
+Disallow: /private/
+Disallow: /api/
+
+# Sitemap
+Sitemap: https://coachlife-aa085.web.app/sitemap.xml

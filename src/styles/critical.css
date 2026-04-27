@@ -1,0 +1,82 @@
+/* Critical CSS - Above the fold styles only */
+/* Load this inline or with high priority */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  /* Core Colors */
+  --primary: #252c35;
+  --secondary: #060030ff;
+  --body-bg: #dde3e8;
+  --text: #252c35;
+  --text-secondary: #060030ff;
+  --white: #ffffff;
+  --light: #f8f9fa;
+  
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #060030ff 0%, #000000ff 100%);
+  --gradient-reverse: linear-gradient(135deg, #060030ff 0%, #252c35 100%);
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-color: var(--body-bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Navbar - critical for initial render */
+.navbar {
+  background: white;
+  border-bottom: 1px solid var(--body-bg);
+  box-shadow: 0 2px 8px rgba(37, 44, 53, 0.08);
+}
+
+/* Main container layout */
+.main-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+/* Prevent layout shift */
+@media (orientation: portrait) {
+  html, body, #root {
+    width: 100vw;
+  }
+}
+
+@media (orientation: landscape) {
+  html, body, #root {
+    width: 100vw;
+  }
+}

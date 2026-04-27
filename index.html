@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./src/assets/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <meta name="description" content="CoachLife - A comprehensive platform for coaches to manage players, track sessions, and build personalized learning pathways." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>CoachLife</title>
+    <!-- Resource hints for faster loading -->
+    <link rel="dns-prefetch" href="https://coachlife-aa085.web.app" />
+    <!-- Non-critical CSS can load async -->
+    <style>
+      /* Fix for iPad/Safari media query support */
+      html {
+        width: 100%;
+        height: 100%;
+        overflow-x: hidden;
+      }
+      
+      body {
+        width: 100%;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      
+      #root {
+        width: 100%;
+        min-height: 100vh;
+      }
+      
+      /* Force recalculation on orientation change */
+      @media (orientation: portrait) {
+        html, body, #root {
+          width: 100vw;
+        }
+      }
+      
+      @media (orientation: landscape) {
+        html, body, #root {
+          width: 100vw;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx" defer></script>
+  </body>
+</html>
