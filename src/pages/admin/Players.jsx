@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
@@ -38,7 +38,7 @@ const Players = () => {
     status: 'active',
   });
 
-  const filteredPlayers = players
+  const filteredPlayers = useMemo(() => players
     .filter((p) => {
       const matchesSearch =
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -52,13 +52,13 @@ const Players = () => {
       if (sortBy === 'progress') return b.progress - a.progress;
       if (sortBy === 'points') return b.totalPoints - a.totalPoints;
       return 0;
-    });
+    }), [players, searchTerm, LearningPathwayFilter, sortBy]);
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: players.length,
     balancePointTotal: players.reduce((sum, p) => sum + (p.PointBalance || p.pointBalance || 0), 0),
     totalPoints: players.reduce((sum, p) => sum + (p.totalPoints || 0), 0),
-  };
+  }), [players]);
 
   // Calculate age from date of birth and prevent future dates
   const handleDateOfBirthChange = (e) => {
@@ -165,9 +165,13 @@ const Players = () => {
             status: 'active',
           });
           
-          // Refetch players data
-          await fetchPlayers();
-          
+          // For new players, refetch to get server-assigned IDs.
+          // For edits, the store is already updated locally — fetching immediately
+          // can overwrite the local update with stale API data.
+          if (!isEditMode) {
+            await fetchPlayers();
+          }
+
           setTimeout(() => {
             setIsModalOpen(false);
             setToastMessage('');

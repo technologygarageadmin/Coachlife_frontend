@@ -279,7 +279,7 @@ const ViewSessionCard = () => {
                         {activity.activityTitle}
                       </h3>
                       <p style={{ fontSize: '13px', color: '#6B7280', margin: '0' }}>
-                        {activity.description?.substring(0, 80)}...
+                        {(activity.description || '').replace(/<[^>]+>/g, '').substring(0, 80)}...
                       </p>
                     </div>
                     <div style={{
@@ -306,9 +306,7 @@ const ViewSessionCard = () => {
                       {activity.description && (
                         <div style={{ marginBottom: '12px' }}>
                           <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 6px 0' }}>Description</p>
-                          <p style={{ fontSize: '13px', color: '#475569', margin: '0', lineHeight: '1.5' }}>
-                            {activity.description}
-                          </p>
+                          <div style={{ fontSize: '13px', color: '#475569', margin: '0', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: activity.description }} />
                         </div>
                       )}
 
@@ -339,9 +337,7 @@ const ViewSessionCard = () => {
                         <div style={{ marginBottom: '12px' }}>
                           <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 6px 0' }}>Story</p>
                           {activity.story.map((line, idx) => (
-                            <p key={idx} style={{ fontSize: '13px', color: '#475569', margin: '0 0 4px 0', lineHeight: '1.5' }}>
-                              {line}
-                            </p>
+                            <div key={idx} style={{ fontSize: '13px', color: '#475569', margin: '0 0 4px 0', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: line }} />
                           ))}
                         </div>
                       )}
@@ -356,16 +352,14 @@ const ViewSessionCard = () => {
                             </p>
                           )}
                           {activity.project.description && (
-                            <p style={{ fontSize: '13px', color: '#475569', margin: '0 0 6px 0', lineHeight: '1.5' }}>
-                              {activity.project.description}
-                            </p>
+                            <div style={{ fontSize: '13px', color: '#475569', margin: '0 0 6px 0', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: activity.project.description }} />
                           )}
                           {activity.project.workflow && activity.project.workflow.length > 0 && (
                             <div>
                               <p style={{ fontSize: '11px', fontWeight: '600', color: '#666', margin: '0 0 4px 0' }}>Workflow Steps</p>
                               <ol style={{ margin: '0', paddingLeft: '16px', fontSize: '12px', color: '#475569' }}>
                                 {activity.project.workflow.map((step, i) => (
-                                  <li key={i} style={{ marginBottom: '2px' }}>{step}</li>
+                                  <li key={i} style={{ marginBottom: '2px' }} dangerouslySetInnerHTML={{ __html: step }}></li>
                                 ))}
                               </ol>
                             </div>
@@ -393,9 +387,7 @@ const ViewSessionCard = () => {
                           <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 6px 0' }}>Instructions for Coach</p>
                           <ul style={{ margin: '0', paddingLeft: '20px' }}>
                             {activity.instructionsToCoach.map((instr, idx) => (
-                              <li key={idx} style={{ fontSize: '13px', color: '#475569', marginBottom: '4px' }}>
-                                {instr}
-                              </li>
+                              <li key={idx} style={{ fontSize: '13px', color: '#475569', marginBottom: '4px' }} dangerouslySetInnerHTML={{ __html: instr }}></li>
                             ))}
                           </ul>
                         </div>

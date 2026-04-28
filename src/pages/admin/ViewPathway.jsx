@@ -441,7 +441,7 @@ const ViewPathway = () => {
                               {Array.isArray(activity.story) ? (
                                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
                                   {activity.story.map((line, i) => (
-                                    <li key={i} style={{ fontSize: '13px', color: '#111827', marginBottom: '6px', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: line }} />
+                                    <li key={i} style={{ fontSize: '13px', color: '#111827', marginBottom: '6px', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: line }}></li>
                                   ))}
                                 </ul>
                               ) : (
@@ -460,7 +460,7 @@ const ViewPathway = () => {
                               </p>
                               <ul style={{ margin: 0, paddingLeft: '20px' }}>
                                 {activity.instructionsToCoach.map((instruction, i) => (
-                                  <li key={i} style={{ fontSize: '13px', color: '#111827', marginBottom: '6px', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: instruction }} />
+                                  <li key={i} style={{ fontSize: '13px', color: '#111827', marginBottom: '6px', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: instruction }}></li>
                                 ))}
                               </ul>
                             </div>
@@ -487,7 +487,7 @@ const ViewPathway = () => {
                                   </p>
                                   <ol style={{ margin: '0', paddingLeft: '20px', fontSize: '12px', color: '#333' }}>
                                     {activity.project.workflow.map((step, i) => (
-                                      <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: step }} />
+                                      <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: step }}></li>
                                     ))}
                                   </ol>
                                 </div>

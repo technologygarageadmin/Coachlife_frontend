@@ -6,6 +6,7 @@ import { Card } from '../../components/Card';
 import { AlertCircle, Plus, ChevronDown, Trash, SquarePen, Loader } from 'lucide-react';
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
+import RichTextEditor from '../../components/RichTextEditor';
 
 const ADD_PATHWAY_API_URL = 'https://u49kegogke.execute-api.ap-south-1.amazonaws.com/default/CL_Add_Master_LearningPathway';
 const GET_PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
@@ -19,13 +20,14 @@ const AddPathway = () => {
   const [isCustomPathway, setIsCustomPathway] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchAvailablePathways = async () => {
       try {
         const headers = {
           'Content-Type': 'application/json',
           ...(userToken && { 'userToken': userToken })
         };
-        const response = await axios.get(GET_PATHWAY_API_URL, { headers });
+        const response = await axios.get(GET_PATHWAY_API_URL, { headers, signal: controller.signal });
         const data = response.data || {};
         let sessions = [];
         if (Array.isArray(data)) {
@@ -46,11 +48,12 @@ const AddPathway = () => {
         }
         const unique = [...new Set(sessions.map(s => s.LearningPathway).filter(Boolean))];
         setAvailablePathways(unique);
-      } catch {
-        setAvailablePathways([]);
+      } catch (err) {
+        if (err.name !== 'CanceledError') setAvailablePathways([]);
       }
     };
     fetchAvailablePathways();
+    return () => controller.abort();
   }, [userToken]);
   
   const [formData, setFormData] = useState({
@@ -874,33 +877,7 @@ const AddPathway = () => {
 
               <div style={{ marginBottom: '24px' }}>
                 <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Description *</label>
-                <div
-                  ref={descriptionEditorRef}
-                  contentEditable
-                  suppressContentEditableWarning
-                  data-placeholder="Describe the activity..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    minHeight: '80px',
-                    fontFamily: 'inherit',
-                    outline: 'none',
-                    lineHeight: '1.6',
-                    color: '#111827'
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#060030ff';
-                    e.currentTarget.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                />
+                <RichTextEditor ref={descriptionEditorRef} placeholder="Describe the activity..." minHeight="80px" />
               </div>
 
               <div style={{ marginBottom: '24px' }}>
@@ -911,7 +888,7 @@ const AddPathway = () => {
                   max="45"
                   value={editedActivity.duration}
                   onChange={(e) => {
-                    let value = parseInt(e.target.value);
+                    let value = parseInt(e.target.value) || 1;
                     if (value > 45) value = 45;
                     if (value < 1) value = 1;
                     setEditedActivity(prev => ({ ...prev, duration: value }));
@@ -977,60 +954,16 @@ const AddPathway = () => {
                 {/* Project Description */}
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#888', display: 'block', marginBottom: '6px' }}>Project Description</label>
-                  <div
-                    ref={projectDescEditorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    data-placeholder="Describe the project objectives and outcomes..."
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      boxSizing: 'border-box',
-                      minHeight: '70px',
-                      fontFamily: 'inherit',
-                      outline: 'none',
-                      lineHeight: '1.6',
-                      color: '#111827'
-                    }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = '#060030ff';
-                      e.currentTarget.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = '#e5e7eb';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  />
+                  <RichTextEditor ref={projectDescEditorRef} placeholder="Describe the project objectives and outcomes..." minHeight="70px" />
                 </div>
 
                 {/* Project Workflow */}
                 <div>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#888', display: 'block', marginBottom: '6px' }}>Project Workflow Steps</label>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                    <div
-                      ref={workflowEditorRef}
-                      contentEditable
-                      suppressContentEditableWarning
-                      data-placeholder="Add workflow step"
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addProjectWorkflow(); } }}
-                      style={{
-                        flex: 1,
-                        padding: '8px 12px',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        boxSizing: 'border-box',
-                        minHeight: '36px',
-                        outline: 'none',
-                        lineHeight: '1.5',
-                        color: '#111827'
-                      }}
-                      onFocus={(e) => { e.currentTarget.style.borderColor = '#060030ff'; }}
-                      onBlur={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
-                    />
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <RichTextEditor ref={workflowEditorRef} placeholder="Add workflow step" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addProjectWorkflow(); } }} minHeight="36px" />
+                    </div>
                     <button
                       onClick={addProjectWorkflow}
                       style={{
@@ -1111,28 +1044,10 @@ const AddPathway = () => {
               {/* Instructions */}
               <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
                 <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Instructions to Coach</p>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <div
-                    ref={instructionEditorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    data-placeholder="Add instruction"
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addInstruction(); } }}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      boxSizing: 'border-box',
-                      minHeight: '36px',
-                      outline: 'none',
-                      lineHeight: '1.5',
-                      color: '#111827'
-                    }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = '#060030ff'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
-                  />
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <RichTextEditor ref={instructionEditorRef} placeholder="Add instruction" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addInstruction(); } }} minHeight="36px" />
+                  </div>
                   <button
                     onClick={addInstruction}
                     style={{
@@ -1187,28 +1102,10 @@ const AddPathway = () => {
               {/* Story Lines */}
               <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
                 <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Story Lines</p>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <div
-                    ref={storyEditorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    data-placeholder="Add story line"
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addStoryLine(); } }}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      boxSizing: 'border-box',
-                      minHeight: '36px',
-                      outline: 'none',
-                      lineHeight: '1.5',
-                      color: '#111827'
-                    }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = '#060030ff'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
-                  />
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <RichTextEditor ref={storyEditorRef} placeholder="Add story line" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addStoryLine(); } }} minHeight="36px" />
+                  </div>
                   <button
                     onClick={addStoryLine}
                     style={{

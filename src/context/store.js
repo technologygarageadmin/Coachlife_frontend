@@ -661,7 +661,7 @@ export const useStore = create(
 
       log('New player created:', newPlayer);
 
-      set((state) => ({ players: [...state.players, newPlayer] }));
+      set((state) => ({ players: [...state.players, newPlayer], playersLastFetchTime: 0 }));
       return { success: true, player: newPlayer };
     } catch (error) {
       console.error('Add player error:', error?.response || error);
@@ -707,18 +707,20 @@ export const useStore = create(
         phone: updated.phone || updatedData.phone || '',
         alternativeNumber: updated.alternativeNumber || updatedData.alternativeNumber || '',
         age: updated.age || updatedData.age || '',
+        LearningPathway: updated.LearningPathway || updatedData.LearningPathway || '',
         stage: updated.stage || updatedData.stage || 'foundation',
         totalPoints: updated.totalPoints || updated.TotalPoints || 0,
         PointBalance: updated.PointBalance || updated.pointBalance || 0,
         progress: updated.progress || 0,
         email: updated.email || `${(updatedData.playerName || 'player').toLowerCase().replace(/\s+/g, '.')}@example.com`,
-        status: updated.status || 'active'
+        status: updated.status || updatedData.status || 'active'
       };
 
       log('Updated player:', fullUpdatedPlayer);
 
       set((state) => ({
-        players: state.players.map(p => p.playerId === playerId ? { ...p, ...fullUpdatedPlayer } : p)
+        players: state.players.map(p => p.playerId === playerId ? { ...p, ...fullUpdatedPlayer } : p),
+        playersLastFetchTime: 0
       }));
 
       return { success: true, player: fullUpdatedPlayer };
@@ -771,7 +773,7 @@ export const useStore = create(
     try {
       const token = get().userToken;
       const headers = { 'Content-Type': 'application/json' };
-      if (token) { headers['userToken'] = token; headers['Authorization'] = `Bearer ${token}`; }
+      if (token) { headers['userToken'] = token; }
 
       const response = await axios.delete(DELETE_COACH_URL, { headers, data: { coachId } });
       const data = response.data || {};
@@ -792,7 +794,7 @@ export const useStore = create(
     try {
       const token = get().userToken;
       const headers = { 'Content-Type': 'application/json' };
-      if (token) { headers['userToken'] = token; headers['Authorization'] = `Bearer ${token}`; }
+      if (token) { headers['userToken'] = token; }
 
       const payload = { coachId, ...updatedData };
       const response = await axios.put(UPDATE_COACH_URL, payload, { headers });

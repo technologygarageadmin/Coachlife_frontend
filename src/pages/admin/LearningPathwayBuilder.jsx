@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
@@ -13,7 +13,6 @@ const DELETE_PATHWAY_API_URL = 'https://w5qtdpsr58.execute-api.ap-south-1.amazon
 const LearningPathwayBuilder = () => {
   const { userToken } = useStore();
   const navigate = useNavigate();
-  const location = useLocation();
   const [pathways, setPathways] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,13 +20,18 @@ const LearningPathwayBuilder = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pathwayToDelete, setPathwayToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [expandedStages, setExpandedStages] = useState({}); // Track which stages are expanded
+  const [expandedStages, setExpandedStages] = useState({});
+  const [renameModal, setRenameModal] = useState({
+    isOpen: false,
+    stageName: '',
+    newName: '',
+    isLoading: false
+  });
 
-  // Fetch pathways on every visit (location key) and when token changes
   useEffect(() => {
     fetchPathways();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key, userToken]);
+  }, [userToken]);
 
   const fetchPathways = async () => {
     setLoading(true);
@@ -124,6 +128,35 @@ const LearningPathwayBuilder = () => {
       setError(err.response?.data?.message || err.message || 'Failed to delete pathway');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleRenamePathway = async () => {
+    const trimmed = renameModal.newName.trim();
+    if (!trimmed || trimmed.toLowerCase() === renameModal.stageName.toLowerCase()) return;
+
+    setRenameModal(prev => ({ ...prev, isLoading: true }));
+    setError('');
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(userToken && { 'userToken': userToken })
+      };
+      const response = await axios.post(
+        'https://uqiws6r1v3.execute-api.ap-south-1.amazonaws.com/default/CL_Rename_LearningPathway',
+        { oldName: renameModal.stageName, newName: trimmed },
+        { headers }
+      );
+      if (response.status === 200 || response.data?.statusCode === 200) {
+        setRenameModal({ isOpen: false, stageName: '', newName: '', isLoading: false });
+        await fetchPathways();
+      } else {
+        setError(response.data?.message || 'Failed to rename pathway');
+        setRenameModal(prev => ({ ...prev, isLoading: false }));
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to rename pathway');
+      setRenameModal(prev => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -634,14 +667,51 @@ const LearningPathwayBuilder = () => {
                           color: expandedStages[group.stage] ? 'rgba(255, 255, 255, 0.9)' : '#666',
                           transition: 'all 0.3s ease'
                         }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenameModal({ isOpen: true, stageName: group.stage, newName: group.stage, isLoading: false });
+                            }}
+                            title="Rename pathway"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: '32px',
+                              height: '32px',
+                              background: expandedStages[group.stage]
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'rgba(99, 102, 241, 0.08)',
+                              border: expandedStages[group.stage]
+                                ? '1px solid rgba(255, 255, 255, 0.3)'
+                                : '1px solid rgba(99, 102, 241, 0.15)',
+                              borderRadius: '8px',
+                              cursor: 'pointer',
+                              color: expandedStages[group.stage] ? 'white' : '#4F46E5',
+                              transition: 'all 0.2s ease',
+                              flexShrink: 0
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = expandedStages[group.stage]
+                                ? 'rgba(255, 255, 255, 0.35)'
+                                : 'rgba(99, 102, 241, 0.18)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = expandedStages[group.stage]
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'rgba(99, 102, 241, 0.08)';
+                            }}
+                          >
+                            <SquarePen size={15} />
+                          </button>
                           <div style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             width: '32px',
                             height: '32px',
-                            backgroundColor: expandedStages[group.stage] 
-                              ? 'rgba(255, 255, 255, 0.2)' 
+                            backgroundColor: expandedStages[group.stage]
+                              ? 'rgba(255, 255, 255, 0.2)'
                               : 'rgba(99, 102, 241, 0.05)',
                             borderRadius: '8px',
                             transition: 'all 0.3s ease',
@@ -895,6 +965,121 @@ const LearningPathwayBuilder = () => {
                   }}
                 >
                   {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rename Pathway Modal */}
+        {renameModal.isOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '14px',
+              padding: '32px',
+              maxWidth: '440px',
+              width: '90%',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.18)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                <div style={{
+                  width: '36px', height: '36px',
+                  background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                  borderRadius: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <SquarePen size={16} color="white" />
+                </div>
+                <h2 style={{ fontSize: '17px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                  Rename Learning Pathway
+                </h2>
+              </div>
+              <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 24px 48px' }}>
+                This will update the name across all sessions in this pathway.
+              </p>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '8px' }}>
+                  New Pathway Name
+                </label>
+                <input
+                  type="text"
+                  value={renameModal.newName}
+                  onChange={(e) => setRenameModal(prev => ({ ...prev, newName: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleRenamePathway(); }}
+                  placeholder="Enter new pathway name..."
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    border: '1.5px solid #E5E7EB',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    color: '#111827',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#060030ff';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#E5E7EB';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setRenameModal({ isOpen: false, stageName: '', newName: '', isLoading: false })}
+                  disabled={renameModal.isLoading}
+                  style={{
+                    padding: '10px 24px',
+                    background: '#F3F4F6',
+                    color: '#374151',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: renameModal.isLoading ? 'not-allowed' : 'pointer',
+                    opacity: renameModal.isLoading ? 0.6 : 1
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRenamePathway}
+                  disabled={renameModal.isLoading || !renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase()}
+                  style={{
+                    padding: '10px 24px',
+                    background: renameModal.isLoading
+                      ? '#94A3B8'
+                      : 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: (renameModal.isLoading || !renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase())
+                      ? 'not-allowed'
+                      : 'pointer',
+                    opacity: (!renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase()) ? 0.5 : 1,
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {renameModal.isLoading ? 'Updating...' : 'Update'}
                 </button>
               </div>
             </div>

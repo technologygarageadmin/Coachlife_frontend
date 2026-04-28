@@ -17,6 +17,7 @@ const CustomCardGenerate = () => {
 
   const playerId = location.state?.playerId;
   const playerName = location.state?.playerName;
+  const playerLearningPathway = location.state?.LearningPathway;
 
   // Pathway states
   const [pathways, setPathways] = useState([]);
@@ -258,7 +259,7 @@ const CustomCardGenerate = () => {
       // Create payload
       const payload = {
         playerId: playerId,
-        LearningPathway: selectedPathway?.LearningPathway,
+        LearningPathway: playerLearningPathway,
         Topic: formData.topic,
         typeOfSessioncard: 'Custom',
         Objective: formData.objective,

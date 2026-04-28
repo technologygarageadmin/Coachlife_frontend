@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { AlertCircle, Loader, SquarePen, Trash, Plus } from 'lucide-react';
+import RichTextEditor from '../../components/RichTextEditor';
 import axios from 'axios';
 
 const GET_PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
@@ -36,19 +37,37 @@ const EditPathway = () => {
   const [takeawayInput, setTakeawayInput] = useState('');
   const [editingActivityIndex, setEditingActivityIndex] = useState(null);
   const [activityModalOpen, setActivityModalOpen] = useState(false);
-  const [instructionInput, setInstructionInput] = useState('');
-  const [storyLineInput, setStoryLineInput] = useState('');
   const [criteriaInput, setCriteriaInput] = useState('');
-  const [projectWorkflowInput, setProjectWorkflowInput] = useState('');
   const [editedActivity, setEditedActivity] = useState(null);
 
-  // Fetch pathway data on mount
+  const descEditorRef = useRef(null);
+  const projDescEditorRef = useRef(null);
+  const instrEditorRef = useRef(null);
+  const storyEditorRef = useRef(null);
+  const workflowEditorRef = useRef(null);
+
+  const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, '').trim();
+
   useEffect(() => {
-    fetchPathwayData();
+    const controller = new AbortController();
+    fetchPathwayData(controller.signal);
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const fetchPathwayData = async () => {
+  useEffect(() => {
+    if (activityModalOpen && editedActivity !== null) {
+      setTimeout(() => {
+        if (descEditorRef.current) descEditorRef.current.innerHTML = editedActivity.description || '';
+        if (projDescEditorRef.current) projDescEditorRef.current.innerHTML = editedActivity.project?.description || '';
+        if (instrEditorRef.current) instrEditorRef.current.innerHTML = '';
+        if (storyEditorRef.current) storyEditorRef.current.innerHTML = '';
+        if (workflowEditorRef.current) workflowEditorRef.current.innerHTML = '';
+      }, 0);
+    }
+  }, [activityModalOpen, editingActivityIndex]);
+
+  const fetchPathwayData = async (signal) => {
     setLoading(true);
     setError('');
     try {
@@ -57,7 +76,7 @@ const EditPathway = () => {
         ...(userToken && { 'userToken': userToken })
       };
 
-      const response = await axios.get(GET_PATHWAY_API_URL, { headers });
+      const response = await axios.get(GET_PATHWAY_API_URL, { headers, signal });
       
       let data = response.data || {};
       if (data.body && typeof data.body === 'string') {
@@ -111,8 +130,10 @@ const EditPathway = () => {
         totalPoints: pathway.totalPoints || 0
       });
     } catch (err) {
-      console.error('Error fetching pathway:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to fetch pathway');
+      if (err.name !== 'CanceledError') {
+        console.error('Error fetching pathway:', err);
+        setError(err.response?.data?.message || err.message || 'Failed to fetch pathway');
+      }
     } finally {
       setLoading(false);
     }
@@ -194,12 +215,13 @@ const EditPathway = () => {
   };
 
   const addInstruction = () => {
-    if (instructionInput.trim()) {
+    const content = instrEditorRef.current?.innerHTML || '';
+    if (stripHtml(content)) {
       setEditedActivity(prev => ({
         ...prev,
-        instructionsToCoach: [...(prev.instructionsToCoach || []), instructionInput.trim()]
+        instructionsToCoach: [...(prev.instructionsToCoach || []), content]
       }));
-      setInstructionInput('');
+      if (instrEditorRef.current) instrEditorRef.current.innerHTML = '';
     }
   };
 
@@ -234,12 +256,13 @@ const EditPathway = () => {
   };
 
   const addStoryLine = () => {
-    if (storyLineInput.trim()) {
+    const content = storyEditorRef.current?.innerHTML || '';
+    if (stripHtml(content)) {
       setEditedActivity(prev => ({
         ...prev,
-        story: [...(prev.story || []), storyLineInput.trim()]
+        story: [...(prev.story || []), content]
       }));
-      setStoryLineInput('');
+      if (storyEditorRef.current) storyEditorRef.current.innerHTML = '';
     }
   };
 
@@ -269,15 +292,16 @@ const EditPathway = () => {
   };
 
   const addProjectWorkflow = () => {
-    if (projectWorkflowInput.trim()) {
+    const content = workflowEditorRef.current?.innerHTML || '';
+    if (stripHtml(content)) {
       setEditedActivity(prev => ({
         ...prev,
         project: {
           ...(prev.project || { title: '', description: '', workflow: [] }),
-          workflow: [...((prev.project?.workflow) || []), projectWorkflowInput.trim()]
+          workflow: [...((prev.project?.workflow) || []), content]
         }
       }));
-      setProjectWorkflowInput('');
+      if (workflowEditorRef.current) workflowEditorRef.current.innerHTML = '';
     }
   };
 
@@ -883,21 +907,7 @@ const EditPathway = () => {
 
               <div style={{ marginBottom: '24px' }}>
                 <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Description *</label>
-                <textarea
-                  value={editedActivity.description}
-                  onChange={(e) => setEditedActivity(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Describe the activity..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    minHeight: '80px',
-                    fontFamily: 'inherit'
-                  }}
-                />
+                <RichTextEditor ref={descEditorRef} placeholder="Describe the activity..." minHeight="80px" />
               </div>
 
               <div style={{ marginBottom: '24px' }}>
@@ -974,45 +984,16 @@ const EditPathway = () => {
                 {/* Project Description */}
                 <div style={{ marginBottom: '12px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#888', display: 'block', marginBottom: '6px' }}>Project Description</label>
-                  <textarea
-                    value={editedActivity.project?.description || ''}
-                    onChange={(e) => setEditedActivity(prev => ({
-                      ...prev,
-                      project: { ...(prev.project || { title: '', workflow: [] }), description: e.target.value }
-                    }))}
-                    placeholder="Describe the project objectives and outcomes..."
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      boxSizing: 'border-box',
-                      minHeight: '70px',
-                      fontFamily: 'inherit'
-                    }}
-                  />
+                  <RichTextEditor ref={projDescEditorRef} placeholder="Describe the project objectives and outcomes..." minHeight="70px" />
                 </div>
 
                 {/* Project Workflow */}
                 <div>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#888', display: 'block', marginBottom: '6px' }}>Project Workflow Steps</label>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                    <input
-                      type="text"
-                      value={projectWorkflowInput}
-                      onChange={(e) => setProjectWorkflowInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addProjectWorkflow()}
-                      placeholder="Add workflow step"
-                      style={{
-                        flex: 1,
-                        padding: '8px 12px',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        boxSizing: 'border-box'
-                      }}
-                    />
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <RichTextEditor ref={workflowEditorRef} placeholder="Add workflow step" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addProjectWorkflow(); } }} minHeight="36px" />
+                    </div>
                     <button
                       onClick={addProjectWorkflow}
                       style={{
@@ -1044,7 +1025,7 @@ const EditPathway = () => {
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontWeight: '600', color: '#4338CA' }}>Step {idx + 1}</span>
-                          <span style={{ color: '#333' }}>{step}</span>
+                          <span style={{ color: '#333' }} dangerouslySetInnerHTML={{ __html: step }} />
                         </div>
                         <button
                           onClick={() => removeProjectWorkflow(idx)}
@@ -1093,22 +1074,10 @@ const EditPathway = () => {
               {/* Instructions */}
               <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
                 <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Instructions to Coach</p>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <input
-                    type="text"
-                    value={instructionInput}
-                    onChange={(e) => setInstructionInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addInstruction()}
-                    placeholder="Add instruction"
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <RichTextEditor ref={instrEditorRef} placeholder="Add instruction" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addInstruction(); } }} minHeight="36px" />
+                  </div>
                   <button
                     onClick={addInstruction}
                     style={{
@@ -1138,7 +1107,7 @@ const EditPathway = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}>
-                      {inst}
+                      <span dangerouslySetInnerHTML={{ __html: inst }} style={{ flex: 1 }} />
                       <button
                         onClick={() => removeInstruction(idx)}
                         style={{
@@ -1161,22 +1130,10 @@ const EditPathway = () => {
               {/* Story Lines */}
               <div style={{ marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid #e5e7eb' }}>
                 <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', textTransform: 'uppercase', margin: '0 0 12px 0' }}>Story Lines</p>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                  <input
-                    type="text"
-                    value={storyLineInput}
-                    onChange={(e) => setStoryLineInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addStoryLine()}
-                    placeholder="Add story line"
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <RichTextEditor ref={storyEditorRef} placeholder="Add story line" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addStoryLine(); } }} minHeight="36px" />
+                  </div>
                   <button
                     onClick={addStoryLine}
                     style={{
@@ -1206,7 +1163,7 @@ const EditPathway = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}>
-                      {line}
+                      <span dangerouslySetInnerHTML={{ __html: line }} style={{ flex: 1 }} />
                       <button
                         onClick={() => removeStoryLine(idx)}
                         style={{
@@ -1415,7 +1372,16 @@ const EditPathway = () => {
                 </button>
                 <button
                   onClick={() => {
-                    updateActivity(editingActivityIndex, editedActivity);
+                    const desc = descEditorRef.current?.innerHTML || editedActivity.description || '';
+                    const projDesc = projDescEditorRef.current?.innerHTML || editedActivity.project?.description || '';
+                    const updated = {
+                      ...editedActivity,
+                      description: desc,
+                      project: editedActivity.project
+                        ? { ...editedActivity.project, description: projDesc }
+                        : editedActivity.project
+                    };
+                    updateActivity(editingActivityIndex, updated);
                     setActivityModalOpen(false);
                     setEditedActivity(null);
                     setEditingActivityIndex(null);

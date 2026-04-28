@@ -646,7 +646,7 @@ const SessionCardManage = () => {
                     )}
                   </button>
                   <button
-                    onClick={() => navigate('/admin/custom-generate-card', { state: { playerId: selectedPlayer.playerId, playerName: selectedPlayer.playerName } })}
+                    onClick={() => navigate('/admin/custom-generate-card', { state: { playerId: selectedPlayer.playerId, playerName: selectedPlayer.playerName, LearningPathway: selectedPlayer.LearningPathway } })}
                     style={{
                       display: 'flex',
                       alignItems: 'center',

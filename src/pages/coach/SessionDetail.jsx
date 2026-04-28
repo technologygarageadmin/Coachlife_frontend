@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
-import { ChevronLeft, Clock, Users, MapPin, Clock4 , BookOpen, ArrowRight, BookMarked, Wrench, Briefcase, Code, ChevronDown, MoveUpRight } from 'lucide-react';
+import { ChevronLeft, Clock, Users, MapPin, Clock4 , BookOpen, ArrowRight, BookMarked, Wrench, Briefcase, Code, ChevronDown, MoveUpRight, MessageSquare } from 'lucide-react';
 
 const SessionDetail = () => {
   const { sessionId } = useParams();
@@ -29,10 +29,17 @@ const SessionDetail = () => {
     sectionType: null, // 'instructions', 'story', 'code'
     reason: ''
   });
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [toast, setToast] = useState({
     isVisible: false,
     message: '',
     type: 'success' // 'success', 'error', 'info'
+  });
+  const [whatsappModal, setWhatsappModal] = useState({
+    isOpen: false,
+    isLoading: false,
+    message: '',
+    averageRating: 0
   });
 
   useEffect(() => {
@@ -185,7 +192,7 @@ const SessionDetail = () => {
       // Update session status based on API response
       setSessionData(prev => ({
         ...prev,
-        status: result.status === 'in_progress' ? 'in_progress' : 'in_progress',
+        status: result.status || 'in_progress',
         _id: result._id || prev._id
       }));
       
@@ -526,6 +533,59 @@ const SessionDetail = () => {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGenerateWhatsAppFeedback = async () => {
+    const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
+      activitySequence: activity.activitySequence || (index + 1),
+      activityName: activity.activityTitle || activity.activityName || `Activity ${index + 1}`,
+      rating: activity.feedback?.rating || 0,
+      feedback: activity.feedback?.coachComment || ''
+    }));
+
+    setWhatsappModal({ isOpen: true, isLoading: true, message: '', averageRating: 0 });
+
+    try {
+      const token = userToken || localStorage.getItem('userToken');
+      const requestBody = {
+        sessionCardId: sessionData._id || sessionId,
+        playerName: playerData?.name || playerData?.playerName || 'Player',
+        sessionTopic: sessionData.Topic || '',
+        sessionNumber: sessionData.session || 0,
+        coachName: currentUser?.name || 'Coach',
+        activities: activitiesFeedback,
+        overallRating: sessionData.feedback?.rating || sessionFeedback.rating || 0,
+        overallComment: sessionData.feedback?.coachComment || sessionFeedback.coachComment || ''
+      };
+
+      const response = await fetch(
+        'https://zf94z67dy2.execute-api.ap-south-1.amazonaws.com/default/CL_Generate_WhatsApp_Feedback',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'userToken': token
+          },
+          body: JSON.stringify(requestBody)
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to generate feedback: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setWhatsappModal({
+        isOpen: true,
+        isLoading: false,
+        message: result.whatsappMessage || result.message || '',
+        averageRating: result.averageRating || 0
+      });
+    } catch (error) {
+      setWhatsappModal({ isOpen: false, isLoading: false, message: '', averageRating: 0 });
+      setToast({ isVisible: true, message: `Error: ${error.message}`, type: 'error' });
     }
   };
 
@@ -1059,14 +1119,12 @@ const SessionDetail = () => {
                           {/* Activity Description */}
                           {activity.description && (
                             <div style={{ marginBottom: '16px', marginLeft: '56px' }}>
-                              <p style={{
+                              <div style={{
                                 fontSize: '14px',
                                 color: '#475569',
                                 margin: 0,
                                 lineHeight: '1.6'
-                              }}>
-                                {activity.description}
-                              </p>
+                              }} dangerouslySetInnerHTML={{ __html: activity.description }} />
                             </div>
                           )}
 
@@ -1229,7 +1287,7 @@ const SessionDetail = () => {
                                   alignItems: 'flex-start'
                                 }}>
                                   <ArrowRight size={14} style={{ marginTop: '2px', flexShrink: 0, color: '#000000' }} />
-                                  <span>{instruction}</span>
+                                  <div dangerouslySetInnerHTML={{ __html: instruction }} />
                                 </div>
                               ))}
                             </div>
@@ -1302,20 +1360,14 @@ const SessionDetail = () => {
                                       </h4>
                                     )}
                                     {storyContent && (
-                                      <p style={{
+                                      <div style={{
                                         fontSize: '12px',
                                         color: '#000000',
                                         margin: 0,
                                         lineHeight: '1.6',
-                                        gap: '6px',
                                         textAlign: 'justify',
-                                        display: 'flex',
-                                        alignItems: 'flex-start',
                                         whiteSpace: 'pre-wrap'
-                                      }}>
-                                        {/* <span>•</span> */}
-                                        {storyContent}
-                                      </p>
+                                      }} dangerouslySetInnerHTML={{ __html: storyContent }} />
                                     )}
                                   </div>
                                 );
@@ -1489,14 +1541,12 @@ const SessionDetail = () => {
                                 </p>
                               )}
                               {activity.project.description && (
-                                <p style={{
+                                <div style={{
                                   fontSize: '12px',
                                   color: '#666666',
                                   margin: '0 0 8px 0',
                                   lineHeight: '1.5'
-                                }}>
-                                  {activity.project.description}
-                                </p>
+                                }} dangerouslySetInnerHTML={{ __html: activity.project.description }} />
                               )}
                               {activity.project.workflow && activity.project.workflow.length > 0 && (
                                 <div>
@@ -1516,9 +1566,7 @@ const SessionDetail = () => {
                                     color: '#666666'
                                   }}>
                                     {activity.project.workflow.map((step, i) => (
-                                      <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }}>
-                                        {step}
-                                      </li>
+                                      <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: step }}></li>
                                     ))}
                                   </ol>
                                 </div>
@@ -2505,6 +2553,43 @@ const SessionDetail = () => {
                       }}>
                       {isSubmitting ? 'Completing...' : 'Complete Session'}
                     </button>
+                    <button
+                      onClick={handleGenerateWhatsAppFeedback}
+                      disabled={isSubmitting}
+                      style={{
+                        padding: '12px 24px',
+                        background: isSubmitting ? '#94A3B8' : '#25D366',
+                        color: 'white',
+                        border: 'none',
+                        width: '100%',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        opacity: isSubmitting ? 0.7 : 1,
+                        pointerEvents: isSubmitting ? 'none' : 'auto',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSubmitting) {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 211, 102, 0.35)';
+                          e.currentTarget.style.background = '#1ebe5d';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.background = '#25D366';
+                      }}
+                    >
+                      <MessageSquare size={15} />
+                      WhatsApp Feedback
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2616,12 +2701,14 @@ const SessionDetail = () => {
                       Cancel
                     </button>
                     <button
+                      disabled={isRegenerating}
                       onClick={async () => {
                         if (!regenerateModal.reason.trim()) {
                           alert('Please enter a reason for regenerating this content.');
                           return;
                         }
-                        
+
+                        setIsRegenerating(true);
                         try {
                           const activity = sessionData?.activities[regenerateModal.activityIndex];
                           if (!activity) {
@@ -2791,39 +2878,224 @@ const SessionDetail = () => {
                             message: `Error: ${err.message}`,
                             type: 'error'
                           });
+                        } finally {
+                          setIsRegenerating(false);
                         }
                       }}
                       style={{
                         padding: '10px 24px',
-                        background: '#F59E0B',
+                        background: isRegenerating ? '#D97706' : '#F59E0B',
                         color: 'white',
                         border: 'none',
                         borderRadius: '8px',
                         fontSize: '13px',
                         fontWeight: '600',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
+                        cursor: isRegenerating ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        opacity: isRegenerating ? 0.85 : 1
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#D97706'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = '#F59E0B'}
+                      onMouseEnter={(e) => { if (!isRegenerating) e.currentTarget.style.background = '#D97706'; }}
+                      onMouseLeave={(e) => { if (!isRegenerating) e.currentTarget.style.background = '#F59E0B'; }}
                     >
-                      Regenerate
+                      {isRegenerating && (
+                        <span style={{
+                          width: '14px',
+                          height: '14px',
+                          border: '2px solid rgba(255,255,255,0.4)',
+                          borderTopColor: 'white',
+                          borderRadius: '50%',
+                          display: 'inline-block',
+                          animation: 'spin 0.7s linear infinite',
+                          flexShrink: 0
+                        }} />
+                      )}
+                      {isRegenerating ? 'Regenerating...' : 'Regenerate'}
                     </button>
                   </div>
                 </div>
 
                 <style>{`
                   @keyframes slideIn {
-                    from {
-                      opacity: 0;
-                      transform: translateY(-20px);
-                    }
-                    to {
-                      opacity: 1;
-                      transform: translateY(0);
-                    }
+                    from { opacity: 0; transform: translateY(-20px); }
+                    to { opacity: 1; transform: translateY(0); }
+                  }
+                  @keyframes spin {
+                    to { transform: rotate(360deg); }
                   }
                 `}</style>
+              </div>
+            )}
+
+            {/* WhatsApp Feedback Modal */}
+            {whatsappModal.isOpen && (
+              <div style={{
+                position: 'fixed',
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(0, 0, 0, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000
+              }}>
+                <div style={{
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '32px',
+                  maxWidth: '540px',
+                  width: '90%',
+                  boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+                  animation: 'slideIn 0.3s ease'
+                }}>
+                  {/* Modal Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+                    <div style={{
+                      width: '40px', height: '40px',
+                      background: '#25D366',
+                      borderRadius: '10px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <MessageSquare size={20} color="white" />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                        WhatsApp Feedback
+                      </h3>
+                      <p style={{ fontSize: '12px', color: '#6B7280', margin: '2px 0 0 0' }}>
+                        AI-generated parent message
+                      </p>
+                    </div>
+                  </div>
+
+                  {whatsappModal.isLoading ? (
+                    <div style={{
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '40px 0', gap: '16px'
+                    }}>
+                      <div style={{
+                        width: '40px', height: '40px',
+                        border: '3px solid #E5E7EB',
+                        borderTopColor: '#25D366',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite'
+                      }} />
+                      <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
+                        Generating AI feedback...
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Average Rating */}
+                      {whatsappModal.averageRating > 0 && (
+                        <div style={{
+                          background: '#F0FDF4',
+                          border: '1px solid #BBF7D0',
+                          borderRadius: '10px',
+                          padding: '12px 16px',
+                          marginBottom: '16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}>
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <span key={star} style={{
+                                fontSize: '18px',
+                                color: star <= Math.round(whatsappModal.averageRating) ? '#FCD34D' : '#D1D5DB'
+                              }}>★</span>
+                            ))}
+                          </div>
+                          <span style={{ fontSize: '14px', fontWeight: '700', color: '#166534' }}>
+                            {whatsappModal.averageRating.toFixed(1)} / 5
+                          </span>
+                          <span style={{ fontSize: '12px', color: '#166534', marginLeft: 'auto' }}>
+                            Average Rating
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Message Box */}
+                      <div style={{ marginBottom: '20px' }}>
+                        <p style={{ fontSize: '12px', fontWeight: '600', color: '#374151', margin: '0 0 8px 0' }}>
+                          Message for Parents
+                        </p>
+                        <textarea
+                          readOnly
+                          value={whatsappModal.message}
+                          style={{
+                            width: '100%',
+                            minHeight: '200px',
+                            padding: '14px',
+                            borderRadius: '10px',
+                            border: '1.5px solid #E5E7EB',
+                            fontFamily: 'inherit',
+                            fontSize: '13px',
+                            color: '#374151',
+                            lineHeight: '1.6',
+                            resize: 'vertical',
+                            boxSizing: 'border-box',
+                            background: '#FAFAFA',
+                            cursor: 'text'
+                          }}
+                        />
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(whatsappModal.message);
+                            setToast({ isVisible: true, message: 'Message copied to clipboard!', type: 'success' });
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '11px 0',
+                            background: '#25D366',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#1ebe5d'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#25D366'}
+                        >
+                          <MessageSquare size={14} />
+                          Copy Message
+                        </button>
+                        <button
+                          onClick={() => setWhatsappModal({ isOpen: false, isLoading: false, message: '', averageRating: 0 })}
+                          style={{
+                            flex: 1,
+                            padding: '11px 0',
+                            background: '#F3F4F6',
+                            color: '#374151',
+                            border: '1px solid #E5E7EB',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </>
