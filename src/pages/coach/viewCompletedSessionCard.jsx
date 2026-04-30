@@ -10,6 +10,14 @@ const ViewSessionCard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userToken, currentUser } = useStore();
+
+  const getToken = () => {
+    const fresh = useStore.getState().userToken;
+    if (fresh) return fresh;
+    try {
+      return JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken || null;
+    } catch { return null; }
+  };
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,6 +30,12 @@ const ViewSessionCard = () => {
     message: '',
     averageRating: 0
   });
+  const [activityFeedbacks, setActivityFeedbacks] = useState([]);
+  const [whatsFeedbackMessage, setWhatsFeedbackMessage] = useState('');
+  const [isLoadingWhatsFeedback, setIsLoadingWhatsFeedback] = useState(false);
+  const [editingFeedbackId, setEditingFeedbackId] = useState(null);
+  const [editingFeedbackText, setEditingFeedbackText] = useState('');
+  const [isUpdatingFeedback, setIsUpdatingFeedback] = useState(false);
 
   useEffect(() => {
     const fetchSessionDetails = async () => {
@@ -41,6 +55,9 @@ const ViewSessionCard = () => {
           };
           
           setSessionData(sessionWithSortedActivities);
+          if (sessionWithSortedActivities.Whatsapp_message) {
+            setWhatsFeedbackMessage(sessionWithSortedActivities.Whatsapp_message);
+          }
           if (location.state?.player) {
             setPlayerData(location.state.player);
           }
@@ -73,7 +90,7 @@ const ViewSessionCard = () => {
     setWhatsappModal({ isOpen: true, isLoading: true, message: '', averageRating: 0 });
 
     try {
-      const token = userToken || localStorage.getItem('userToken');
+      const token = getToken();
       const player = location.state?.player;
       const requestBody = {
         sessionCardId: sessionData._id || cardId,
@@ -81,7 +98,7 @@ const ViewSessionCard = () => {
         sessionTopic: sessionData.Topic || '',
         sessionNumber: sessionData.session || 0,
         coachName: currentUser?.name || 'Coach',
-        activities: activitiesFeedback,
+        activities_feedback: activitiesFeedback,
         overallRating: sessionData.rating || 0,
         overallComment: sessionData.feedback || ''
       };
@@ -92,7 +109,8 @@ const ViewSessionCard = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'userToken': token
+            'userToken': token,
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(requestBody)
         }
@@ -113,6 +131,100 @@ const ViewSessionCard = () => {
     } catch (error) {
       setWhatsappModal({ isOpen: false, isLoading: false, message: '', averageRating: 0 });
       alert(`Error: ${error.message}`);
+    }
+  };
+
+  const handleWhatsFeedback = async () => {
+    const sessionCardId = sessionData._id || cardId;
+    const player = location.state?.player;
+    const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
+      activitySequence: activity.activitySequence || (index + 1),
+      activityTitle: activity.activityTitle || `Activity ${index + 1}`,
+      rating: activity.rating || 0,
+      feedback: activity.feedback || ''
+    }));
+
+    setIsLoadingWhatsFeedback(true);
+    try {
+      const token = getToken();
+      const response = await fetch(
+        'https://zf94z67dy2.execute-api.ap-south-1.amazonaws.com/default/CL_Generate_WhatsApp_Feedback',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            sessionCardId,
+            activities_feedback: activitiesFeedback,
+            playerName: player?.name || player?.playerName || 'Student',
+            sessionTopic: sessionData.Topic || '',
+            sessionNumber: sessionData.session || '',
+            coachName: currentUser?.name || 'Coach',
+            overallRating: sessionData.rating || 0,
+            overallComment: sessionData.feedback || ''
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setActivityFeedbacks(result.feedbacks || activitiesFeedback);
+      if (result.whatsappMessage) setWhatsFeedbackMessage(result.whatsappMessage);
+
+      const refreshToken = getToken();
+      const refreshRes = await fetch(
+        'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'userToken': refreshToken, 'Authorization': `Bearer ${refreshToken}` },
+          body: JSON.stringify({ sessionCardId })
+        }
+      ).catch(() => null);
+      if (refreshRes?.ok) {
+        const refreshData = await refreshRes.json().catch(() => null);
+        const fresh = refreshData?.sessionCard || refreshData?.data || refreshData;
+        if (fresh?._id) setSessionData(fresh);
+      }
+
+      setTimeout(() => {
+        document.getElementById('whats-feedback-section-view')?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsLoadingWhatsFeedback(false);
+    }
+  };
+
+  const handleUpdateWhatsappMessage = async (updatedMessage) => {
+    setIsUpdatingFeedback(true);
+    const sessionCardId = sessionData._id || cardId;
+    try {
+      const token = getToken();
+      const response = await fetch(
+        'https://6idqgn4hg1.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Whatsapp_Feedback',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ whatsappMessage: updatedMessage, sessionCardId })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed: ${response.status}`);
+      }
+
+      setWhatsFeedbackMessage(updatedMessage);
+      setEditingFeedbackId(null);
+      setEditingFeedbackText('');
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsUpdatingFeedback(false);
     }
   };
 
@@ -196,36 +308,6 @@ const ViewSessionCard = () => {
             Back
           </button>
 
-          <button
-            onClick={handleGenerateWhatsAppFeedback}
-            style={{
-              background: '#25D366',
-              color: 'white',
-              border: 'none',
-              borderRadius: '10px',
-              padding: '10px 18px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#1ebe5d';
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(37, 211, 102, 0.35)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#25D366';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          >
-            <MessageSquare size={16} />
-            WhatsApp Feedback
-          </button>
         </div>
 
         {/* Session Header */}
@@ -711,6 +793,152 @@ const ViewSessionCard = () => {
                   <li key={index} style={{ fontSize: '13px', color: '#111827', marginBottom: '8px', lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: takeaway }}></li>
                 ))}
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* What's Feedback Section */}
+        {whatsFeedbackMessage && (
+          <div id="whats-feedback-section-view" style={{
+            background: '#FFFFFF',
+            borderRadius: '12px',
+            border: '1px solid #E5E7EB',
+            overflow: 'hidden',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+            marginBottom: '32px'
+          }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #1D4ED8, #1E40AF)',
+              padding: '16px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <BookMarked size={18} color="white" />
+              <h2 style={{ fontSize: '16px', fontWeight: '600', color: 'white', margin: 0 }}>
+                WhatsApp Message
+              </h2>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              {editingFeedbackId === 'whatsapp' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <textarea
+                    value={editingFeedbackText}
+                    onChange={(e) => setEditingFeedbackText(e.target.value)}
+                    style={{
+                      width: '100%',
+                      minHeight: '160px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: '1.5px solid #1D4ED8',
+                      fontFamily: 'inherit',
+                      fontSize: '13px',
+                      color: '#374151',
+                      lineHeight: '1.7',
+                      resize: 'vertical',
+                      boxSizing: 'border-box',
+                      boxShadow: '0 0 0 3px rgba(29,78,216,0.1)'
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(editingFeedbackText);
+                        alert('Message copied!');
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#F3F4F6',
+                        color: '#374151',
+                        border: '1px solid #E5E7EB',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => { setEditingFeedbackId(null); setEditingFeedbackText(''); }}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#F3F4F6',
+                        color: '#6B7280',
+                        border: '1px solid #E5E7EB',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleUpdateWhatsappMessage(editingFeedbackText)}
+                      disabled={isUpdatingFeedback}
+                      style={{
+                        padding: '8px 16px',
+                        background: isUpdatingFeedback ? '#94A3B8' : 'linear-gradient(135deg, #1D4ED8, #1E40AF)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: isUpdatingFeedback ? 'not-allowed' : 'pointer'
+                      }}
+                      onMouseEnter={(e) => { if (!isUpdatingFeedback) e.currentTarget.style.background = 'linear-gradient(135deg, #1E40AF, #1D4ED8)'; }}
+                      onMouseLeave={(e) => { if (!isUpdatingFeedback) e.currentTarget.style.background = 'linear-gradient(135deg, #1D4ED8, #1E40AF)'; }}
+                    >
+                      {isUpdatingFeedback ? 'Updating...' : 'Update'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p style={{
+                    fontSize: '13px',
+                    color: '#374151',
+                    margin: '0 0 16px 0',
+                    lineHeight: '1.7',
+                    whiteSpace: 'pre-wrap',
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    borderRadius: '8px',
+                    padding: '16px'
+                  }}>
+                    {whatsFeedbackMessage}
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => {
+                        setEditingFeedbackId('whatsapp');
+                        setEditingFeedbackText(whatsFeedbackMessage);
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: 'linear-gradient(135deg, #1D4ED8, #1E40AF)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #1E40AF, #1D4ED8)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #1D4ED8, #1E40AF)'}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

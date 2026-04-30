@@ -71,7 +71,7 @@ The app serves as the operational interface for administrators and coaches: admi
 8. Points accumulate in `totalPoints`; redeemable portion tracked in `PointBalance`
 
 ### Custom Card Generation
-Admin can also use `/admin/custom-generate-card` to create a card with a specific session/topic rather than the next sequential one.
+Admin can also use `/admin/custom-generate-card` to create a card with a specific session/topic rather than the next sequential one. Navigation state must include `{ playerId, playerName, LearningPathway }` — the `LearningPathway` sent to the API is taken from the **player's profile**, not from whichever pathway the admin browsed activities from.
 
 ---
 
@@ -208,6 +208,7 @@ https://<api-id>.execute-api.ap-south-1.amazonaws.com/<stage>/<function-name>
 | Get assigned players (coach) | POST | `CL_View_Assigned_Player` |
 | Get learning pathways | GET | `CL_Get_LearningPathway` |
 | Generate session card | POST | `CL_Session_Card_Generating` |
+| Generate custom session card | POST | `CL_Custome_Sessioncard` |
 | View session card | POST | `CL_View_Sessioncard` |
 | Delete session card | POST | `CL_Deleting_Sessioncard` |
 | View user profile | POST | `CL_View_User_Profile` |
@@ -288,14 +289,21 @@ else if (data.body && typeof data.body === 'string') items = JSON.parse(data.bod
 ### Activity (within a session or session card)
 ```js
 {
-  activitySequence: number,   // display order
-  activityName: string,
-  instructions: string,       // how to do the activity
-  story: string,              // narrative context
-  code: string,               // code snippet (for coding activities)
-  defaultPoints: number,      // points for completing this activity
-  rating: number,             // filled by coach during session (1-5)
-  feedback: string            // coach feedback per activity
+  activitySequence: number,        // display order
+  activityTitle: string,           // activity name (API field — not activityName)
+  description: string,             // what the activity is
+  story: string | string[],        // narrative context (may be array of paragraphs)
+  instructionsToCoach: string[],   // step-by-step coach instructions
+  code: { language: string, content: string } | null,
+  project: string | null,
+  aiTools: { toolName, usagePurpose, toolLink }[] | null,
+  points: {
+    total: number,
+    evaluationCriteria: string[]
+  },
+  duration: number,               // minutes
+  rating: number,                 // filled by coach during session (1-5)
+  feedback: string | null         // coach feedback per activity
 }
 ```
 
@@ -399,6 +407,16 @@ const { userToken, currentUser } = useStore();
 
 ---
 
+## Performance Conventions
+
+- **`useMemo` for filtered/sorted lists** — wrap any `.filter().sort()` chain that runs on every render in `useMemo` with the correct deps (e.g., `[players, searchTerm, filter, sortBy]`)
+- **`React.memo` for list-item components** — define card/row components at module level (outside the parent), wrap with `memo()`, and pass all needed values as props
+- **`useCallback` for functions passed as props to memoized children** — especially functions that close over state (e.g., `shouldShowStartButton` closes over `sessions`)
+- **`AbortController` in data-fetching `useEffect`** — always return `() => controller.abort()` as cleanup; ignore `CanceledError` in catch
+- **Do not use `location.key` in `useEffect` deps** — page components already unmount/remount on navigation; `location.key` causes double-fetches
+
+---
+
 ## Dev Commands
 
 ```bash
@@ -411,7 +429,7 @@ npm run lint     # ESLint
 
 ## Known Gotchas
 
-- **`userToken` header, not `Authorization`** — using `Authorization` causes CORS preflight failures
+- **`userToken` header, not `Authorization`** — using `Authorization` causes CORS preflight failures. The one exception is `customCardGenerate.jsx` which intentionally sends both headers (Postman-compatible pattern for that specific Lambda).
 - **Response shape varies per endpoint** — always unwrap all known variants before using data
 - **Some endpoints use `fetch`, some use `axios`** — both are present; this is intentional per-page choice, not a bug
 - **`selectedPlayer` in Zustand is persisted** — so the session card manage page remembers the last selected player across navigations; reset on page load via `location.key` effect
@@ -419,3 +437,8 @@ npm run lint     # ESLint
 - **`sessionHistory` in store has hardcoded demo data** — real session data comes from API, not this local array; the local array is used for demo/fallback only
 - **Player `name` field normalization** — API returns `playerName`, store normalizes to both `name` and `playerName` for compatibility across components
 - **401 threshold is 3 consecutive errors** — single 401s don't log out the user; only 3+ in a row trigger the modal
+- **`activityTitle` not `activityName`** — the API uses `activityTitle` as the activity name field; legacy references to `activityName` exist in some components but the canonical field is `activityTitle`
+- **`SessionCard` in SessionCardsView is `memo()`-wrapped at module level** — do not move it back inside the component body; it must stay outside to avoid being recreated on every parent render
+- **`AbortController` pattern in axios** — axios throws `CanceledError` (not `AbortError`) when a request is aborted; always check `err.name !== 'CanceledError'` in catch blocks before setting error state
+- **`LearningPathwayBuilder` fetches on `[userToken]` dep only** — `location.key` was intentionally removed; the component unmounts/remounts on each navigation so the effect still fires once per visit
+- **Custom card `LearningPathway` comes from the player, not the browsed pathway** — `SessionCardManage` passes `LearningPathway` in navigation state; `customCardGenerate.jsx` reads it as `location.state?.LearningPathway`

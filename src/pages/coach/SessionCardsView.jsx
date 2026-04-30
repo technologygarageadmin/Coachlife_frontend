@@ -121,7 +121,7 @@ const SessionCard = memo(({ session, isCompletedSession, navigate, selectedPlaye
               </p>
             </div>
           </div>
-          {session.totalPoints && (
+          {session.totalPoints != null && (
             <div style={{ background: '#F9FAFB', padding: '10px 12px', borderRadius: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px', minHeight: '44px' }}>
               <Star size={14} style={{ color: '#9CA3AF', marginTop: '3px', flexShrink: 0 }} />
               <div>
