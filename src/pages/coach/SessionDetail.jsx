@@ -55,6 +55,11 @@ const SessionDetail = () => {
   const [editingFeedbackId, setEditingFeedbackId] = useState(null);
   const [editingFeedbackText, setEditingFeedbackText] = useState('');
   const [isUpdatingFeedback, setIsUpdatingFeedback] = useState(false);
+  const [whatsappPromptModal, setWhatsappPromptModal] = useState({
+    isOpen: false,
+    isGenerating: false,
+    message: ''
+  });
 
   useEffect(() => {
     const fetchSessionDetails = async () => {
@@ -425,28 +430,21 @@ const SessionDetail = () => {
     }
   };
 
-  // Complete session and submit feedback
-  const handleCompleteSession = async () => {
+  // Core completion logic — called directly once WhatsApp feedback is confirmed
+  const doCompleteSession = async () => {
     if (isSubmitting) return;
-    
+
     try {
       setIsSubmitting(true);
-      
+
       const token = getToken();
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
+      if (!token) throw new Error('No authentication token found');
+      if (!sessionData) throw new Error('Session data not loaded');
 
-      if (!sessionData) {
-        throw new Error('Session data not loaded');
-      }
-
-      // Validate all activities have feedback with rating
       const activitiesWithoutFeedback = [];
       (sessionData.activities || []).forEach((activity, index) => {
         const hasRating = activity.feedback?.rating && activity.feedback.rating > 0;
         const hasComment = activity.feedback?.coachComment && activity.feedback.coachComment.trim().length > 0;
-        
         if (!hasRating || !hasComment) {
           const activityName = activity.activityTitle || activity.title || `Activity ${index + 1}`;
           activitiesWithoutFeedback.push({
@@ -458,7 +456,6 @@ const SessionDetail = () => {
         }
       });
 
-      // If any activities are missing feedback, show error
       if (activitiesWithoutFeedback.length > 0) {
         let errorMessage = 'The following activities are missing feedback:\n\n';
         activitiesWithoutFeedback.forEach(activity => {
@@ -467,30 +464,21 @@ const SessionDetail = () => {
           if (activity.missingComment) missing.push('comment');
           errorMessage += `• ${activity.name} (missing: ${missing.join(' and ')})\n`;
         });
-        
-        setToast({
-          isVisible: true,
-          message: errorMessage,
-          type: 'error'
-        });
-        
+        setToast({ isVisible: true, message: errorMessage, type: 'error' });
         setIsSubmitting(false);
         return;
       }
 
-      // Build activities feedback array
       const activitiesFeedback = (sessionData.activities || []).map((activity, index) => ({
         activitySequence: activity.activitySequence || (index + 1),
         rating: activity.feedback?.rating || 0,
         feedback: activity.feedback?.coachComment || ''
       }));
 
-      // Calculate average rating from activities
       const avgActivityRating = activitiesFeedback.length > 0
         ? (activitiesFeedback.reduce((sum, fb) => sum + fb.rating, 0) / activitiesFeedback.length)
         : sessionFeedback.rating;
 
-      // Prepare request body with exact format
       const cardId = sessionData._id || sessionData.cardId || sessionId;
       const requestBody = {
         card_id: cardId,
@@ -499,14 +487,10 @@ const SessionDetail = () => {
         feedback: sessionFeedback.coachComment || ''
       };
 
-      // Call API to complete session
       const apiUrl = 'https://65km9yygae.execute-api.ap-south-1.amazonaws.com/default/CL_Complete_Session';
       const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'userToken': token
-        },
+        headers: { 'Content-Type': 'application/json', 'userToken': token },
         body: JSON.stringify(requestBody)
       });
 
@@ -517,19 +501,13 @@ const SessionDetail = () => {
 
       await response.json();
 
-      // Clear localStorage draft
       if (sessionData._id) {
         localStorage.removeItem(`session_draft_${sessionData._id}`);
       }
 
-      // Show success toast notification
-      setToast({
-        isVisible: true,
-        message: 'Session completed successfully!',
-        type: 'success'
-      });
+      setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' });
+      setToast({ isVisible: true, message: 'Session completed successfully!', type: 'success' });
 
-      // Navigate to start-session page with player ID after brief delay
       setTimeout(() => {
         const playerId = playerData?._id || playerData?.playerId || playerData?.id;
         if (playerId) {
@@ -540,13 +518,62 @@ const SessionDetail = () => {
       }, 1500);
 
     } catch (error) {
-      setToast({
-        isVisible: true,
-        message: `Error: ${error.message}`,
-        type: 'error'
-      });
+      setToast({ isVisible: true, message: `Error: ${error.message}`, type: 'error' });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Complete session — intercepts to auto-generate WhatsApp feedback if not yet done
+  const handleCompleteSession = async () => {
+    if (whatsFeedbackMessage) {
+      await doCompleteSession();
+      return;
+    }
+
+    // Auto-generate WhatsApp feedback first, then let coach confirm completion
+    setWhatsappPromptModal({ isOpen: true, isGenerating: true, message: '' });
+
+    const sessionCardId = sessionData._id || sessionData.cardId || sessionId;
+    const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
+      activitySequence: activity.activitySequence || (index + 1),
+      activityTitle: activity.activityTitle || `Activity ${index + 1}`,
+      rating: activity.feedback?.rating || 0,
+      feedback: activity.feedback?.coachComment || ''
+    }));
+
+    try {
+      const token = getToken();
+      const response = await fetch(
+        'https://zf94z67dy2.execute-api.ap-south-1.amazonaws.com/default/CL_Generate_WhatsApp_Feedback',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            sessionCardId,
+            activities_feedback: activitiesFeedback,
+            playerName: playerData?.name || playerData?.playerName || 'Student',
+            sessionTopic: sessionData.Topic || '',
+            sessionNumber: sessionData.session || '',
+            coachName: currentUser?.name || 'Coach',
+            overallRating: sessionData.feedback?.rating || sessionFeedback.rating || 0,
+            overallComment: sessionData.feedback?.coachComment || sessionFeedback.coachComment || ''
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const msg = result.whatsappMessage || result.message || '';
+      setWhatsFeedbackMessage(msg);
+      setWhatsappPromptModal({ isOpen: true, isGenerating: false, message: msg });
+    } catch (error) {
+      setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' });
+      setToast({ isVisible: true, message: `Error generating WhatsApp feedback: ${error.message}`, type: 'error' });
     }
   };
 
@@ -642,21 +669,6 @@ const SessionDetail = () => {
       setActivityFeedbacks(result.feedbacks || activitiesFeedback);
       if (result.whatsappMessage) setWhatsFeedbackMessage(result.whatsappMessage);
       setToast({ isVisible: true, message: 'Feedback saved and message generated!', type: 'success' });
-
-      const refreshToken = getToken();
-      const refreshRes = await fetch(
-        'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'userToken': refreshToken, 'Authorization': `Bearer ${refreshToken}` },
-          body: JSON.stringify({ sessionCardId })
-        }
-      ).catch(() => null);
-      if (refreshRes?.ok) {
-        const refreshData = await refreshRes.json().catch(() => null);
-        const fresh = refreshData?.sessionCard || refreshData?.data || refreshData;
-        if (fresh?._id) setSessionData(fresh);
-      }
 
       setTimeout(() => {
         document.getElementById('whats-feedback-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -2861,6 +2873,155 @@ const SessionDetail = () => {
                         </button>
                       </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* WhatsApp Prompt Modal — auto-fires before session completion */}
+            {whatsappPromptModal.isOpen && (
+              <div style={{
+                position: 'fixed',
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: 'rgba(0, 0, 0, 0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1100
+              }}>
+                <div style={{
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '32px',
+                  maxWidth: '540px',
+                  width: '90%',
+                  boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
+                  animation: 'slideIn 0.3s ease'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                    <div style={{
+                      width: '40px', height: '40px',
+                      background: '#25D366',
+                      borderRadius: '10px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                    }}>
+                      <MessageSquare size={20} color="white" />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                        WhatsApp Feedback
+                      </h3>
+                      <p style={{ fontSize: '12px', color: '#6B7280', margin: '2px 0 0 0' }}>
+                        Generating parent message before completing session
+                      </p>
+                    </div>
+                  </div>
+
+                  {whatsappPromptModal.isGenerating ? (
+                    <div style={{
+                      display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '40px 0', gap: '16px'
+                    }}>
+                      <div style={{
+                        width: '40px', height: '40px',
+                        border: '3px solid #E5E7EB',
+                        borderTopColor: '#25D366',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite'
+                      }} />
+                      <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
+                        Generating WhatsApp feedback...
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: '13px', color: '#374151', margin: '0 0 12px 0' }}>
+                        WhatsApp feedback has been generated. Copy it and then complete the session.
+                      </p>
+                      <textarea
+                        readOnly
+                        value={whatsappPromptModal.message}
+                        style={{
+                          width: '100%',
+                          minHeight: '180px',
+                          padding: '12px',
+                          borderRadius: '10px',
+                          border: '1.5px solid #BBF7D0',
+                          fontFamily: 'inherit',
+                          fontSize: '13px',
+                          color: '#374151',
+                          lineHeight: '1.6',
+                          resize: 'vertical',
+                          boxSizing: 'border-box',
+                          background: '#F0FDF4',
+                          cursor: 'text',
+                          marginBottom: '16px'
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(whatsappPromptModal.message);
+                            setToast({ isVisible: true, message: 'Message copied to clipboard!', type: 'success' });
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '11px 0',
+                            background: '#25D366',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#1ebe5d'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#25D366'}
+                        >
+                          <MessageSquare size={14} /> Copy Message
+                        </button>
+                        <button
+                          onClick={() => setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' })}
+                          style={{
+                            flex: 1,
+                            padding: '11px 0',
+                            background: '#F3F4F6',
+                            color: '#374151',
+                            border: '1px solid #E5E7EB',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => doCompleteSession()}
+                          disabled={isSubmitting}
+                          style={{
+                            flex: 1,
+                            padding: '11px 0',
+                            background: isSubmitting ? '#94A3B8' : 'linear-gradient(135deg, #060030ff, #000000)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                            opacity: isSubmitting ? 0.7 : 1
+                          }}
+                        >
+                          {isSubmitting ? 'Completing...' : 'Complete Session'}
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

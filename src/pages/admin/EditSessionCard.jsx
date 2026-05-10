@@ -8,6 +8,7 @@ import { ArrowLeft, Loader, Save, Plus, SquarePen, Trash2, AlertCircle, CheckCir
 
 const API_ENDPOINTS = {
   VIEW_SESSION_CARD: 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
+  UPDATE_SESSION_CARD: 'https://78nwtutkw0.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Session_Card',
 };
 
 const getStatusColor = (status) => {
@@ -351,26 +352,25 @@ const EditSessionCard = () => {
         }))
       };
 
-      console.log('Updating session card with payload:', {
-        cardId: id,
-        ...payload
+      const response = await fetch(API_ENDPOINTS.UPDATE_SESSION_CARD, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'userToken': userToken
+        },
+        body: JSON.stringify({ sessionCardId: id, ...payload })
       });
 
-      // TODO: Call actual API endpoint
-      // const response = await fetch(UPDATE_API_ENDPOINT, {
-      //   method: 'POST',
-      //   headers: { 'userToken': userToken },
-      //   body: JSON.stringify({ sessionCardId: id, ...payload })
-      // });
+      const result = await response.json().catch(() => ({}));
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!response.ok) {
+        throw new Error(result.message || `Failed to update session card: ${response.status}`);
+      }
 
       setToastMessage('Session card updated successfully!');
       setToastType('success');
       setHasUnsavedChanges(false);
 
-      // Navigate back after success
       setTimeout(() => {
         navigate('/admin/session-card');
       }, 1500);
