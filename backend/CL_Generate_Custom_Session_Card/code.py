@@ -41,6 +41,7 @@ def response(status, body):
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,Authorization,userToken",
             "Access-Control-Allow-Methods": "OPTIONS,POST",
+            "Content-Type": "application/json",
         },
         "body": json.dumps(body),
     }
@@ -124,12 +125,19 @@ def create_custom_session_card(payload):
  
     age = int(player.get("age", 0))
  
-    # 🔢 FIND NEXT SESSION NUMBER
+    # FIND NEXT SESSION NUMBER
     last_session = session_cards_col.find_one(
         {"playerId": player_id},
         sort=[("session", -1)],
     )
- 
+
+    if last_session:
+        last_status = str(last_session.get("status", "")).lower().replace(" ", "_")
+        if last_status != "completed":
+            return {
+                "message": f"Last session card is not completed yet (status: '{last_session.get('status', 'unknown')}'). Please complete it before creating a new card."
+            }
+
     next_session = 1 if not last_session else last_session["session"] + 1
  
     activities = payload.get("activities", [])
@@ -199,7 +207,8 @@ def lambda_handler(event, context):
     try:
         payload = json.loads(event.get("body") or "{}")
         result = create_custom_session_card(payload)
-        return response(200, result)
+        status_code = 200 if "session" in result else 400
+        return response(status_code, result)
  
     except Exception as e:
         print("ERROR:", str(e))

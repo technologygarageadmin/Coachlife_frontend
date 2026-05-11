@@ -576,6 +576,7 @@ export const useStore = create(
 
       const normalized = items.map((p, i) => ({
         playerId: p.playerId || p.id || p._id || `p${i + 1}`,
+        playerName: p.playerName || p.name || p.fullName || 'Unknown',
         name: p.playerName || p.name || p.fullName || 'Unknown',
         fatherName: p.fatherName || p.father || '',
         motherName: p.motherName || p.mother || '',
@@ -595,7 +596,12 @@ export const useStore = create(
         totalPoints: p.totalPointsEarned || p.totalPoints || p.TotalPoints || p.Total_Points || p.Total || 0,
         PointBalance: p.currentPoints || p.PointBalance || p.pointBalance || p.Point_Balance || p.PointsBalance || 0,
         progress: p.progress || 0,
-        email: p.email || `${(p.playerName || 'player').toLowerCase().replace(/\s+/g, '.')}@example.com`
+        email: p.email || `${(p.playerName || 'player').toLowerCase().replace(/\s+/g, '.')}@example.com`,
+        sessionCardIds: Array.isArray(p.sessionCardIds)
+          ? p.sessionCardIds
+          : (Array.isArray(p.sessionCards)
+            ? p.sessionCards.map((card) => card?.sessionCardId || card?._id || card).filter(Boolean)
+            : []),
       }));
 
       set({ players: normalized, playersLastFetchTime: Date.now(), playersLoading: false });

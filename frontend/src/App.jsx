@@ -33,7 +33,6 @@ const AdminViewSessionCard = lazy(() => import('./pages/admin/ViewSessionCard'))
 const EditSessionCard = lazy(() => import('./pages/admin/EditSessionCard'));
 const CustomCardGenerate = lazy(() => import('./pages/admin/customCardGenerate'));
 const Attendance = lazy(() => import('./pages/admin/Attendance'));
-const AttendancePlayerHistory = lazy(() => import('./pages/admin/AttendancePlayerHistory'));
 
 // Coach Pages - Lazy load
 const MyPlayers = lazy(() => import('./pages/coach/MyPlayers'));
@@ -99,7 +98,6 @@ function App() {
           <Route path="/admin/rewards" element={<ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute>} />
           <Route path="/admin/redeem-history" element={<ProtectedRoute requiredRole="admin"><RedeemHistory /></ProtectedRoute>} />
           <Route path="/admin/attendance" element={<ProtectedRoute requiredRole="admin"><Attendance /></ProtectedRoute>} />
-          <Route path="/admin/attendance/player/:playerId" element={<ProtectedRoute requiredRole="admin"><AttendancePlayerHistory /></ProtectedRoute>} />
           
 
           {/* Coach Routes */}

@@ -34,6 +34,13 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const userRoles = currentUser?.roles || [currentUser?.role].filter(Boolean);
+  const hasBothRoles = userRoles.includes('admin') && userRoles.includes('coach');
+  const [activeMode, setActiveMode] = useState(() => {
+    if (location.pathname.startsWith('/coach')) return 'coach';
+    return 'admin';
+  });
+
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
@@ -55,6 +62,12 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
     if (onClose) {
       onClose();
     }
+  };
+
+  const handleModeSwitch = (mode) => {
+    setActiveMode(mode);
+    navigate(mode === 'admin' ? '/admin' : '/coach');
+    if (onClose) onClose();
   };
 
   const menuItems = {
@@ -80,59 +93,11 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
     ],
   };
 
-  // Get all menu items for users with multiple roles
+  // Get menu items based on active mode
   const getAllMenuItems = () => {
-    const userRoles = currentUser?.roles || [currentUser?.role];
-    
-    // If single role, use original behavior
-    if (userRoles.length === 1) {
-      const items = menuItems[userRoles[0]] || [];
-      return sortItemsWithProfileLast(items);
-    }
-    
-    // For multiple roles, merge items intelligently
-    const itemsByLabel = new Map();
-    
-    // Collect items from all roles
-    userRoles.forEach(role => {
-      const roleItems = menuItems[role] || [];
-      roleItems.forEach(item => {
-        if (!itemsByLabel.has(item.label)) {
-          itemsByLabel.set(item.label, []);
-        }
-        itemsByLabel.get(item.label).push(item);
-      });
-    });
-    
-    // Convert to flat array, excluding duplicate labels
-    const result = [];
-    const seenLabels = new Set();
-    
-    userRoles.forEach(role => {
-      const roleItems = menuItems[role] || [];
-      roleItems.forEach(item => {
-        // Skip if we've already added this label
-        if (!seenLabels.has(item.label)) {
-          // For duplicates (like Profile), prefer admin version if available
-          const itemsWithLabel = itemsByLabel.get(item.label);
-          let selectedItem = item;
-          
-          if (itemsWithLabel.length > 1) {
-            // For Profile, prefer /admin/profile if user has admin role
-            if (item.label === 'Profile' && userRoles.includes('admin')) {
-              selectedItem = itemsWithLabel.find(i => i.path === '/admin/profile') || itemsWithLabel[0];
-            } else {
-              selectedItem = itemsWithLabel[0];
-            }
-          }
-          
-          result.push(selectedItem);
-          seenLabels.add(item.label);
-        }
-      });
-    });
-    
-    return sortItemsWithProfileLast(result);
+    const mode = hasBothRoles ? activeMode : (currentUser?.role || userRoles[0]);
+    const items = menuItems[mode] || [];
+    return sortItemsWithProfileLast(items);
   };
 
   // Helper function to move Profile to the end
@@ -272,7 +237,79 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
         padding: 'clamp(12px, 2vw, 18px) clamp(6px, 1vw, 8px)',
         scrollBehavior: 'smooth'
       }}>
-        
+
+        {/* Mode Toggle — only for dual-role users */}
+        {hasBothRoles && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            marginBottom: '14px',
+            padding: '8px 10px',
+            background: 'rgba(255,255,255,0.06)',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.1)'
+          }}>
+            <span
+              onClick={() => handleModeSwitch('admin')}
+              style={{
+                fontSize: 'clamp(11px, 1.8vw, 12px)',
+                fontWeight: '600',
+                letterSpacing: '0.4px',
+                cursor: 'pointer',
+                color: activeMode === 'admin' ? '#ffffff' : 'rgba(255,255,255,0.35)',
+                transition: 'color 0.2s ease',
+                userSelect: 'none'
+              }}
+            >
+              Admin
+            </span>
+
+            {/* Toggle switch */}
+            <div
+              onClick={() => handleModeSwitch(activeMode === 'admin' ? 'coach' : 'admin')}
+              style={{
+                width: '40px',
+                height: '22px',
+                borderRadius: '11px',
+                background: activeMode === 'coach' ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.25)',
+                position: 'relative',
+                cursor: 'pointer',
+                transition: 'background 0.25s ease',
+                flexShrink: 0,
+                border: '1px solid rgba(255,255,255,0.3)'
+              }}
+            >
+              <div style={{
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                background: activeMode === 'coach' ? '#060030ff' : '#ffffff',
+                position: 'absolute',
+                top: '2px',
+                left: activeMode === 'coach' ? '20px' : '2px',
+                transition: 'left 0.25s ease, background 0.25s ease',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
+              }} />
+            </div>
+
+            <span
+              onClick={() => handleModeSwitch('coach')}
+              style={{
+                fontSize: 'clamp(11px, 1.8vw, 12px)',
+                fontWeight: '600',
+                letterSpacing: '0.4px',
+                cursor: 'pointer',
+                color: activeMode === 'coach' ? '#ffffff' : 'rgba(255,255,255,0.35)',
+                transition: 'color 0.2s ease',
+                userSelect: 'none'
+              }}
+            >
+              Coach
+            </span>
+          </div>
+        )}
 
         {items.map((item) => {
           const Icon = item.icon;

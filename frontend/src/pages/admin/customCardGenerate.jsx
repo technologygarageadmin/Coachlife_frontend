@@ -390,14 +390,26 @@ const CustomCardGenerate = () => {
         responseData = await response.text();
       }
 
+      // Parse body if it came back as a string
+      let parsedBody = responseData;
+      if (typeof parsedBody === 'string') {
+        try { parsedBody = JSON.parse(parsedBody); } catch { /* ignore */ }
+      }
+
       if (!response.ok) {
-        console.error('Request failed with status:', response.status);
-        console.error('Response data:', responseData);
         throw new Error(
-          responseData?.message || 
-          responseData?.error || 
+          parsedBody?.message ||
+          parsedBody?.error ||
           `API returned ${response.status}: ${response.statusText}`
         );
+      }
+
+      // Guard: backend returns 200 but may have blocked creation (no 'session' in body)
+      if (!parsedBody?.session) {
+        setToastMessage(parsedBody?.message || 'Failed to create session card');
+        setToastType('error');
+        setLoading(false);
+        return;
       }
 
       setToastMessage('Session card created successfully!');

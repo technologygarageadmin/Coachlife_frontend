@@ -93,6 +93,14 @@ backend/
 | `CL_View_AllPlayer_Redeemhistory` | Get redemption history (all players) |
 | `Redeem_Points` | Alternate redeem endpoint |
 
+### Attendance & Batches
+| Folder | Purpose |
+|---|---|
+| `CL_Get_Batches` | GET all batches with their player lists |
+| `CL_Manage_Batch` | POST create / update / delete a batch (`action` field) |
+| `CL_Get_Attendance` | POST get attendance records, optionally filtered by `batchId` |
+| `CL_Mark_Attendance` | POST upsert single attendance record; bulk mode via `bulkStatus` field |
+
 ### Leaderboard & Misc
 | Folder | Purpose |
 |---|---|

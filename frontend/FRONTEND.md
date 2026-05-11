@@ -53,6 +53,7 @@ frontend/src/
 | `EditPathway.jsx` | `/admin/learning-pathway/:id/edit` | Edit pathway session |
 | `Rewards.jsx` | `/admin/rewards` | Rewards catalog CRUD |
 | `RedeemHistory.jsx` | `/admin/redeem-history` | Redemption log |
+| `Attendance.jsx` | `/admin/attendance` | Batch attendance sheet — Excel-like table, manual override, complete session |
 
 ### Coach (`/coach/...`)
 | File | Route | Purpose |

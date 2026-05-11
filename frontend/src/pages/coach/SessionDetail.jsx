@@ -31,6 +31,7 @@ const SessionDetail = () => {
     coachComment: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
   const [regenerateModal, setRegenerateModal] = useState({
     isOpen: false,
     activityIndex: null,
@@ -49,7 +50,6 @@ const SessionDetail = () => {
     message: '',
     averageRating: 0
   });
-  const [activityFeedbacks, setActivityFeedbacks] = useState([]);
   const [whatsFeedbackMessage, setWhatsFeedbackMessage] = useState('');
   const [isLoadingWhatsFeedback, setIsLoadingWhatsFeedback] = useState(false);
   const [editingFeedbackId, setEditingFeedbackId] = useState(null);
@@ -430,6 +430,81 @@ const SessionDetail = () => {
     }
   };
 
+  const markAttendancePresent = async ({ source = 'session_card_mark' } = {}) => {
+    const token = getToken();
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const attendancePlayerId = playerData?._id || playerData?.playerId || playerData?.id;
+    if (!attendancePlayerId) {
+      throw new Error('Player ID not found for attendance');
+    }
+
+    const resolvedSessionNumber =
+      sessionData?.session ??
+      sessionData?.sessionNumber ??
+      sessionData?.sessionNo ??
+      location.state?.session?.session ??
+      location.state?.session?.sessionNumber ??
+      null;
+
+    const resolvedBatchId =
+      sessionData?.batchId ||
+      sessionData?.BatchId ||
+      location.state?.batchId ||
+      location.state?.session?.batchId ||
+      playerData?.batchId ||
+      '';
+
+    const resolvedBatchName =
+      sessionData?.batchName ||
+      sessionData?.BatchName ||
+      location.state?.batchName ||
+      location.state?.session?.batchName ||
+      playerData?.batchName ||
+      '';
+
+    const now = new Date();
+    const sessionDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const attendanceResponse = await fetch('https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', userToken: token },
+      body: JSON.stringify({
+        playerId: attendancePlayerId,
+        playerName: playerData?.playerName || playerData?.name || '',
+        batchId: resolvedBatchId,
+        batchName: resolvedBatchName,
+        sessionNumber: resolvedSessionNumber,
+        sessionDate,
+        attendanceStatus: 'Present',
+        source,
+      }),
+    });
+
+    if (!attendanceResponse.ok) {
+      const errorData = await attendanceResponse.json().catch(() => ({}));
+      throw new Error(errorData.message || `Failed to mark attendance: ${attendanceResponse.status}`);
+    }
+
+    return attendanceResponse.json().catch(() => ({}));
+  };
+
+  const handleMarkAttendancePresent = async () => {
+    if (isMarkingAttendance) return;
+
+    try {
+      setIsMarkingAttendance(true);
+      await markAttendancePresent({ source: 'session_card_mark' });
+      setToast({ isVisible: true, message: 'Attendance marked Present', type: 'success' });
+    } catch (error) {
+      setToast({ isVisible: true, message: `Error: ${error.message}`, type: 'error' });
+    } finally {
+      setIsMarkingAttendance(false);
+    }
+  };
+
   // Core completion logic — called directly once WhatsApp feedback is confirmed
   const doCompleteSession = async () => {
     if (isSubmitting) return;
@@ -505,6 +580,13 @@ const SessionDetail = () => {
         localStorage.removeItem(`session_draft_${sessionData._id}`);
       }
 
+      // Auto-mark attendance as Present after session completion
+      try {
+        await markAttendancePresent({ source: 'session_complete' });
+      } catch (attendanceErr) {
+        console.error('Auto attendance mark failed:', attendanceErr);
+      }
+
       setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' });
       setToast({ isVisible: true, message: 'Session completed successfully!', type: 'success' });
 
@@ -577,59 +659,6 @@ const SessionDetail = () => {
     }
   };
 
-  const handleGenerateWhatsAppFeedback = async () => {
-    const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
-      activitySequence: activity.activitySequence || (index + 1),
-      activityName: activity.activityTitle || activity.activityName || `Activity ${index + 1}`,
-      rating: activity.feedback?.rating || 0,
-      feedback: activity.feedback?.coachComment || ''
-    }));
-
-    setWhatsappModal({ isOpen: true, isLoading: true, message: '', averageRating: 0 });
-
-    try {
-      const token = getToken();
-      const requestBody = {
-        sessionCardId: sessionData._id || sessionId,
-        playerName: playerData?.name || playerData?.playerName || 'Player',
-        sessionTopic: sessionData.Topic || '',
-        sessionNumber: sessionData.session || 0,
-        coachName: currentUser?.name || 'Coach',
-        activities_feedback: activitiesFeedback,
-        overallRating: sessionData.feedback?.rating || sessionFeedback.rating || 0,
-        overallComment: sessionData.feedback?.coachComment || sessionFeedback.coachComment || ''
-      };
-
-      const response = await fetch(
-        'https://zf94z67dy2.execute-api.ap-south-1.amazonaws.com/default/CL_Generate_WhatsApp_Feedback',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'userToken': token
-          },
-          body: JSON.stringify(requestBody)
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed to generate feedback: ${response.status}`);
-      }
-
-      const result = await response.json();
-      setWhatsappModal({
-        isOpen: true,
-        isLoading: false,
-        message: result.whatsappMessage || result.message || '',
-        averageRating: result.averageRating || 0
-      });
-    } catch (error) {
-      setWhatsappModal({ isOpen: false, isLoading: false, message: '', averageRating: 0 });
-      setToast({ isVisible: true, message: `Error: ${error.message}`, type: 'error' });
-    }
-  };
-
   const handleWhatsFeedback = async () => {
     const sessionCardId = sessionData._id || sessionData.cardId || sessionId;
     const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
@@ -666,7 +695,6 @@ const SessionDetail = () => {
       }
 
       const result = await response.json();
-      setActivityFeedbacks(result.feedbacks || activitiesFeedback);
       if (result.whatsappMessage) setWhatsFeedbackMessage(result.whatsappMessage);
       setToast({ isVisible: true, message: 'Feedback saved and message generated!', type: 'success' });
 
@@ -918,6 +946,7 @@ const SessionDetail = () => {
         <div style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: '16px',
           marginBottom: '32px'
         }}>
@@ -949,6 +978,7 @@ const SessionDetail = () => {
             <ChevronLeft size={18} />
             Back
           </button>
+
         </div>
 
         {sessionData && playerData && (
@@ -3000,7 +3030,7 @@ const SessionDetail = () => {
                           onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
                           onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
                         >
-                          Cancel
+                          Close
                         </button>
                         <button
                           onClick={() => doCompleteSession()}
