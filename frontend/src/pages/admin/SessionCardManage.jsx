@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
@@ -6,13 +6,15 @@ import { Card } from '../../components/Card';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import { SkeletonLoader } from '../../components/SkeletonLoader';
-import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star } from 'lucide-react';
+import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle } from 'lucide-react';
 
 // API Endpoints
 const API_ENDPOINTS = {
   GET_PLAYERS: 'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players',
   VIEW_SESSION_CARD: 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
   DELETE_SESSION_CARD: 'https://rmauptygg5.execute-api.ap-south-1.amazonaws.com/Coachlife-com/CL_Deleting_Sessioncard',
+  GET_BATCHES: 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches',
+  GENERATE_SESSION_CARD: 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
 };
 
 const SessionCardManage = () => {
@@ -38,6 +40,15 @@ const SessionCardManage = () => {
   });
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
+  // Batch view state
+  const [viewMode, setViewMode] = useState('student'); // 'student' | 'batch'
+  const [batches, setBatches] = useState([]);
+  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [batchGenStatus, setBatchGenStatus] = useState({}); // { [playerId]: { state, message } }
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [errorDetail, setErrorDetail] = useState(null); // { playerName, message }
+
+
   const isMobile = windowWidth < 640;
   const isNarrow = windowWidth < 1024;
 
@@ -50,6 +61,7 @@ const SessionCardManage = () => {
   // Fetch players on mount (only once)
   useEffect(() => {
     fetchPlayers();
+    fetchBatches();
   }, [userToken]);
 
   // Refetch whenever this page is visited via navigation (location key changes)
@@ -134,8 +146,27 @@ const SessionCardManage = () => {
     }
   };
 
+  // Fetch all batches
+  const fetchBatches = async () => {
+    try {
+      const response = await fetch(API_ENDPOINTS.GET_BATCHES, {
+        headers: {
+          'userToken': userToken,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch batches');
+      let data = await response.json();
+      if (data?.body && typeof data.body === 'string') data = JSON.parse(data.body);
+      setBatches(Array.isArray(data) ? data : (data.batches || []));
+    } catch (err) {
+      console.error('Error fetching batches:', err);
+      setBatches([]);
+    }
+  };
+
   // Fetch session cards for selected player
-  const fetchPlayerSessionCards = async (sessionCardIds, playerId) => {
+  const fetchPlayerSessionCards = async (sessionCardIds) => {
     try {
       setIsLoadingSessionCards(true);
       const cards = [];
@@ -172,8 +203,121 @@ const SessionCardManage = () => {
     p.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Real batches + a synthetic "General (unassigned)" group; each player enriched
+  // with their profile LearningPathway (batch API only returns id + name).
+  const displayBatches = useMemo(() => {
+    const enrich = (bp) => {
+      const profile = players.find(p => String(p.playerId) === String(bp.playerId));
+      return {
+        playerId: bp.playerId,
+        playerName: bp.playerName || profile?.playerName || '',
+        LearningPathway: profile?.LearningPathway || bp.LearningPathway || ''
+      };
+    };
+
+    const real = batches.map(b => ({
+      batchId: b.batchId,
+      batchName: b.batchName,
+      players: (b.players || (b.playerIds || []).map(id => ({ playerId: id }))).map(enrich)
+    }));
+
+    const batchedIds = new Set(batches.flatMap(b => b.playerIds || (b.players || []).map(p => p.playerId)));
+    const unbatched = players.filter(p => !batchedIds.has(p.playerId));
+    if (unbatched.length === 0) return real;
+
+    return [...real, {
+      batchId: 'general',
+      batchName: `General (${unbatched.length} unassigned)`,
+      players: unbatched.map(p => ({
+        playerId: p.playerId,
+        playerName: p.playerName,
+        LearningPathway: p.LearningPathway || ''
+      }))
+    }];
+  }, [batches, players]);
+
+  const selectedBatch = displayBatches.find(b => b.batchId === selectedBatchId) || null;
+
   const handleSelectPlayer = (player) => {
     setSelectedPlayer(player);
+  };
+
+  const handleSelectBatch = (batchId) => {
+    setSelectedBatchId(batchId);
+    setBatchGenStatus({});
+  };
+
+  // Sequentially generate a standard session card for every player in the batch.
+  const handleBatchGenerate = async () => {
+    if (!selectedBatch || !selectedBatch.players.length) {
+      setToastMessage('Select a batch with players first');
+      setToastType('error');
+      return;
+    }
+
+    setBatchGenerating(true);
+    let success = 0;
+    let failed = 0;
+
+    for (const player of selectedBatch.players) {
+      setBatchGenStatus(prev => ({ ...prev, [player.playerId]: { state: 'loading' } }));
+      try {
+        const headers = {
+          'Accept': 'application/json, text/plain, */*',
+          'Content-Type': 'application/json',
+          'userToken': userToken,
+          'Authorization': `Bearer ${userToken}`
+        };
+        const response = await fetch(API_ENDPOINTS.GENERATE_SESSION_CARD, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ playerId: player.playerId })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = `Failed to generate session card: ${response.status}`;
+          try {
+            const errorJson = JSON.parse(errorText);
+            if (errorJson.error) errorMessage = errorJson.error;
+            else if (errorJson.message) errorMessage = errorJson.message;
+          } catch {
+            if (errorText) errorMessage = errorText;
+          }
+          throw new Error(errorMessage);
+        }
+
+        await response.json();
+        success += 1;
+        setBatchGenStatus(prev => ({ ...prev, [player.playerId]: { state: 'success' } }));
+      } catch (err) {
+        failed += 1;
+        setBatchGenStatus(prev => ({ ...prev, [player.playerId]: { state: 'error', message: err.message || 'Failed to generate card' } }));
+      }
+    }
+
+    await fetchPlayers();
+    setBatchGenerating(false);
+    setToastMessage(failed === 0
+      ? `Generated ${success} card${success === 1 ? '' : 's'} successfully!`
+      : `Generated ${success} of ${selectedBatch.players.length}, ${failed} failed`);
+    setToastType(failed === 0 ? 'success' : 'error');
+  };
+
+  const handleBatchCustom = () => {
+    if (!selectedBatch || !selectedBatch.players.length) {
+      setToastMessage('Select a batch with players first');
+      setToastType('error');
+      return;
+    }
+    navigate('/admin/custom-generate-card', {
+      state: {
+        batchMode: true,
+        batchId: selectedBatch.batchId,
+        batchName: selectedBatch.batchName,
+        batchPlayers: selectedBatch.players
+      }
+    });
   };
 
   const handleGenerateCard = async () => {
@@ -278,8 +422,6 @@ const SessionCardManage = () => {
     }
   };
 
-  const handleDeleteSessionCard = handleDeleteCard;
-
   const handleOpenSessionCard = (card) => {
     navigate(`/admin/view-session-card/${card._id}`, { state: { session: card, playerId: selectedPlayer.playerId } });
   };
@@ -350,6 +492,47 @@ const SessionCardManage = () => {
           </div>
         </div>
 
+        {/* View toggle: By Student / By Batch */}
+        <div style={{
+          display: 'inline-flex',
+          gap: '4px',
+          background: '#F3F4F6',
+          padding: '4px',
+          borderRadius: '12px',
+          marginBottom: isMobile ? '16px' : '24px'
+        }}>
+          {[
+            { key: 'student', label: 'By Student', Icon: User },
+            { key: 'batch', label: 'By Batch', Icon: Layers }
+          ].map(tab => {
+            const active = viewMode === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setViewMode(tab.key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: isMobile ? '8px 14px' : '9px 20px',
+                  borderRadius: '9px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  transition: 'all 0.2s',
+                  background: active ? 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)' : 'transparent',
+                  color: active ? 'white' : '#6B7280',
+                  boxShadow: active ? '0 2px 8px rgba(6,0,48,0.25)' : 'none'
+                }}
+              >
+                <tab.Icon size={14} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
         {isFetching ? (
           <div style={{
             display: 'flex',
@@ -376,7 +559,7 @@ const SessionCardManage = () => {
               </div>
             )}
           </div>
-        ) : (
+        ) : viewMode === 'student' ? (
           <div style={{
             display: 'grid',
             gridTemplateColumns: isNarrow ? '1fr' : '1fr 1.5fr',
@@ -988,8 +1171,252 @@ const SessionCardManage = () => {
               )
             )}
           </div>
+        ) : (
+          /* ── By Batch view ── */
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isNarrow ? '1fr' : '1fr 1.5fr',
+            gap: isMobile ? '16px' : '24px'
+          }}>
+            {/* Batch list — hidden on narrow when a batch is selected */}
+            {(!isNarrow || !selectedBatch) && (
+              <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
+                <div style={{ padding: '20px', borderBottom: '2px solid #E5E7EB', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
+                  <h2 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 8px 0', color: '#111827' }}>Batches</h2>
+                  <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>{displayBatches.length} available</p>
+                </div>
+                <div style={{ maxHeight: isMobile ? '450px' : '600px', overflowY: 'auto' }}>
+                  {displayBatches.length > 0 ? (
+                    displayBatches.map(batch => (
+                      <div
+                        key={batch.batchId}
+                        onClick={() => handleSelectBatch(batch.batchId)}
+                        style={{
+                          padding: '14px 16px',
+                          borderBottom: '1px solid #E5E7EB',
+                          cursor: 'pointer',
+                          background: selectedBatchId === batch.batchId ? 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)' : '#FFFFFF',
+                          borderLeft: selectedBatchId === batch.batchId ? '4px solid #060030' : '4px solid transparent',
+                          transition: 'all 0.3s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}
+                        onMouseEnter={(e) => { if (selectedBatchId !== batch.batchId) e.currentTarget.style.background = '#F9FAFB'; }}
+                        onMouseLeave={(e) => { if (selectedBatchId !== batch.batchId) e.currentTarget.style.background = '#FFFFFF'; }}
+                      >
+                        <div style={{
+                          width: '44px', height: '44px', borderRadius: '12px',
+                          background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', flexShrink: 0
+                        }}>
+                          <Layers size={20} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 2px 0', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {batch.batchName}
+                          </p>
+                          <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>
+                            {batch.players.length} player{batch.players.length === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ padding: '32px 20px', textAlign: 'center' }}>
+                      <Layers size={32} style={{ color: '#7C3AED', opacity: 0.6, marginBottom: '8px' }} />
+                      <p style={{ fontSize: '14px', fontWeight: '600', color: '#111827', margin: 0 }}>No batches found</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Selected batch detail */}
+            {selectedBatch ? (
+              <Card style={{ borderRadius: '12px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
+                {isNarrow && (
+                  <button
+                    onClick={() => setSelectedBatchId('')}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '12px 16px', background: '#F9FAFB', border: 'none',
+                      borderBottom: '1px solid #E5E7EB', cursor: 'pointer',
+                      fontSize: '14px', fontWeight: '600', color: '#060030', width: '100%', textAlign: 'left'
+                    }}
+                  >
+                    <ChevronLeft size={18} /> Back to Batches
+                  </button>
+                )}
+
+                <div style={{
+                  padding: isMobile ? '20px 16px' : '24px 20px',
+                  background: 'linear-gradient(135deg, #060030ff 0%, #000000 100%)',
+                  color: 'white'
+                }}>
+                  <h2 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '800', margin: '0 0 4px 0' }}>
+                    {selectedBatch.batchName}
+                  </h2>
+                  <p style={{ fontSize: '13px', opacity: 0.9, margin: 0 }}>
+                    {selectedBatch.players.length} player{selectedBatch.players.length === 1 ? '' : 's'} in this batch
+                  </p>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{
+                  padding: '16px', borderBottom: '1px solid #E5E7EB',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? '8px' : '12px'
+                }}>
+                  <button
+                    onClick={handleBatchGenerate}
+                    disabled={batchGenerating}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      padding: isMobile ? '10px 12px' : '12px 16px',
+                      background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                      color: 'white', border: 'none', borderRadius: '8px',
+                      fontSize: isMobile ? '12px' : '13px', fontWeight: '600',
+                      cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1
+                    }}
+                  >
+                    {batchGenerating
+                      ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> {!isMobile && 'Generating...'}</>
+                      : <><Plus size={16} /> {isMobile ? 'Generate' : 'Generate Cards'}</>}
+                  </button>
+                  <button
+                    onClick={handleBatchCustom}
+                    disabled={batchGenerating}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                      padding: isMobile ? '10px 12px' : '12px 16px',
+                      background: 'linear-gradient(135deg, #060030ff 0%, #6D28D9 100%)',
+                      color: 'white', border: 'none', borderRadius: '8px',
+                      fontSize: isMobile ? '12px' : '13px', fontWeight: '600',
+                      cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1
+                    }}
+                  >
+                    <Sparkles size={16} /> {isMobile ? 'Custom' : 'Custom Generate'}
+                  </button>
+                </div>
+
+                {/* Player rows with per-player status */}
+                <div style={{ padding: '12px', maxHeight: isMobile ? '420px' : '520px', overflowY: 'auto' }}>
+                  {selectedBatch.players.map(player => {
+                    const status = batchGenStatus[player.playerId]?.state || 'idle';
+                    return (
+                      <div
+                        key={player.playerId}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '12px',
+                          padding: '12px 14px', borderBottom: '1px solid #F3F4F6'
+                        }}
+                      >
+                        <div style={{
+                          width: '40px', height: '40px', borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontWeight: '700', flexShrink: 0
+                        }}>
+                          {(player.playerName || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {player.playerName}
+                          </p>
+                          {player.LearningPathway && (
+                            <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>{player.LearningPathway}</p>
+                          )}
+                        </div>
+
+                        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                          {status === 'loading' && (
+                            <Loader size={18} style={{ animation: 'spin 1s linear infinite', color: '#060030' }} />
+                          )}
+                          {status === 'success' && (
+                            <CheckCircle size={20} color="#16A34A" />
+                          )}
+                          {status === 'error' && (
+                            <button
+                              onClick={() => setErrorDetail({ playerName: player.playerName, message: batchGenStatus[player.playerId]?.message })}
+                              title="View error details"
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                padding: '4px 10px', background: '#FECACA', color: '#991B1B',
+                                border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer'
+                              }}
+                            >
+                              <Info size={14} /> {!isMobile && 'Details'}
+                            </button>
+                          )}
+                          {status === 'idle' && (
+                            <span style={{ fontSize: '13px', color: '#D1D5DB' }}>—</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            ) : (
+              !isNarrow && (
+                <Card style={{
+                  borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minHeight: '400px', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)'
+                }}>
+                  <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+                    <Layers size={36} color='#60A5FA' opacity={0.6} style={{ marginBottom: '16px' }} />
+                    <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', margin: '0 0 8px 0' }}>No Batch Selected</h3>
+                    <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
+                      Select a batch to generate session cards for all its players
+                    </p>
+                  </div>
+                </Card>
+              )
+            )}
+          </div>
         )}
       </div>
+
+      {/* Batch generate error detail modal */}
+      {errorDetail && (
+        <Modal
+          isOpen={!!errorDetail}
+          onClose={() => setErrorDetail(null)}
+          title="Generation Failed"
+        >
+          <div style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#FEF2F2',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <AlertTriangle size={24} color="#EF4444" />
+              </div>
+              <div>
+                <p style={{ fontSize: '15px', fontWeight: '700', color: '#111827', margin: 0 }}>{errorDetail.playerName}</p>
+                <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>Card could not be generated</p>
+              </div>
+            </div>
+            <div style={{
+              padding: '12px 14px', background: '#FEF2F2', border: '1px solid #FECACA',
+              borderRadius: '8px', fontSize: '13px', color: '#991B1B', lineHeight: '1.5', wordBreak: 'break-word'
+            }}>
+              {errorDetail.message || 'Unknown error'}
+            </div>
+            <button
+              onClick={() => setErrorDetail(null)}
+              style={{
+                marginTop: '20px', width: '100%', padding: '12px 16px', borderRadius: '8px',
+                fontWeight: '600', background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                color: 'white', border: 'none', cursor: 'pointer', fontSize: '14px'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Generate Card Modal */}
       <Modal

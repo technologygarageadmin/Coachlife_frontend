@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import './App.css';
 import { UnauthorizedModal } from './components/UnauthorizedModal';
@@ -14,8 +14,6 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 // Preload Dashboard & LeaderBoard (high traffic)
 import Dashboard from './pages/common/Dashboard';
 import LeaderBoard from './pages/common/LeaderBoard';
-
-// Lazy load other pages (non-critical)
 
 // Admin Pages - Lazy load
 const Players = lazy(() => import('./pages/admin/Players'));
@@ -33,95 +31,99 @@ const AdminViewSessionCard = lazy(() => import('./pages/admin/ViewSessionCard'))
 const EditSessionCard = lazy(() => import('./pages/admin/EditSessionCard'));
 const CustomCardGenerate = lazy(() => import('./pages/admin/customCardGenerate'));
 const Attendance = lazy(() => import('./pages/admin/Attendance'));
+const ManageBatches = lazy(() => import('./pages/admin/ManageBatches'));
 
 // Coach Pages - Lazy load
 const MyPlayers = lazy(() => import('./pages/coach/MyPlayers'));
 const PlayerDetail = lazy(() => import('./pages/coach/PlayerDetail'));
 const PlayerSessions = lazy(() => import('./pages/coach/PlayerSessions'));
 const StartSession = lazy(() => import('./pages/coach/StartSession'));
+const BatchSessionView = lazy(() => import('./pages/coach/BatchSessionView'));
 const SessionDetail = lazy(() => import('./pages/coach/SessionDetail'));
 const ViewSessionCard = lazy(() => import('./pages/coach/viewCompletedSessionCard'));
 const PastSessions = lazy(() => import('./pages/coach/PastSessions'));
 const CoachProfile = lazy(() => import('./pages/coach/CoachProfile'));
 
-// Loading fallback component
 const PageLoader = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
     <p>Loading...</p>
   </div>
 );
 
-function App() {
+function RootLayout() {
   const showUnauthorizedModal = useStore((state) => state.showUnauthorizedModal);
   const unauthorizedMessage = useStore((state) => state.unauthorizedMessage);
   const handleUnauthorizedLogout = useStore((state) => state.handleUnauthorizedLogout);
   const initializeInterceptors = useStore((state) => state.initializeInterceptors);
-  
+
   useEffect(() => {
-    // Initialize response interceptor on app startup
     initializeInterceptors();
   }, [initializeInterceptors]);
-  
-  useEffect(() => {
-  }, [showUnauthorizedModal, unauthorizedMessage]);
-  
+
   return (
-    <Router>
-      {showUnauthorizedModal}
-      <UnauthorizedModal 
+    <>
+      <UnauthorizedModal
         isOpen={showUnauthorizedModal}
         onLogout={handleUnauthorizedLogout}
         message={unauthorizedMessage}
       />
       <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-
-          {/* Admin Routes */}
-          <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><Dashboard /></ProtectedRoute>} />
-          <Route path="/admin/profile" element={<ProtectedRoute requiredRole="admin"><AdminProfile /></ProtectedRoute>} />
-          <Route path="/admin/players" element={<ProtectedRoute requiredRole="admin"><Players /></ProtectedRoute>} />
-          <Route path="/admin/player-detail/:playerId" element={<ProtectedRoute requiredRole="admin"><PlayerDetail /></ProtectedRoute>} />
-          <Route path="/admin/coaches" element={<ProtectedRoute requiredRole="admin"><Coaches /></ProtectedRoute>} />
-          <Route path="/admin/assign-players" element={<ProtectedRoute requiredRole="admin"><AssignPlayers /></ProtectedRoute>} />
-          <Route path="/admin/session-card" element={<ProtectedRoute requiredRole="admin"><SessionCardManage /></ProtectedRoute>} />
-          <Route path="/admin/view-session-card/:id" element={<ProtectedRoute requiredRole="admin"><AdminViewSessionCard /></ProtectedRoute>} />
-          <Route path="/admin/edit-session-card/:id" element={<ProtectedRoute requiredRole="admin"><EditSessionCard /></ProtectedRoute>} />
-          <Route path="/admin/custom-generate-card" element={<ProtectedRoute requiredRole="admin"><CustomCardGenerate /></ProtectedRoute>} />
-          <Route path="/admin/learning-pathway" element={<ProtectedRoute requiredRole="admin"><LearningPathwayBuilder /></ProtectedRoute>} />
-          <Route path="/admin/learning-pathway/add" element={<ProtectedRoute requiredRole="admin"><AddPathway /></ProtectedRoute>} />
-          <Route path="/admin/learning-pathway/:id/view" element={<ProtectedRoute requiredRole="admin"><ViewPathway /></ProtectedRoute>} />
-          <Route path="/admin/learning-pathway/:id/edit" element={<ProtectedRoute requiredRole="admin"><EditPathway /></ProtectedRoute>} />
-          <Route path="/admin/rewards" element={<ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute>} />
-          <Route path="/admin/redeem-history" element={<ProtectedRoute requiredRole="admin"><RedeemHistory /></ProtectedRoute>} />
-          <Route path="/admin/attendance" element={<ProtectedRoute requiredRole="admin"><Attendance /></ProtectedRoute>} />
-          
-
-          {/* Coach Routes */}
-          <Route path="/coach" element={<ProtectedRoute requiredRole="coach"><Dashboard /></ProtectedRoute>} />
-          <Route path="/coach/players" element={<ProtectedRoute requiredRole="coach"><MyPlayers /></ProtectedRoute>} />
-          <Route path="/coach/player/:playerId" element={<ProtectedRoute requiredRole="coach"><PlayerDetail /></ProtectedRoute>} />
-          <Route path="/coach/player/:playerId/sessions" element={<ProtectedRoute requiredRole="coach"><PlayerSessions /></ProtectedRoute>} />
-          <Route path="/coach/start-session" element={<ProtectedRoute requiredRole="coach"><StartSession /></ProtectedRoute>} />
-          <Route path="/coach/start-session/:playerId" element={<ProtectedRoute requiredRole="coach"><StartSession /></ProtectedRoute>} />
-          <Route path="/coach/session/:sessionId" element={<ProtectedRoute requiredRole="coach"><SessionDetail /></ProtectedRoute>} />
-          <Route path="/coach/view-completed-session/:sessionId" element={<ProtectedRoute requiredRole="coach"><ViewSessionCard /></ProtectedRoute>} />
-          <Route path="/coach/past-sessions" element={<ProtectedRoute requiredRole="coach"><PastSessions /></ProtectedRoute>} />
-          <Route path="/coach/profile" element={<ProtectedRoute requiredRole="coach"><CoachProfile /></ProtectedRoute>} />
-
-          
-
-          {/* Redirects and Error */}
-          <Route path="/404" element={<NotFound />} />
-          <Route path="/leaderboard" element={<LeaderBoard />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Outlet />
       </Suspense>
-    </Router>
+    </>
   );
+}
+
+const router = createBrowserRouter([
+  {
+    element: <RootLayout />,
+    children: [
+      // Public Routes
+      { path: '/', element: <Home /> },
+      { path: '/login', element: <Login /> },
+      { path: '/register', element: <Register /> },
+      { path: '/leaderboard', element: <LeaderBoard /> },
+      { path: '/404', element: <NotFound /> },
+      { path: '*', element: <NotFound /> },
+
+      // Admin Routes
+      { path: '/admin', element: <ProtectedRoute requiredRole="admin"><Dashboard /></ProtectedRoute> },
+      { path: '/admin/profile', element: <ProtectedRoute requiredRole="admin"><AdminProfile /></ProtectedRoute> },
+      { path: '/admin/players', element: <ProtectedRoute requiredRole="admin"><Players /></ProtectedRoute> },
+      { path: '/admin/player-detail/:playerId', element: <ProtectedRoute requiredRole="admin"><PlayerDetail /></ProtectedRoute> },
+      { path: '/admin/coaches', element: <ProtectedRoute requiredRole="admin"><Coaches /></ProtectedRoute> },
+      { path: '/admin/assign-players', element: <ProtectedRoute requiredRole="admin"><AssignPlayers /></ProtectedRoute> },
+      { path: '/admin/session-card', element: <ProtectedRoute requiredRole="admin"><SessionCardManage /></ProtectedRoute> },
+      { path: '/admin/view-session-card/:id', element: <ProtectedRoute requiredRole="admin"><AdminViewSessionCard /></ProtectedRoute> },
+      { path: '/admin/edit-session-card/:id', element: <ProtectedRoute requiredRole="admin"><EditSessionCard /></ProtectedRoute> },
+      { path: '/admin/custom-generate-card', element: <ProtectedRoute requiredRole="admin"><CustomCardGenerate /></ProtectedRoute> },
+      { path: '/admin/learning-pathway', element: <ProtectedRoute requiredRole="admin"><LearningPathwayBuilder /></ProtectedRoute> },
+      { path: '/admin/learning-pathway/add', element: <ProtectedRoute requiredRole="admin"><AddPathway /></ProtectedRoute> },
+      { path: '/admin/learning-pathway/:id/view', element: <ProtectedRoute requiredRole="admin"><ViewPathway /></ProtectedRoute> },
+      { path: '/admin/learning-pathway/:id/edit', element: <ProtectedRoute requiredRole="admin"><EditPathway /></ProtectedRoute> },
+      { path: '/admin/rewards', element: <ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute> },
+      { path: '/admin/redeem-history', element: <ProtectedRoute requiredRole="admin"><RedeemHistory /></ProtectedRoute> },
+      { path: '/admin/attendance', element: <ProtectedRoute requiredRole="admin"><Attendance /></ProtectedRoute> },
+      { path: '/admin/manage-batches', element: <ProtectedRoute requiredRole="admin"><ManageBatches /></ProtectedRoute> },
+      
+      // Coach Routes
+      { path: '/coach', element: <ProtectedRoute requiredRole="coach"><Dashboard /></ProtectedRoute> },
+      { path: '/coach/players', element: <ProtectedRoute requiredRole="coach"><MyPlayers /></ProtectedRoute> },
+      { path: '/coach/player/:playerId', element: <ProtectedRoute requiredRole="coach"><PlayerDetail /></ProtectedRoute> },
+      { path: '/coach/player/:playerId/sessions', element: <ProtectedRoute requiredRole="coach"><PlayerSessions /></ProtectedRoute> },
+      { path: '/coach/start-session', element: <ProtectedRoute requiredRole="coach"><StartSession /></ProtectedRoute> },
+      { path: '/coach/start-session/:playerId', element: <ProtectedRoute requiredRole="coach"><StartSession /></ProtectedRoute> },
+      { path: '/coach/batch-session', element: <ProtectedRoute requiredRole="coach"><BatchSessionView /></ProtectedRoute> },
+      { path: '/coach/session/:sessionId', element: <ProtectedRoute requiredRole="coach"><SessionDetail /></ProtectedRoute> },
+      { path: '/coach/view-completed-session/:sessionId', element: <ProtectedRoute requiredRole="coach"><ViewSessionCard /></ProtectedRoute> },
+      { path: '/coach/past-sessions', element: <ProtectedRoute requiredRole="coach"><PastSessions /></ProtectedRoute> },
+      { path: '/coach/profile', element: <ProtectedRoute requiredRole="coach"><CoachProfile /></ProtectedRoute> },
+    ],
+  },
+]);
+
+function App() {
+  return <RouterProvider router={router} />;
 }
 
 export default App;

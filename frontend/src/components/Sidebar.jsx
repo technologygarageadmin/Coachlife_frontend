@@ -24,7 +24,8 @@ import {
   Trophy,
   X,
   FileText,
-  CalendarCheck
+  CalendarCheck,
+  Layers
 } from 'lucide-react';
 
 export const Sidebar = ({ onClose, isOpen = true }) => {
@@ -78,8 +79,10 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
       { label: 'Assign Players', path: '/admin/assign-players', icon: UserPen },
       { label: 'Session Card', path: '/admin/session-card', icon: FileText },
       { label: 'Attendance', path: '/admin/attendance', icon: CalendarCheck },
+      { label: 'Manage Batches', path: '/admin/manage-batches', icon: Layers },
       { label: 'Learning Pathway', path: '/admin/learning-pathway', icon: BookOpen },
       { label: "Leaderboard", path: '/leaderboard', icon: Trophy },
+      { label: 'Articles', path: '/admin/articles', icon: FileText },
       { label: 'Rewards', path: '/admin/rewards', icon: Gift },
       { label: 'Redemption', path: '/admin/redeem-history', icon: BarChart3 },
       { label: 'Profile', path: '/admin/profile', icon: UserCheck },

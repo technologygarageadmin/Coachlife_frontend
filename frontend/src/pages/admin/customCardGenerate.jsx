@@ -4,7 +4,7 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import { ArrowLeft, Loader, Sparkles, BookOpen, Zap, GripHorizontal, Trash2, Blocks, ArrowBigUp, ArrowBigDown, ArrowUpDown , CheckCircle2, X } from 'lucide-react';
+import { ArrowLeft, Loader, Sparkles, BookOpen, Zap, GripHorizontal, Trash2, Blocks, ArrowBigUp, ArrowBigDown, ArrowUpDown , CheckCircle2, X, Info, AlertTriangle, Clock } from 'lucide-react';
 import axios from 'axios';
 
 const PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
@@ -18,6 +18,13 @@ const CustomCardGenerate = () => {
   const playerId = location.state?.playerId;
   const playerName = location.state?.playerName;
   const playerLearningPathway = location.state?.LearningPathway;
+
+  // Batch mode: build one custom card definition, fire the API per player
+  const batchMode = location.state?.batchMode || false;
+  const batchName = location.state?.batchName || '';
+  const batchPlayers = location.state?.batchPlayers || [];
+  const [batchStatus, setBatchStatus] = useState({}); // { [playerId]: { state, message } }
+  const [batchDone, setBatchDone] = useState(false);
 
   // Pathway states
   const [pathways, setPathways] = useState([]);
@@ -248,54 +255,126 @@ const CustomCardGenerate = () => {
 
     setLoading(true);
     try {
-      // Calculate total points
-      const totalPoints = draggedActivities.reduce((sum, activity) => {
-        if (activity.points && typeof activity.points === 'object' && activity.points.total) {
-          return sum + activity.points.total;
-        }
-        return sum;
-      }, 0);
-
-      // Create payload
-      const payload = {
-        playerId: playerId,
-        LearningPathway: playerLearningPathway,
-        Topic: formData.topic,
-        typeOfSessioncard: 'Custom',
-        Objective: formData.objective,
-        activities: draggedActivities.map((activity, index) => ({
-          activitySequence: index + 1,
-          activityTitle: activity.name || activity.activityTitle,
-          description: activity.description,
-          story: activity.story,
-          code: activity.code || null,
-          instructionsToCoach: activity.instructionsToCoach || [],
-          project: activity.project || null,
-          aiTools: activity.aiTools || null,
-          points: activity.points || { total: 0, evaluationCriteria: [] },
-          duration: activity.duration || activity.Duration || 0,
-          rating: 0,
-          feedback: null
-        })),
-        totalPoints: totalPoints,
-        totalDuration: draggedActivities.reduce((sum, activity) => {
-          const dur = activity.duration || activity.Duration || 0;
-          return typeof dur === 'number' ? sum + dur : sum;
-        }, 0),
-        sessionTakeaways: sessionTakeaways.length > 0 ? sessionTakeaways : [],
-        status: 'upcoming',
-        rating: 0,
-        feedback: null
-      };
-
-      
-      // Directly call API instead of showing popup
-      await sendSessionCardToAPI(payload);
+      if (batchMode) {
+        await runBatchGenerate();
+      } else {
+        await sendSessionCardToAPI(buildPayload(playerId, playerLearningPathway));
+      }
     } catch (err) {
       console.error('Error creating session card:', err);
       setToastMessage('Failed to create session card');
       setToastType('error');
       setLoading(false);
+    }
+  };
+
+  // Build the custom-card payload for one player (same definition, swapped player)
+  const buildPayload = (targetPlayerId, targetPathway) => {
+    const totalPoints = draggedActivities.reduce((sum, activity) => {
+      if (activity.points && typeof activity.points === 'object' && activity.points.total) {
+        return sum + activity.points.total;
+      }
+      return sum;
+    }, 0);
+
+    return {
+      playerId: targetPlayerId,
+      LearningPathway: targetPathway,
+      Topic: formData.topic,
+      typeOfSessioncard: 'Custom',
+      Objective: formData.objective,
+      activities: draggedActivities.map((activity, index) => ({
+        activitySequence: index + 1,
+        activityTitle: activity.name || activity.activityTitle,
+        description: activity.description,
+        story: activity.story,
+        code: activity.code || null,
+        instructionsToCoach: activity.instructionsToCoach || [],
+        project: activity.project || null,
+        aiTools: activity.aiTools || null,
+        points: activity.points || { total: 0, evaluationCriteria: [] },
+        duration: activity.duration || activity.Duration || 0,
+        rating: 0,
+        feedback: null
+      })),
+      totalPoints: totalPoints,
+      totalDuration: draggedActivities.reduce((sum, activity) => {
+        const dur = activity.duration || activity.Duration || 0;
+        return typeof dur === 'number' ? sum + dur : sum;
+      }, 0),
+      sessionTakeaways: sessionTakeaways.length > 0 ? sessionTakeaways : [],
+      status: 'upcoming',
+      rating: 0,
+      feedback: null
+    };
+  };
+
+  // Fire the custom-card API for every player in the batch, one by one
+  const runBatchGenerate = async () => {
+    let success = 0;
+    let failed = 0;
+
+    for (const player of batchPlayers) {
+      setBatchStatus(prev => ({ ...prev, [player.playerId]: { state: 'loading' } }));
+      const result = await postCustomCard(buildPayload(player.playerId, player.LearningPathway || playerLearningPathway));
+      if (result.ok) {
+        success += 1;
+        setBatchStatus(prev => ({ ...prev, [player.playerId]: { state: 'success' } }));
+      } else {
+        failed += 1;
+        setBatchStatus(prev => ({ ...prev, [player.playerId]: { state: 'error', message: result.message } }));
+      }
+    }
+
+    setBatchDone(true);
+    setLoading(false);
+    setToastMessage(failed === 0
+      ? `Created ${success} card${success === 1 ? '' : 's'} successfully!`
+      : `Created ${success} of ${batchPlayers.length}, ${failed} failed`);
+    setToastType(failed === 0 ? 'success' : 'error');
+  };
+
+  // Low-level POST to the custom-card API. Returns { ok, message }.
+  const postCustomCard = async (payload) => {
+    try {
+      const API_URL = 'https://txxt9hve7k.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Custome_Sessioncard';
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': '*/*'
+      };
+      if (userToken) {
+        headers['userToken'] = userToken;
+        headers['Authorization'] = `Bearer ${userToken}`;
+      }
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      let responseData;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        responseData = await response.json();
+      } else {
+        responseData = await response.text();
+      }
+
+      let parsedBody = responseData;
+      if (typeof parsedBody === 'string') {
+        try { parsedBody = JSON.parse(parsedBody); } catch { /* ignore */ }
+      }
+
+      if (!response.ok) {
+        return { ok: false, message: parsedBody?.message || parsedBody?.error || `API returned ${response.status}: ${response.statusText}` };
+      }
+      if (!parsedBody?.session) {
+        return { ok: false, message: parsedBody?.message || 'Failed to create session card' };
+      }
+      return { ok: true, message: 'Created' };
+    } catch (err) {
+      return { ok: false, message: err.message || 'Failed to create session card' };
     }
   };
 
@@ -540,20 +619,20 @@ const CustomCardGenerate = () => {
               flexWrap: 'wrap'
             }}>
               Create a personalized learning experience for{' '}
-              <span style={{ 
-                fontWeight: '700', 
-                color: 'white', 
-                backgroundColor: 'rgba(255, 255, 255, 0.34)', 
-                padding: '8px 16px', 
-                borderRadius: '8px', 
-                display: 'inline-block', 
-                backdropFilter: 'blur(10px)', 
+              <span style={{
+                fontWeight: '700',
+                color: 'white',
+                backgroundColor: 'rgba(255, 255, 255, 0.34)',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                display: 'inline-block',
+                backdropFilter: 'blur(10px)',
                 border: '2px solid rgba(255, 255, 255, 0.5)',
                 boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
                 transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 animation: 'badgePulse 3s ease-in-out infinite',
                 whiteSpace: 'nowrap'
-              }} 
+              }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.45)';
                 e.currentTarget.style.transform = 'scale(1.05)';
@@ -564,9 +643,9 @@ const CustomCardGenerate = () => {
                 e.currentTarget.style.transform = 'scale(1)';
                 e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.15)';
               }}
-              title={playerName}
+              title={batchMode ? batchName : playerName}
               >
-                {playerName}
+                {batchMode ? `${batchName} · ${batchPlayers.length} player${batchPlayers.length === 1 ? '' : 's'}` : playerName}
               </span>
             </p>
           </div>
@@ -574,13 +653,161 @@ const CustomCardGenerate = () => {
         </div>
 
         {toastMessage && (
-          <Toast 
-            message={toastMessage} 
+          <Toast
+            message={toastMessage}
             type={toastType}
             duration={3000}
             onClose={() => setToastMessage('')}
           />
         )}
+
+        {/* Batch generation progress */}
+        {batchMode && (loading || batchDone) && (() => {
+          const total = batchPlayers.length;
+          const successCount = batchPlayers.filter(p => batchStatus[p.playerId]?.state === 'success').length;
+          const failedCount = batchPlayers.filter(p => batchStatus[p.playerId]?.state === 'error').length;
+          const processed = successCount + failedCount;
+          const pct = total ? Math.round((processed / total) * 100) : 0;
+          const allOk = batchDone && failedCount === 0;
+
+          const STATUS_UI = {
+            loading: { label: 'Generating', color: '#060030', bg: '#EEF2FF' },
+            success: { label: 'Done', color: '#15803D', bg: '#DCFCE7' },
+            error:   { label: 'Failed', color: '#B91C1C', bg: '#FEE2E2' },
+            idle:    { label: 'Waiting', color: '#6B7280', bg: '#F3F4F6' },
+          };
+
+          return (
+            <Modal
+              isOpen={loading || batchDone}
+              onClose={() => { if (batchDone) setBatchDone(false); }}
+              title={batchDone ? 'Batch Generation Complete' : 'Generating Session Cards'}
+            >
+              <div style={{ padding: '20px', width: 'min(92vw, 520px)' }}>
+
+                {/* Summary banner */}
+                <div style={{
+                  padding: '16px',
+                  borderRadius: '12px',
+                  marginBottom: '18px',
+                  background: batchDone
+                    ? (allOk ? 'linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%)' : 'linear-gradient(135deg, #FFF7ED 0%, #FEF2F2 100%)')
+                    : 'linear-gradient(135deg, #F5F3FF 0%, #EEF2FF 100%)',
+                  border: `1px solid ${batchDone ? (allOk ? '#BBF7D0' : '#FED7AA') : '#DDD6FE'}`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                    {!batchDone && <Loader size={18} style={{ animation: 'spin 1s linear infinite', color: '#060030' }} />}
+                    {allOk && <CheckCircle2 size={18} color="#16A34A" />}
+                    {batchDone && !allOk && <AlertTriangle size={18} color="#EA580C" />}
+                    <span style={{ fontSize: '14px', fontWeight: '700', color: '#111827' }}>
+                      {batchDone
+                        ? (allOk ? `All ${total} cards created` : `${successCount} created, ${failedCount} failed`)
+                        : `Processing ${processed} of ${total}…`}
+                    </span>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div style={{ height: '8px', background: 'rgba(0,0,0,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div style={{
+                      width: `${pct}%`, height: '100%', borderRadius: '999px',
+                      background: batchDone
+                        ? (allOk ? '#16A34A' : 'linear-gradient(90deg, #16A34A, #EA580C)')
+                        : 'linear-gradient(90deg, #060030, #6D28D9)',
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+
+                  {/* Count chips */}
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+                    {[
+                      { n: successCount, label: 'Done', color: '#15803D', bg: '#DCFCE7' },
+                      { n: failedCount, label: 'Failed', color: '#B91C1C', bg: '#FEE2E2' },
+                      { n: total - processed, label: 'Waiting', color: '#6B7280', bg: '#FFFFFF' },
+                    ].map(chip => (
+                      <span key={chip.label} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '4px 10px', borderRadius: '999px',
+                        fontSize: '12px', fontWeight: '700',
+                        color: chip.color, background: chip.bg, border: `1px solid ${chip.color}22`
+                      }}>
+                        <span style={{ fontSize: '13px' }}>{chip.n}</span>{chip.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Player rows */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {batchPlayers.map(player => {
+                    const status = batchStatus[player.playerId]?.state || 'idle';
+                    const ui = STATUS_UI[status];
+                    const message = batchStatus[player.playerId]?.message;
+                    return (
+                      <div key={player.playerId} style={{
+                        padding: '12px',
+                        background: status === 'error' ? '#FFFBFB' : '#FFFFFF',
+                        border: `1px solid ${status === 'error' ? '#FECACA' : '#E5E7EB'}`,
+                        borderRadius: '10px',
+                        transition: 'all 0.2s'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            width: '34px', height: '34px', borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: 'white', fontWeight: '700', fontSize: '13px', flexShrink: 0
+                          }}>
+                            {(player.playerName || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <span style={{ flex: 1, fontSize: '14px', fontWeight: '600', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {player.playerName}
+                          </span>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '5px', flexShrink: 0,
+                            padding: '4px 10px', borderRadius: '999px',
+                            fontSize: '11px', fontWeight: '700', color: ui.color, background: ui.bg
+                          }}>
+                            {status === 'loading' && <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} />}
+                            {status === 'success' && <CheckCircle2 size={12} />}
+                            {status === 'error' && <AlertTriangle size={12} />}
+                            {status === 'idle' && <Clock size={12} />}
+                            {ui.label}
+                          </span>
+                        </div>
+
+                        {/* Inline error reason */}
+                        {status === 'error' && message && (
+                          <div style={{
+                            display: 'flex', alignItems: 'flex-start', gap: '8px',
+                            marginTop: '10px', marginLeft: '46px',
+                            padding: '8px 10px', background: '#FEF2F2', borderRadius: '8px',
+                            border: '1px solid #FECACA'
+                          }}>
+                            <Info size={14} color="#B91C1C" style={{ flexShrink: 0, marginTop: '1px' }} />
+                            <span style={{ fontSize: '12px', color: '#991B1B', lineHeight: '1.5' }}>{message}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {batchDone && (
+                  <button
+                    onClick={() => navigate('/admin/session-card')}
+                    style={{
+                      marginTop: '20px', width: '100%', padding: '12px 16px', borderRadius: '10px',
+                      fontWeight: '600', background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
+                      color: 'white', border: 'none', cursor: 'pointer', fontSize: '14px'
+                    }}
+                  >
+                    Back to Session Cards
+                  </button>
+                )}
+              </div>
+            </Modal>
+          );
+        })()}
 
         {/* Activity Details Modal */}
         {selectedActivityDetail && (
@@ -976,7 +1203,7 @@ const CustomCardGenerate = () => {
                   onMouseLeave={(e) => !loading && draggedActivities.length > 0 && (e.currentTarget.style.transform = 'translateY(0)')}                  
                 >
                   {loading && <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {loading ? 'Creating...' : 'Create Session Card'}
+                  {loading ? 'Creating...' : batchMode ? 'Create for Batch' : 'Create Session Card'}
                 </button>
               </div>
             )}

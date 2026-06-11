@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
@@ -6,9 +7,9 @@ import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import SkeletonLoaderStyles, { SkeletonLoader } from '../../components/SkeletonLoader';
 import {
-  CalendarCheck, Plus, CheckCircle, Save, ChevronDown, Users,
-  ChevronLeft, ChevronRight, UserCheck, UserMinus, BarChart2, User,
-  Calendar, CircleHelp,
+  CalendarCheck, CheckCircle, Save, ChevronDown, Users,
+  ChevronLeft, ChevronRight, UserCheck, BarChart2, User,
+  Calendar, CircleHelp, Layers,
 } from 'lucide-react';
 
 const BRAND  = '#060030ff';
@@ -157,6 +158,7 @@ function SkeletonStats({ count = 6 }) {
 }
 
 export default function Attendance() {
+  const navigate = useNavigate();
   const { userToken, players, fetchPlayers } = useStore();
 
   // ── shared
@@ -166,11 +168,6 @@ export default function Attendance() {
   const [toastMsg, setToastMsg]             = useState('');
   const [toastType, setToastType]           = useState('success');
   const [showInstructionModal, setShowInstructionModal] = useState(false);
-  const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchModalMode, setBatchModalMode] = useState('create');
-  const [selectedManageBatchId, setSelectedManageBatchId] = useState('');
-  const [batchForm, setBatchForm]           = useState({ batchName: '', playerIds: [] });
-  const [batchSaving, setBatchSaving]       = useState(false);
   const fetchedRef                          = useRef(false);
 
   // ── tabs
@@ -193,7 +190,6 @@ export default function Attendance() {
   const [bulkOverrideStatus, setBulkOverrideStatus]     = useState('');
   const [saving, setSaving]                             = useState(false);
   const [completing, setCompleting]                     = useState(false);
-  const [removingPlayerId, setRemovingPlayerId]         = useState('');
   // per-player session card info (fetched from session card API)
   const [playerCardInfo, setPlayerCardInfo]             = useState(new Map());
   const [cardInfoLoading, setCardInfoLoading]           = useState(false);
@@ -635,36 +631,6 @@ export default function Attendance() {
     }
   }
 
-  async function handleRemovePlayerFromBatch(playerId) {
-    if (!selectedBatchId || selectedBatchId === 'general') { toast('Pick a real batch to remove players', 'error'); return; }
-    if (!playerId) { toast('Invalid player selected', 'error'); return; }
-    if (!CL_MANAGE_BATCH_URL) { toast('Batch API URL not configured', 'error'); return; }
-    setRemovingPlayerId(playerId);
-    try {
-      const res = await axios.post(CL_MANAGE_BATCH_URL, {
-        action: 'remove_player', batchId: selectedBatchId, playerId,
-      }, { headers });
-      let responseData = res?.data;
-      if (responseData?.body && typeof responseData.body === 'string') {
-        try { responseData = JSON.parse(responseData.body); } catch { /* ignore */ }
-      }
-      const batchDeleted = Boolean(responseData?.batchDeleted);
-      setEdits(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(key => { if (key.startsWith(`${playerId}_`)) delete next[key]; });
-        return next;
-      });
-      if (batchDeleted) { setSelectedBatchId(''); setBatchRecords([]); }
-      await Promise.all([loadBatches(), loadAllRecords()]);
-      if (!batchDeleted) await loadBatchRecords(selectedBatchId, batchDate);
-      toast(batchDeleted ? 'Player removed. Empty batch auto-deleted.' : 'Player removed from batch');
-    } catch {
-      toast('Failed to remove player from batch', 'error');
-    } finally {
-      setRemovingPlayerId('');
-    }
-  }
-
   function playerRecordKey(record) {
     return record.attendanceId || makeRecordKey(record.playerId, record.batchId, record.sessionDate);
   }
@@ -702,102 +668,6 @@ export default function Attendance() {
     }
   }
 
-  function resetBatchModalState() {
-    setBatchModalMode('create');
-    setSelectedManageBatchId('');
-    setBatchForm({ batchName: '', playerIds: [] });
-  }
-
-  function openBatchModal() {
-    resetBatchModalState();
-    setShowBatchModal(true);
-  }
-
-  function closeBatchModal() {
-    setShowBatchModal(false);
-    resetBatchModalState();
-  }
-
-  function handleBatchModeChange(mode) {
-    setBatchModalMode(mode);
-    if (mode === 'create') {
-      setSelectedManageBatchId('');
-      setBatchForm({ batchName: '', playerIds: [] });
-      return;
-    }
-
-    if (mode === 'update' && selectedManageBatchId) {
-      const existing = batches.find(b => b.batchId === selectedManageBatchId);
-      if (existing) {
-        setBatchForm({
-          batchName: existing.batchName || '',
-          playerIds: (existing.playerIds || []).map(id => String(id)),
-        });
-      }
-    }
-  }
-
-  function handleExistingBatchSelect(batchId) {
-    setSelectedManageBatchId(batchId);
-    const existing = batches.find(b => b.batchId === batchId);
-    if (!existing) {
-      setBatchForm({ batchName: '', playerIds: [] });
-      return;
-    }
-
-    setBatchForm({
-      batchName: existing.batchName || '',
-      playerIds: (existing.playerIds || []).map(id => String(id)),
-    });
-  }
-
-  async function handleBatchSubmit(e) {
-    e.preventDefault();
-    if (!batchForm.batchName.trim() || batchForm.playerIds.length === 0) {
-      toast('Batch name and at least one player required', 'error'); return;
-    }
-    if (!CL_MANAGE_BATCH_URL) { toast('API URL not configured', 'error'); return; }
-
-    if (batchModalMode === 'update' && !selectedManageBatchId) {
-      toast('Select an existing batch to update', 'error');
-      return;
-    }
-
-    setBatchSaving(true);
-    try {
-      if (batchModalMode === 'update') {
-        await axios.post(CL_MANAGE_BATCH_URL, {
-          action: 'update',
-          batchId: selectedManageBatchId,
-          batchName: batchForm.batchName.trim(),
-          playerIds: batchForm.playerIds,
-        }, { headers });
-      } else {
-        await axios.post(CL_MANAGE_BATCH_URL, {
-          action: 'create', batchName: batchForm.batchName.trim(), playerIds: batchForm.playerIds,
-        }, { headers });
-      }
-
-      await loadBatches();
-      closeBatchModal();
-      toast(batchModalMode === 'update' ? 'Batch updated' : 'Batch created');
-    } catch {
-      toast(batchModalMode === 'update' ? 'Failed to update batch' : 'Failed to create batch', 'error');
-    } finally {
-      setBatchSaving(false);
-    }
-  }
-
-  function togglePlayer(pid) {
-    const normalizedId = String(pid);
-    setBatchForm(prev => ({
-      ...prev,
-      playerIds: prev.playerIds.includes(normalizedId)
-        ? prev.playerIds.filter(id => id !== normalizedId)
-        : [...prev.playerIds, normalizedId],
-    }));
-  }
-
   function confirmSessionOverride(playerId) {
     const val = parseInt(editingSessionValue, 10);
     if (!Number.isFinite(val) || val <= 0) { toast('Enter a valid session number', 'error'); return; }
@@ -808,7 +678,6 @@ export default function Attendance() {
   const today                   = toDateStr(new Date());
   const selectedDateStr         = toDateStr(selectedDate);
   const selectedBatch           = displayBatches.find(b => b.batchId === selectedBatchId);
-  const selectedBatchPlayerIds  = new Set((selectedBatch?.playerIds || []).map(id => String(id)));
   const calendarSelectedPlayer  = players.find(p => String(p.playerId) === String(calendarPlayerId));
   const selectedPlayer          = players.find(p => p.playerId === selectedPlayerId);
 
@@ -899,7 +768,7 @@ export default function Attendance() {
             </button>
 
             <button
-              onClick={openBatchModal}
+              onClick={() => navigate('/admin/manage-batches')}
               style={{
                 display: 'flex', alignItems: 'center', gap: '7px',
                 padding: '10px 20px', borderRadius: '10px', border: 'none',
@@ -910,7 +779,7 @@ export default function Attendance() {
               onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
               onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
-              <Plus size={16} /> New/Update Batch
+              <Layers size={16} /> Manage Batches
             </button>
           </div>
         </div>
@@ -1390,7 +1259,7 @@ export default function Attendance() {
                       </p>
                       <p style={{ fontSize: '13px', margin: 0, color: '#9ca3af' }}>
                         {displayBatches.length === 0
-                          ? 'No batches yet - create one using the button above.'
+                          ? 'No batches yet - create one on the Manage Batches page.'
                           : 'Choose a batch from the dropdown above.'}
                       </p>
                     </div>
@@ -1399,7 +1268,7 @@ export default function Attendance() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
                         <thead>
                           <tr style={{ background: '#f9fafb' }}>
-                            {['Player Name', 'Session #', 'Attendance Status', 'Batch', 'Override', 'Notes', 'Action'].map(h => (
+                            {['Player Name', 'Session #', 'Attendance Status', 'Batch', 'Override', 'Notes'].map(h => (
                               <th key={h} style={{
                                 padding: '11px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700,
                                 color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.6px',
@@ -1410,10 +1279,10 @@ export default function Attendance() {
                         </thead>
                         <tbody>
                           {batchLoading ? (
-                            <SkeletonTableRows cols={7} rows={5} />
+                            <SkeletonTableRows cols={6} rows={5} />
                           ) : batchDisplayRows.length === 0 ? (
                             <tr>
-                              <td colSpan={7} style={{ padding: '52px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' }}>
+                              <td colSpan={6} style={{ padding: '52px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' }}>
                                 No players in this batch
                               </td>
                             </tr>
@@ -1554,29 +1423,6 @@ export default function Attendance() {
                                     onFocus={e => { e.target.style.borderColor = BRAND; }}
                                     onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
                                   />
-                                </td>
-                                <td style={{ padding: '8px 16px' }}>
-                                  {selectedBatchId !== 'general' && selectedBatchPlayerIds.has(row.playerId) ? (
-                                    <button
-                                      onClick={() => handleRemovePlayerFromBatch(row.playerId)}
-                                      disabled={removingPlayerId === row.playerId}
-                                      style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                        padding: '6px 10px', borderRadius: '7px',
-                                        border: '1px solid #fecaca', background: '#fff1f2',
-                                        color: '#be123c', fontSize: '12px', fontWeight: 600,
-                                        cursor: removingPlayerId === row.playerId ? 'not-allowed' : 'pointer',
-                                        opacity: removingPlayerId === row.playerId ? 0.7 : 1,
-                                      }}
-                                      onMouseEnter={e => e.currentTarget.style.background = '#ffe4e6'}
-                                      onMouseLeave={e => e.currentTarget.style.background = '#fff1f2'}
-                                    >
-                                      <UserMinus size={13} />
-                                      {removingPlayerId === row.playerId ? 'Removing…' : 'Remove'}
-                                    </button>
-                                  ) : (
-                                    <span style={{ fontSize: '12px', color: '#d1d5db' }}>-</span>
-                                  )}
                                 </td>
                               </tr>
                             );
@@ -1862,177 +1708,6 @@ export default function Attendance() {
         )}
       </div>
 
-      {/* ── New Batch Modal ─────────────────────────────────────────────── */}
-      <Modal
-        isOpen={showBatchModal}
-        onClose={closeBatchModal}
-        title={batchModalMode === 'update' ? 'Update Existing Batch' : 'Create New Batch'}
-      >
-        <div style={{ padding: '24px', minWidth: '320px', maxWidth: '500px' }}>
-          <form onSubmit={handleBatchSubmit}>
-            <div style={{ marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => handleBatchModeChange('create')}
-                style={{
-                  padding: '9px 10px', borderRadius: '8px', border: '1.5px solid #e5e7eb',
-                  background: batchModalMode === 'create' ? `${BRAND}12` : 'white',
-                  color: batchModalMode === 'create' ? BRAND : '#374151',
-                  fontWeight: 600, fontSize: '13px', cursor: 'pointer',
-                }}
-              >
-                New Batch
-              </button>
-              <button
-                type="button"
-                onClick={() => handleBatchModeChange('update')}
-                style={{
-                  padding: '9px 10px', borderRadius: '8px', border: '1.5px solid #e5e7eb',
-                  background: batchModalMode === 'update' ? `${BRAND}12` : 'white',
-                  color: batchModalMode === 'update' ? BRAND : '#374151',
-                  fontWeight: 600, fontSize: '13px', cursor: 'pointer',
-                }}
-              >
-                Existing Batch
-              </button>
-            </div>
-
-            {batchModalMode === 'update' && (
-              <div style={{ marginBottom: '18px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
-                  Select Existing Batch *
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={selectedManageBatchId}
-                    onChange={e => handleExistingBatchSelect(e.target.value)}
-                    required
-                    style={{
-                      width: '100%', padding: '9px 36px 9px 12px', borderRadius: '8px',
-                      border: '1.5px solid #e5e7eb', fontSize: '14px', color: '#111827',
-                      outline: 'none', background: 'white', appearance: 'none', cursor: 'pointer',
-                    }}
-                    onFocus={e => { e.target.style.borderColor = BRAND; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
-                    onBlur={e => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
-                  >
-                    <option value="">-- Choose batch --</option>
-                    {batches.map(b => (
-                      <option key={b.batchId} value={b.batchId}>
-                        {b.batchName} ({(b.playerIds || []).length})
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginBottom: '18px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
-                {batchModalMode === 'update' ? 'Batch Name (Rename if needed) *' : 'Batch Name *'}
-              </label>
-              <input
-                type="text"
-                value={batchForm.batchName}
-                onChange={e => setBatchForm(f => ({ ...f, batchName: e.target.value }))}
-                placeholder="e.g. Batch A"
-                required
-                style={{
-                  width: '100%', padding: '9px 12px', borderRadius: '8px',
-                  border: '1.5px solid #e5e7eb', fontSize: '14px', color: '#111827',
-                  outline: 'none', boxSizing: 'border-box',
-                }}
-                onFocus={e => { e.target.style.borderColor = BRAND; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
-                onBlur={e => { e.target.style.borderColor = '#e5e7eb'; e.target.style.boxShadow = 'none'; }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
-                {batchModalMode === 'update' ? 'Select Players (currently assigned are pre-selected) *' : 'Select Players *'}
-              </label>
-              <div style={{
-                maxHeight: '220px', overflowY: 'auto',
-                border: '1.5px solid #e5e7eb', borderRadius: '8px', padding: '4px',
-              }}>
-                {players.length === 0 ? (
-                  <p style={{ padding: '12px', color: '#9ca3af', fontSize: '13px', margin: 0 }}>
-                    No players available
-                  </p>
-                ) : players.map(p => {
-                  const pid = String(p.playerId);
-                  const checked = batchForm.playerIds.includes(pid);
-                  return (
-                    <div
-                      key={pid}
-                      onClick={() => togglePlayer(pid)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '10px',
-                        padding: '9px 12px', borderRadius: '6px', cursor: 'pointer',
-                        background: checked ? `${BRAND}0d` : 'transparent', marginBottom: '2px',
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => !checked && (e.currentTarget.style.background = '#f9fafb')}
-                      onMouseLeave={e => !checked && (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <div style={{
-                        width: '18px', height: '18px', borderRadius: '4px', flexShrink: 0,
-                        border: checked ? `2px solid ${BRAND}` : '2px solid #d1d5db',
-                        background: checked ? BRAND : 'white',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {checked && <span style={{ color: 'white', fontSize: '11px', fontWeight: 700 }}>✓</span>}
-                      </div>
-                      <span style={{ fontSize: '14px', color: '#111827', flex: 1 }}>
-                        {p.playerName || p.name}
-                      </span>
-                      {p.LearningPathway && (
-                        <span style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap' }}>
-                          {p.LearningPathway}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {batchForm.playerIds.length > 0 && (
-                <p style={{ fontSize: '12px', color: BRAND, margin: '6px 0 0', fontWeight: 600 }}>
-                  {batchForm.playerIds.length} player(s) selected
-                </p>
-              )}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={closeBatchModal}
-                style={{
-                  padding: '10px', borderRadius: '8px', border: '1.5px solid #e5e7eb',
-                  background: 'white', color: '#374151', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
-                onMouseLeave={e => e.currentTarget.style.background = 'white'}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={batchSaving}
-                style={{
-                  padding: '10px', borderRadius: '8px', border: 'none',
-                  background: `linear-gradient(135deg, ${BRAND}, #000)`,
-                  color: 'white', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
-                  opacity: batchSaving ? 0.7 : 1,
-                  boxShadow: '0 2px 8px rgba(6,0,48,0.25)',
-                }}
-              >
-                {batchSaving ? (batchModalMode === 'update' ? 'Updating...' : 'Creating...') : (batchModalMode === 'update' ? 'Update Batch' : 'Create Batch')}
-              </button>
-            </div>
-          </form>
-        </div>
-      </Modal>
-
       <Modal
         isOpen={showInstructionModal}
         onClose={() => setShowInstructionModal(false)}
@@ -2070,7 +1745,7 @@ export default function Attendance() {
 
           <div style={{ marginBottom: '18px' }}>
             <p style={{ margin: '0 0 6px', fontSize: '13px', fontWeight: 700, color: '#111827' }}>4. Manage Batches</p>
-            <p style={{ margin: '0 0 4px', fontSize: '13px', color: '#4b5563' }}>Click New/Update Batch in top-right.</p>
+            <p style={{ margin: '0 0 4px', fontSize: '13px', color: '#4b5563' }}>Open the Manage Batches page (top-right or sidebar) to create or edit batches.</p>
             <p style={{ margin: 0, fontSize: '13px', color: '#4b5563' }}>In Existing Batch mode, choose a batch and current players will be auto-selected for easy update.</p>
           </div>
 

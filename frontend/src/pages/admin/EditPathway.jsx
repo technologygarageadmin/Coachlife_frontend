@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useBlocker } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
@@ -20,6 +20,34 @@ const EditPathway = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [editedPathway, setEditedPathway] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const isDirtyRef = useRef(false);
+
+  const markDirty = () => {
+    isDirtyRef.current = true;
+    setIsDirty(true);
+  };
+
+  const markClean = () => {
+    isDirtyRef.current = false;
+    setIsDirty(false);
+  };
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirtyRef.current && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
   
   const [formData, setFormData] = useState({
     LearningPathway: '',
@@ -152,6 +180,7 @@ const EditPathway = () => {
   };
 
   const handleFormChange = (field, value) => {
+    markDirty();
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -172,6 +201,7 @@ const EditPathway = () => {
   });
 
   const addActivity = () => {
+    markDirty();
     const newActivity = getDefaultActivity();
     setFormData(prev => ({
       ...prev,
@@ -180,6 +210,7 @@ const EditPathway = () => {
   };
 
   const removeActivity = (idx) => {
+    markDirty();
     setFormData(prev => ({
       ...prev,
       activities: prev.activities.filter((_, i) => i !== idx).map((activity, newIdx) => ({
@@ -190,6 +221,7 @@ const EditPathway = () => {
   };
 
   const updateActivity = (idx, updatedActivity) => {
+    markDirty();
     setFormData(prev => {
       const updated = [...prev.activities];
       updated[idx] = updatedActivity;
@@ -199,6 +231,7 @@ const EditPathway = () => {
 
   const addTakeaway = () => {
     if (takeawayInput.trim()) {
+      markDirty();
       setFormData(prev => ({
         ...prev,
         sessionTakeaways: [...(prev.sessionTakeaways || []), takeawayInput.trim()]
@@ -208,6 +241,7 @@ const EditPathway = () => {
   };
 
   const removeTakeaway = (idx) => {
+    markDirty();
     setFormData(prev => ({
       ...prev,
       sessionTakeaways: prev.sessionTakeaways.filter((_, i) => i !== idx)
@@ -347,6 +381,7 @@ const EditPathway = () => {
       
 
       if (response.data && (response.data.statusCode === 200 || response.data.statusCode === 201 || response.status === 200 || response.status === 201)) {
+        markClean();
         navigate('/admin/learning-pathway');
       } else {
         setError('Failed to update pathway. Please try again.');
@@ -646,7 +681,7 @@ const EditPathway = () => {
                       setEditingActivityIndex(idx);
                     }} style={{ flex: 1 }}>
                       <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>Activity {idx + 1}: {activity.activityTitle || 'Untitled'}</p>
-                      <p style={{ fontSize: '12px', color: '#666', margin: '4px 0 0 0' }}>{activity.description?.substring(0, 50)}...</p>
+                      {/* <p style={{ fontSize: '12px', color: '#666', margin: '4px 0 0 0' }}>{activity.description?.substring(0, 50)}...</p> */}
                       <div style={{ display: 'flex', gap: '16px', marginTop: '8px', flexWrap: 'wrap' }}>
                         {activity.duration && (
                           <span style={{ fontSize: '11px', color: '#888', fontWeight: '500' }}>{activity.duration} min</span>
@@ -857,6 +892,95 @@ const EditPathway = () => {
             </button>
           </div>
         </Card>
+
+        {/* Unsaved Changes Warning Modal */}
+        {blocker.state === 'blocked' && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '14px',
+              padding: '36px 32px',
+              maxWidth: '460px',
+              width: '90%',
+              boxShadow: '0 24px 48px rgba(0, 0, 0, 0.2)',
+              textAlign: 'center'
+            }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                backgroundColor: '#FEF3C7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 20px'
+              }}>
+                <AlertCircle size={28} color="#D97706" />
+              </div>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: '0 0 10px 0' }}>
+                Unsaved Changes
+              </h2>
+              <p style={{ fontSize: '14px', color: '#6B7280', margin: '0 0 28px 0', lineHeight: '1.6' }}>
+                You have unsaved changes to this pathway. If you leave now, your edits will be lost.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                <button
+                  onClick={() => blocker.reset()}
+                  style={{
+                    padding: '10px 24px',
+                    backgroundColor: '#060030ff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#050027ff'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#060030ff'; }}
+                >
+                  Stay & Keep Editing
+                </button>
+                <button
+                  onClick={() => {
+                    markClean();
+                    blocker.proceed();
+                  }}
+                  style={{
+                    padding: '10px 24px',
+                    backgroundColor: 'white',
+                    color: '#DC2626',
+                    border: '1.5px solid #FECACA',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#FEF2F2';
+                    e.currentTarget.style.borderColor = '#FCA5A5';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'white';
+                    e.currentTarget.style.borderColor = '#FECACA';
+                  }}
+                >
+                  Leave Without Saving
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Activity Modal */}
         {activityModalOpen && editedActivity && (

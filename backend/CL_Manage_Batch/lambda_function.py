@@ -232,6 +232,107 @@ def lambda_handler(event, context):
                 "batchDeleted": False,
             })
 
+        elif action == "assign_coach":
+            batch_id = body.get("batchId")
+            if not batch_id:
+                return resp(400, {"message": "batchId is required"})
+
+            batch_oid = parse_object_id(batch_id)
+            if not batch_oid:
+                return resp(400, {"message": "Invalid batchId"})
+
+            coach_ids = unique_strings(body.get("coachIds") or [body.get("coachId")])
+            if not coach_ids:
+                return resp(400, {"message": "coachId or coachIds is required"})
+
+            batch = batches_col.find_one({"_id": batch_oid}, {"playerIds": 1})
+            if not batch:
+                return resp(404, {"message": "Batch not found"})
+
+            player_ids = batch.get("playerIds", [])
+
+            # Validate each coach exists, then add the batch's players to their PlayersList.
+            # Multiple coaches per batch is allowed, so we do NOT enforce the single-coach
+            # conflict rule used for individual player assignment.
+            valid_coach_ids = []
+            for cid in coach_ids:
+                coach_oid = parse_object_id(cid)
+                if not coach_oid:
+                    continue
+                coach = users.find_one({"_id": coach_oid}, {"_id": 1})
+                if not coach:
+                    continue
+                valid_coach_ids.append(cid)
+                if player_ids:
+                    users.update_one(
+                        {"_id": coach_oid},
+                        {"$addToSet": {"PlayersList": {"$each": player_ids}}}
+                    )
+
+            if not valid_coach_ids:
+                return resp(404, {"message": "No valid coach found"})
+
+            batches_col.update_one(
+                {"_id": batch_oid},
+                {
+                    "$addToSet": {"coachIds": {"$each": valid_coach_ids}},
+                    "$set": {
+                        "updatedAt": now_ist(),
+                        "updatedBy": {"id": user["_id"], "name": user.get("name", "")}
+                    }
+                }
+            )
+
+            updated = batches_col.find_one({"_id": batch_oid}, {"coachIds": 1}) or {}
+            return resp(200, {
+                "message": f"Assigned {len(valid_coach_ids)} coach(es) to batch",
+                "batchId": str(batch_oid),
+                "coachIds": updated.get("coachIds", []),
+            })
+
+        elif action == "remove_coach":
+            batch_id = body.get("batchId")
+            if not batch_id:
+                return resp(400, {"message": "batchId is required"})
+
+            batch_oid = parse_object_id(batch_id)
+            if not batch_oid:
+                return resp(400, {"message": "Invalid batchId"})
+
+            coach_id = body.get("coachId")
+            if not coach_id:
+                return resp(400, {"message": "coachId is required"})
+
+            batch = batches_col.find_one({"_id": batch_oid}, {"playerIds": 1})
+            if not batch:
+                return resp(404, {"message": "Batch not found"})
+
+            player_ids = batch.get("playerIds", [])
+            coach_oid = parse_object_id(coach_id)
+            if coach_oid and player_ids:
+                users.update_one(
+                    {"_id": coach_oid},
+                    {"$pullAll": {"PlayersList": player_ids}}
+                )
+
+            batches_col.update_one(
+                {"_id": batch_oid},
+                {
+                    "$pull": {"coachIds": str(coach_id).strip()},
+                    "$set": {
+                        "updatedAt": now_ist(),
+                        "updatedBy": {"id": user["_id"], "name": user.get("name", "")}
+                    }
+                }
+            )
+
+            updated = batches_col.find_one({"_id": batch_oid}, {"coachIds": 1}) or {}
+            return resp(200, {
+                "message": "Coach removed from batch",
+                "batchId": str(batch_oid),
+                "coachIds": updated.get("coachIds", []),
+            })
+
         elif action == "delete":
             batch_id = body.get("batchId")
             if not batch_id:
@@ -247,7 +348,7 @@ def lambda_handler(event, context):
             return resp(200, {"message": "Batch deleted"})
 
         else:
-            return resp(400, {"message": "Invalid action. Use 'create', 'update', 'add_player', 'remove_player', or 'delete'"})
+            return resp(400, {"message": "Invalid action. Use 'create', 'update', 'add_player', 'remove_player', 'assign_coach', 'remove_coach', or 'delete'"})
 
     except Exception as e:
         return resp(500, {"message": "Internal server error", "error": str(e), "trace": traceback.format_exc()})

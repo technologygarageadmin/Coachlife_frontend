@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
-import { ChevronLeft, Clock, Users, MapPin, Clock4 , BookOpen, ArrowRight, BookMarked, Wrench, Briefcase, Code, ChevronDown, MoveUpRight, MessageSquare } from 'lucide-react';
+import { ChevronLeft, Clock, Users, MapPin, Clock4 , BookOpen, ArrowRight, BookMarked, Wrench, Briefcase, Code, ChevronDown, MoveUpRight, MessageSquare, Info, Layers } from 'lucide-react';
 
 const SessionDetail = () => {
   const { sessionId } = useParams();
@@ -31,6 +31,7 @@ const SessionDetail = () => {
     coachComment: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] = useState(null); // null | 'Present' | 'Absent'
   const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
   const [regenerateModal, setRegenerateModal] = useState({
     isOpen: false,
@@ -96,67 +97,59 @@ const SessionDetail = () => {
           throw new Error('No authentication token found');
         }
 
-
         if (!sessionId) {
           throw new Error('Session ID not found');
         }
 
-        // Use the same API pattern as other endpoints in your app
-        // Replace with your actual API endpoint
         const sessionResponse = await fetch(
-          `https://daq1gxkqd4.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Get_Session_Details`,
+          'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
           {
             method: 'POST',
             headers: {
-              'Accept': 'application/json, text/plain, */*',
               'Content-Type': 'application/json',
               'userToken': token
             },
-            body: JSON.stringify({ sessionId })
+            body: JSON.stringify({ sessionCardId: sessionId })
           }
         );
 
         if (!sessionResponse.ok) {
-          throw new Error(`Failed to fetch session details: ${sessionResponse.status}`);
+          throw new Error(`Failed to fetch session: ${sessionResponse.status}`);
         }
 
         const sessionResult = await sessionResponse.json();
+        const card = sessionResult.sessionCard || sessionResult.data || sessionResult;
 
-    
-        // Sort activities by activitySequence
-        const sortedActivities = (sessionResult.activities || []).sort((a, b) => {
-          const seqA = a.activitySequence || 0;
-          const seqB = b.activitySequence || 0;
-          return seqA - seqB;
-        });
+        const sortedActivities = (card.activities || []).sort((a, b) =>
+          (a.activitySequence || 0) - (b.activitySequence || 0)
+        );
 
-        // Map API response to component state
         setSessionData({
-          _id: sessionResult._id || sessionId,
-          sessionId: sessionResult._id || sessionResult.sessionId || sessionId,
-          Topic: sessionResult.Topic || sessionResult.sessionTitle || sessionResult.title,
-          Objective: sessionResult.Objective || sessionResult.description,
-          SessionType: sessionResult.SessionType,
-          LearningPathway: sessionResult.LearningPathway,
-          session: sessionResult.session,
-          status: sessionResult.status || 'draft',
-          createdAt: sessionResult.createdAt,
-          completedAt: sessionResult.completedAt,
+          _id: card._id || card.sessionCardId || sessionId,
+          sessionId: card._id || card.sessionCardId || sessionId,
+          Topic: card.Topic || card.topic || card.sessionTitle,
+          Objective: card.Objective || card.objective,
+          SessionType: card.SessionType || card.typeOfSessioncard,
+          LearningPathway: card.LearningPathway,
+          session: card.session,
+          status: card.status || 'Draft',
+          createdAt: card.createdAt,
+          completedAt: card.completedAt,
           activities: sortedActivities,
-          totalPoints: sessionResult.totalPoints,
-          sessionTakeaways: sessionResult.sessionTakeaways || [],
-          feedback: sessionResult.feedback,
-          createdByCoach: sessionResult.createdByCoach,
-          lastRegeneratedAt: sessionResult.lastRegeneratedAt,
-          regeneratedCount: sessionResult.regeneratedCount
+          totalPoints: card.totalPoints,
+          sessionTakeaways: card.sessionTakeaways || [],
+          feedback: (card.rating || card.coachComment)
+            ? { rating: card.rating || 0, coachComment: card.coachComment || '' }
+            : null,
+          playerId: card.playerId
         });
 
-        // Set player data if available in response
-        if (sessionResult.playerDetails) {
-          setPlayerData(sessionResult.playerDetails);
-        } else if (sessionResult.player) {
-          setPlayerData(sessionResult.player);
-        }
+        setPlayerData({
+          _id: card.playerId,
+          playerId: card.playerId,
+          playerName: card.playerName || '',
+          name: card.playerName || ''
+        });
 
       } catch (err) {
         console.error('Error fetching session details:', err);
@@ -430,7 +423,7 @@ const SessionDetail = () => {
     }
   };
 
-  const markAttendancePresent = async ({ source = 'session_card_mark' } = {}) => {
+  const markAttendancePresent = async ({ source = 'session_card_mark', attendanceStatusOverride = null } = {}) => {
     const token = getToken();
     if (!token) {
       throw new Error('No authentication token found');
@@ -450,6 +443,8 @@ const SessionDetail = () => {
       null;
 
     const resolvedBatchId =
+      location.state?.batch?._id ||
+      location.state?.batch?.batchId ||
       sessionData?.batchId ||
       sessionData?.BatchId ||
       location.state?.batchId ||
@@ -458,6 +453,7 @@ const SessionDetail = () => {
       '';
 
     const resolvedBatchName =
+      location.state?.batch?.batchName ||
       sessionData?.batchName ||
       sessionData?.BatchName ||
       location.state?.batchName ||
@@ -478,7 +474,8 @@ const SessionDetail = () => {
         batchName: resolvedBatchName,
         sessionNumber: resolvedSessionNumber,
         sessionDate,
-        attendanceStatus: 'Present',
+        attendanceStatus: source === 'session_complete' ? 'Present' : (attendanceStatusOverride || 'Present'),
+        override: true,
         source,
       }),
     });
@@ -491,13 +488,13 @@ const SessionDetail = () => {
     return attendanceResponse.json().catch(() => ({}));
   };
 
-  const handleMarkAttendancePresent = async () => {
+  const handleMarkAttendance = async (status) => {
     if (isMarkingAttendance) return;
-
     try {
       setIsMarkingAttendance(true);
-      await markAttendancePresent({ source: 'session_card_mark' });
-      setToast({ isVisible: true, message: 'Attendance marked Present', type: 'success' });
+      await markAttendancePresent({ source: 'session_card_mark', attendanceStatusOverride: status });
+      setAttendanceStatus(status);
+      setToast({ isVisible: true, message: `Attendance marked ${status}`, type: 'success' });
     } catch (error) {
       setToast({ isVisible: true, message: `Error: ${error.message}`, type: 'error' });
     } finally {
@@ -942,44 +939,99 @@ const SessionDetail = () => {
           />
         )}
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
-        {/* Header with Back Button */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '16px',
-          marginBottom: '32px'
-        }}>
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              background: '#F8FAFC',
-              border: '1.5px solid #E2E8F0',
-              borderRadius: '10px',
-              padding: '10px 14px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: '#111827',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#EFF6FF';
-              e.currentTarget.style.borderColor = '#060030ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#F8FAFC';
-              e.currentTarget.style.borderColor = '#E2E8F0';
-            }}
-          >
-            <ChevronLeft size={18} />
-            Back
-          </button>
 
-        </div>
+        {/* ── Batch chips header — visible when coming from Start Batch -- */}
+        {location.state?.batch && location.state?.batchPlayerCards ? (
+          <div style={{
+            background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+            borderRadius: '16px', padding: '22px 28px', color: 'white',
+            marginBottom: '28px', boxShadow: '0 4px 16px rgba(6,0,48,0.25)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => navigate('/coach/batch-session', { state: { batch: location.state.batch } })}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 13px',
+                  borderRadius: '8px', background: 'rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(255,255,255,0.2)', color: 'white',
+                  fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}
+              >
+                <ChevronLeft size={14} /> Back
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers size={18} style={{ opacity: 0.7 }} />
+                <span style={{ fontSize: '16px', fontWeight: '700' }}>{location.state.batch.batchName}</span>
+                <span style={{ fontSize: '13px', opacity: 0.6 }}>· select a player to switch</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {location.state.batchPlayerCards.map(player => {
+                const isActive = player.playerId === location.state.activePlayerId;
+                const hasCard = Boolean(player.activeCardId);
+                return (
+                  <button
+                    key={player.playerId}
+                    onClick={() => {
+                      if (isActive || !hasCard) return;
+                      navigate(`/coach/session/${player.activeCardId}`, {
+                        replace: true,
+                        state: {
+                          batch: location.state.batch,
+                          batchPlayerCards: location.state.batchPlayerCards,
+                          activePlayerId: player.playerId
+                        }
+                      });
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '8px 16px 8px 8px', borderRadius: '24px', border: 'none',
+                      background: isActive ? 'white' : hasCard ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.06)',
+                      color: isActive ? '#060030ff' : hasCard ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.38)',
+                      fontWeight: isActive ? '700' : '500', fontSize: '14px',
+                      cursor: isActive || !hasCard ? 'default' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: isActive ? '0 3px 12px rgba(0,0,0,0.2)' : 'none',
+                      transform: isActive ? 'scale(1.04)' : 'scale(1)'
+                    }}
+                    onMouseEnter={(e) => { if (!isActive && hasCard) e.currentTarget.style.background = 'rgba(255,255,255,0.23)'; }}
+                    onMouseLeave={(e) => { if (!isActive && hasCard) e.currentTarget.style.background = 'rgba(255,255,255,0.13)'; }}
+                  >
+                    <div style={{
+                      width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
+                      background: isActive ? '#060030ff' : 'rgba(255,255,255,0.2)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '11px', fontWeight: '800', color: isActive ? 'white' : 'inherit'
+                    }}>
+                      {player.name.charAt(0).toUpperCase()}
+                    </div>
+                    {player.name}
+                    {!hasCard && <Info size={12} style={{ opacity: 0.6, flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* ── Standalone back button ── */
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '32px' }}>
+            <button
+              onClick={() => navigate(-1)}
+              style={{
+                background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '10px',
+                padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                gap: '8px', fontSize: '14px', fontWeight: '600', color: '#111827', transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#EFF6FF'; e.currentTarget.style.borderColor = '#060030ff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
+            >
+              <ChevronLeft size={18} />
+              Back
+            </button>
+          </div>
+        )}
 
         {sessionData && playerData && (
           <>
@@ -2588,6 +2640,49 @@ const SessionDetail = () => {
                     <p style={{ fontSize: '11px', color: '#6B7280', margin: 0, textAlign: 'right' }}>
                       {calculateProgress()}%
                     </p>
+                  </div>
+
+                  {/* Attendance buttons */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                      ATTENDANCE
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => handleMarkAttendance('Present')}
+                        disabled={isMarkingAttendance}
+                        style={{
+                          flex: 1, padding: '9px 6px', borderRadius: '8px', border: '1.5px solid',
+                          fontSize: '12px', fontWeight: '700', cursor: isMarkingAttendance ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          borderColor: attendanceStatus === 'Present' ? '#16A34A' : '#D1FAE5',
+                          background: attendanceStatus === 'Present' ? '#16A34A' : '#F0FDF4',
+                          color: attendanceStatus === 'Present' ? 'white' : '#16A34A',
+                          boxShadow: attendanceStatus === 'Present' ? '0 2px 8px rgba(22,163,74,0.3)' : 'none'
+                        }}
+                        onMouseEnter={(e) => { if (attendanceStatus !== 'Present' && !isMarkingAttendance) { e.currentTarget.style.background = '#DCFCE7'; e.currentTarget.style.borderColor = '#16A34A'; } }}
+                        onMouseLeave={(e) => { if (attendanceStatus !== 'Present') { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.borderColor = '#D1FAE5'; } }}
+                      >
+                        {isMarkingAttendance && attendanceStatus !== 'Present' ? '...' : '✓ Present'}
+                      </button>
+                      <button
+                        onClick={() => handleMarkAttendance('Absent')}
+                        disabled={isMarkingAttendance}
+                        style={{
+                          flex: 1, padding: '9px 6px', borderRadius: '8px', border: '1.5px solid',
+                          fontSize: '12px', fontWeight: '700', cursor: isMarkingAttendance ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          borderColor: attendanceStatus === 'Absent' ? '#DC2626' : '#FEE2E2',
+                          background: attendanceStatus === 'Absent' ? '#DC2626' : '#FFF5F5',
+                          color: attendanceStatus === 'Absent' ? 'white' : '#DC2626',
+                          boxShadow: attendanceStatus === 'Absent' ? '0 2px 8px rgba(220,38,38,0.3)' : 'none'
+                        }}
+                        onMouseEnter={(e) => { if (attendanceStatus !== 'Absent' && !isMarkingAttendance) { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.borderColor = '#DC2626'; } }}
+                        onMouseLeave={(e) => { if (attendanceStatus !== 'Absent') { e.currentTarget.style.background = '#FFF5F5'; e.currentTarget.style.borderColor = '#FEE2E2'; } }}
+                      >
+                        {isMarkingAttendance && attendanceStatus !== 'Absent' ? '...' : '✗ Absent'}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Status Badge */}

@@ -201,6 +201,7 @@ export const SessionCardsView = ({
   isLoading = false,
   generateError,
   onGenerateCard,
+  onBack,
 }) => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
@@ -236,7 +237,7 @@ export const SessionCardsView = ({
     totalPoints: sessions.reduce((sum, s) => sum + (s.totalPoints || 0), 0)
   }), [sessions]);
 
-  const handleBackClick = () => navigate('/coach/start-session');
+  const handleBackClick = () => onBack ? onBack() : navigate('/coach/start-session');
 
   // Set 5 second delay for empty state loading
   useEffect(() => {

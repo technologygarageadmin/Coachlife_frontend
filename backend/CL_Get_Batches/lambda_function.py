@@ -83,11 +83,27 @@ def lambda_handler(event, context):
                 {"playerId": str(p["_id"]), "playerName": p.get("playerName", "")}
                 for p in players
             ]
+
+            coach_ids = batch.get("coachIds", [])
+            coach_oid_list = []
+            for cid in coach_ids:
+                try:
+                    coach_oid_list.append(ObjectId(cid))
+                except Exception:
+                    pass
+            coach_docs = list(users.find({"_id": {"$in": coach_oid_list}}, {"name": 1}))
+            coach_info = [
+                {"coachId": str(c["_id"]), "name": c.get("name", "")}
+                for c in coach_docs
+            ]
+
             result.append({
                 "batchId": str(batch["_id"]),
                 "batchName": batch.get("batchName", ""),
                 "playerIds": player_ids,
                 "players": player_info,
+                "coachIds": coach_ids,
+                "coaches": coach_info,
                 "createdAt": batch.get("createdAt", ""),
             })
         return resp(200, {"batches": result})

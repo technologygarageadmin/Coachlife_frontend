@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Select } from '../../components/Select';
 import { Toast } from '../../components/Toast';
-import { Users, UserCheck, X, Search, Filter, CheckCircle2, AlertCircle, Link2, ChevronDown, ChevronUp, BookOpen, Star, Trophy } from 'lucide-react';
+import { Users, UserCheck, X, Search, Filter, CheckCircle2, AlertCircle, Link2, ChevronDown, ChevronUp, BookOpen, Star, Trophy, Layers } from 'lucide-react';
 
 const AssignPlayers = () => {
+  const navigate = useNavigate();
   const { players, coaches, assignPlayerToCoach, fetchPlayers, fetchCoaches, removePlayerFromCoach, swapPlayerBetweenCoaches, fetchAssignedPlayersForCoach } = useStore();
   const [removingPlayerId, setRemovingPlayerId] = useState(null);
   const [coachAssignments, setCoachAssignments] = useState({});
@@ -456,9 +458,25 @@ const AssignPlayers = () => {
           marginBottom: '32px'
         }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{ marginBottom: '24px' }}>
-              <h1 style={{ fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0' }}>Player Assignments</h1>
-              <p style={{ fontSize: '14px', opacity: 0.9, margin: 0 }}>Manage coach-player relationships</p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+              <div>
+                <h1 style={{ fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0' }}>Player Assignments</h1>
+                <p style={{ fontSize: '14px', opacity: 0.9, margin: 0 }}>Manage coach-player relationships</p>
+              </div>
+              <button
+                onClick={() => navigate('/admin/manage-batches')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '10px 18px', borderRadius: '9px',
+                  background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.3)',
+                  color: 'white', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                  backdropFilter: 'blur(10px)', transition: 'all 0.2s ease', whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
+              >
+                <Layers size={15} /> Manage Batches
+              </button>
             </div>
 
             {/* Stats Row */}
