@@ -1,12 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createElement } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
-import { SkeletonContainer } from '../../components/SkeletonLoader';
-import { Users, Loader, Search, Trophy, Zap, X, Layers } from 'lucide-react';
+import { Users, Search, Trophy, Zap, Layers, ArrowRight, BookOpen, Star, ChevronDown, X } from 'lucide-react';
 import { SessionCardsView } from './SessionCardsView';
 
 const CL_GET_BATCHES_URL = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
+
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const _pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+);
+
+const AVATAR_COLORS = [
+  ['#6366F1', '#8B5CF6'],
+  ['#EC4899', '#F43F5E'],
+  ['#F59E0B', '#EF4444'],
+  ['#10B981', '#059669'],
+  ['#06B6D4', '#3B82F6'],
+  ['#8B5CF6', '#EC4899'],
+];
+const avatarGradient = (name) => {
+  const idx = (name?.charCodeAt(0) || 0) % AVATAR_COLORS.length;
+  const [a, b] = AVATAR_COLORS[idx];
+  return `linear-gradient(135deg, ${a}, ${b})`;
+};
 
 const StartSession = () => {
   const { playerId } = useParams();
@@ -21,11 +45,10 @@ const StartSession = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState(null);
   const [filterStage, setFilterStage] = useState('all');
-
-  // Batch state
-  const [viewMode, setViewMode] = useState('players'); // 'players' | 'batches'
+  const [viewMode, setViewMode] = useState('players');
   const [batches, setBatches] = useState([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const convertProgressToPercentage = (progress) => {
     if (typeof progress === 'number') return progress;
@@ -37,38 +60,22 @@ const StartSession = () => {
 
   const fetchSessionCardById = async (sessionCardId, token) => {
     try {
-      if (!token) {
-        console.warn('No token provided for session card fetch');
-        return null;
-      }
-      const headers = {
-        'Accept': 'application/json, text/plain, */*',
-        'Content-Type': 'application/json',
-        'userToken': token,
-        'Authorization': `Bearer ${token}`
-      };
+      if (!token) return null;
       const response = await fetch(
         'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
         {
           method: 'POST',
-          headers: headers,
-          body: JSON.stringify({ sessionCardId: sessionCardId })
+          headers: { 'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ sessionCardId })
         }
       );
-      if (!response.ok) {
-        console.error(`Failed to fetch session card ${sessionCardId}: ${response.status}`);
-        return null;
-      }
+      if (!response.ok) return null;
       const result = await response.json();
       return result.sessionCard || result.data || result;
-    } catch (error) {
-      console.error('Error fetching session card:', error);
-      return null;
-    }
+    } catch { return null; } /* ignore fetch errors */
   };
 
   const refreshSessionCards = async () => {
-    console.log('=== refreshSessionCards called ===');
     try {
       setIsLoading(true);
       const coachResult = await fetchAssignedPlayersForCoach(currentUser.id);
@@ -80,118 +87,56 @@ const StartSession = () => {
         if (playerItem && playerItem.sessionCardIds && playerItem.sessionCardIds.length > 0) {
           let token = userToken;
           if (!token) {
-            try {
-              const storedAuth = localStorage.getItem('coachlife_auth');
-              if (storedAuth) {
-                const authData = JSON.parse(storedAuth);
-                token = authData.userToken;
-              }
-            } catch (e) {
-              console.error('Error reading auth from localStorage:', e);
-            }
+            try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ }
           }
-          if (!token) {
-            console.error('No token available for refreshing session cards');
-            setIsGenerating(false);
-            return;
+          if (!token) { setIsGenerating(false); return; }
+          const cards = [];
+          for (const id of playerItem.sessionCardIds) {
+            const card = await fetchSessionCardById(id, token);
+            if (card) cards.push(card);
           }
-          const sessionCardsData = [];
-          for (const sessionCardId of playerItem.sessionCardIds) {
-            const cardData = await fetchSessionCardById(sessionCardId, token);
-            if (cardData) sessionCardsData.push(cardData);
-          }
-          setSessions(sessionCardsData);
+          setSessions(cards);
         }
       }
       setIsGenerating(false);
-    } catch (error) {
-      console.error('Error refreshing session cards:', error);
-      setIsGenerating(false);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch { setIsGenerating(false); } finally { setIsLoading(false); }
   };
 
   const generateSessionCard = async () => {
-    console.log('=== generateSessionCard called ===');
     try {
       setIsGenerating(true);
       setGenerateError(null);
-      if (!selectedPlayer || !selectedPlayer.playerId) {
-        const errorMsg = 'Please select a player first.';
-        console.error(errorMsg);
-        setGenerateError(errorMsg);
-        setIsGenerating(false);
-        return;
-      }
+      if (!selectedPlayer?.playerId) { setGenerateError('Please select a player first.'); setIsGenerating(false); return; }
       let token = userToken;
       if (!token) {
-        try {
-          const storedAuth = localStorage.getItem('coachlife_auth');
-          if (storedAuth) {
-            const authData = JSON.parse(storedAuth);
-            token = authData.userToken;
-          }
-        } catch (e) {
-          console.error('Error reading auth from localStorage:', e);
-        }
+        try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ }
       }
-      if (!token) {
-        const errorMsg = 'No authentication token found. Please login again.';
-        console.error(errorMsg);
-        setGenerateError(errorMsg);
-        setIsGenerating(false);
-        return;
-      }
-      const headers = {
-        'Accept': 'application/json, text/plain, */*',
-        'Content-Type': 'application/json',
-        'userToken': token,
-        'Authorization': `Bearer ${token}`
-      };
+      if (!token) { setGenerateError('No authentication token found. Please login again.'); setIsGenerating(false); return; }
       const response = await fetch(
         'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
-        {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify({ playerId: selectedPlayer.playerId })
-        }
+        { method: 'POST', headers: { 'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ playerId: selectedPlayer.playerId }) }
       );
       if (!response.ok) {
         const errorText = await response.text();
-        let errorMessage = `Failed to generate session card: ${response.status}`;
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error) errorMessage = errorJson.error;
-          else if (errorJson.message) errorMessage = errorJson.message;
-        } catch {
-          if (errorText) errorMessage = errorText;
-        }
-        throw new Error(errorMessage);
+        let msg = `Failed to generate session card: ${response.status}`;
+        try { const j = JSON.parse(errorText); if (j.error) msg = j.error; else if (j.message) msg = j.message; } catch { /* ignore */ }
+        throw new Error(msg);
       }
-      const responseData = await response.json();
-      console.log('Response data:', responseData);
+      await response.json();
       await refreshSessionCards();
     } catch (error) {
-      console.error('Error generating session card:', error);
-      if (error.message && error.message.includes('Failed to fetch')) {
-        setTimeout(() => refreshSessionCards(), 1000);
-      } else {
-        setGenerateError(error.message || 'Failed to generate session card');
-      }
-    } finally {
-      setIsGenerating(false);
-    }
+      if (error.message?.includes('Failed to fetch')) { setTimeout(() => refreshSessionCards(), 1000); }
+      else { setGenerateError(error.message || 'Failed to generate session card'); }
+    } finally { setIsGenerating(false); }
   };
 
-  // Fetch assigned players
   useEffect(() => {
     const loadPlayers = async () => {
       try {
         setIsLoading(true);
         const result = await fetchAssignedPlayersForCoach(currentUser.id);
         if (result.success && result.players) {
-          const transformedPlayers = result.players.map(item => {
+          const transformed = result.players.map(item => {
             const player = item.player || item;
             return {
               playerId: player._id || player.id || player.playerId,
@@ -204,72 +149,37 @@ const StartSession = () => {
               sessionCardIds: item.sessionCardIds || []
             };
           });
-          setPlayers(transformedPlayers);
+          setPlayers(transformed);
           if (playerId) {
-            const player = transformedPlayers.find(p => p.playerId === playerId);
+            const player = transformed.find(p => p.playerId === playerId);
             if (player) {
               setSelectedPlayer(player);
-              if (player.sessionCardIds && player.sessionCardIds.length > 0) {
+              if (player.sessionCardIds?.length > 0) {
                 let token = userToken;
-                if (!token) {
-                  try {
-                    const storedAuth = localStorage.getItem('coachlife_auth');
-                    if (storedAuth) {
-                      const authData = JSON.parse(storedAuth);
-                      token = authData.userToken;
-                    }
-                  } catch (e) {
-                    console.error('Error reading auth from localStorage:', e);
-                  }
-                }
-                const sessionCardPromises = player.sessionCardIds.map(sessionCardId =>
-                  fetchSessionCardById(sessionCardId, token).catch(err => {
-                    console.error(`Failed to fetch session card ${sessionCardId}:`, err);
-                    return null;
-                  })
-                );
-                const sessionCardsData = await Promise.all(sessionCardPromises);
-                setSessions(sessionCardsData.filter(card => card !== null));
-              } else {
-                setSessions([]);
-              }
+                if (!token) { try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ } }
+                const cards = await Promise.all(player.sessionCardIds.map(id => fetchSessionCardById(id, token).catch(() => null)));
+                setSessions(cards.filter(Boolean));
+              } else { setSessions([]); }
               setGenerateError(null);
             }
-          } else {
-            setSelectedPlayer(null);
-            setSessions([]);
-            setGenerateError(null);
-          }
+          } else { setSelectedPlayer(null); setSessions([]); setGenerateError(null); }
         }
-      } catch (error) {
-        console.error('Error fetching players:', error);
-        setPlayers([]);
-      } finally {
-        setIsLoading(false);
-      }
+      } catch { setPlayers([]); } finally { setIsLoading(false); }
     };
     if (currentUser?.id) loadPlayers();
   }, [currentUser?.id, fetchAssignedPlayersForCoach, playerId, userToken]);
 
-  // Fetch batches assigned to this coach
   useEffect(() => {
     if (!currentUser?.id || !userToken) return;
     const controller = new AbortController();
     (async () => {
       setBatchesLoading(true);
       try {
-        const res = await fetch(CL_GET_BATCHES_URL, {
-          signal: controller.signal,
-          headers: { 'Content-Type': 'application/json', 'userToken': userToken }
-        });
+        const res = await fetch(CL_GET_BATCHES_URL, { signal: controller.signal, headers: { 'Content-Type': 'application/json', 'userToken': userToken } });
         const data = await res.json();
         const all = data.batches || [];
         setBatches(all.filter(b => b.coachIds && b.coachIds.includes(currentUser.id)));
-      } catch (e) {
-        if (e.name !== 'AbortError') setBatches([]);
-      } finally {
-        setBatchesLoading(false);
-      }
+      } catch (e) { if (e.name !== 'AbortError') setBatches([]); } finally { setBatchesLoading(false); }
     })();
     return () => controller.abort();
   }, [currentUser?.id, userToken]);
@@ -280,51 +190,24 @@ const StartSession = () => {
     setIsLoading(true);
     try {
       setGenerateError(null);
-      if (player.sessionCardIds && player.sessionCardIds.length > 0) {
+      if (player.sessionCardIds?.length > 0) {
         let token = userToken;
-        if (!token) {
-          try {
-            const storedAuth = localStorage.getItem('coachlife_auth');
-            if (storedAuth) {
-              const authData = JSON.parse(storedAuth);
-              token = authData.userToken;
-            }
-          } catch (e) {
-            console.error('Error reading auth from localStorage:', e);
-          }
-        }
-        const sessionCardPromises = player.sessionCardIds.map(sessionCardId =>
-          fetchSessionCardById(sessionCardId, token).catch(err => {
-            console.error(`Failed to fetch session card ${sessionCardId}:`, err);
-            return null;
-          })
-        );
-        const sessionCardsData = await Promise.all(sessionCardPromises);
-        setSessions(sessionCardsData.filter(card => card !== null));
-      } else {
-        setSessions([]);
-      }
-    } catch (error) {
-      console.error('Error fetching session card details:', error);
-      setSessions([]);
-    } finally {
-      setIsLoading(false);
-    }
+        if (!token) { try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ } }
+        const cards = await Promise.all(player.sessionCardIds.map(id => fetchSessionCardById(id, token).catch(() => null)));
+        setSessions(cards.filter(Boolean));
+      } else { setSessions([]); }
+    } catch { setSessions([]); } finally { setIsLoading(false); }
   };
 
-
   let filteredPlayers = players.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         p.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPathway = filterStage === 'all' || p.learningPathway === filterStage;
     return matchesSearch && matchesPathway;
   });
-
   filteredPlayers = [...filteredPlayers].sort((a, b) => {
     switch (sortBy) {
       case 'points': return (b.totalPoints || 0) - (a.totalPoints || 0);
       case 'pathway': return (a.learningPathway || '').localeCompare(b.learningPathway || '');
-      case 'name':
       default: return a.name.localeCompare(b.name);
     }
   });
@@ -333,6 +216,18 @@ const StartSession = () => {
   const totalPlayers = players.length;
   const totalSessionCards = players.reduce((sum, p) => sum + (p.sessionCardIds?.length || 0), 0);
   const totalPoints = players.reduce((sum, p) => sum + (p.totalPoints || 0), 0);
+
+  const headerStats = [
+    { icon: Users, label: 'Players', value: totalPlayers },
+    { icon: Zap, label: 'Session Cards', value: totalSessionCards },
+    { icon: Trophy, label: 'Total Points', value: totalPoints.toLocaleString() },
+    { icon: Layers, label: 'My Batches', value: batches.length },
+  ];
+
+  const viewTabs = [
+    { key: 'players', label: 'All Players', icon: Users },
+    { key: 'batches', label: 'By Batch', icon: Layers },
+  ];
 
   if (selectedPlayer) {
     return (
@@ -346,291 +241,333 @@ const StartSession = () => {
           onGenerateCard={generateSessionCard}
           currentUser={currentUser}
           fetchAssignedPlayersForCoach={fetchAssignedPlayersForCoach}
+          onBack={() => { setSelectedPlayer(null); setSessions([]); navigate('/coach/start-session'); }}
         />
       </Layout>
     );
   }
 
-  // ── Shared player card renderer ──────────────────────────────────────────
-  const renderPlayerCard = (player) => (
-    <div
-      key={player.playerId}
-      style={{
-        background: '#FFFFFF',
-        borderRadius: '14px',
-        border: '2px solid #E2E8F0',
-        overflow: 'hidden',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        transition: 'all 0.3s ease',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column'
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = '0 8px 24px rgba(82,102,129,0.15)';
-        e.currentTarget.style.borderColor = '#060030ff';
-        e.currentTarget.style.transform = 'translateY(-4px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-        e.currentTarget.style.borderColor = '#E2E8F0';
-        e.currentTarget.style.transform = 'translateY(0)';
-      }}
-    >
-      <div style={{
-        padding: '16px',
-        background: 'linear-gradient(135deg, #F8FAFC, #EFF6FF)',
-        borderBottom: '1.5px solid #E2E8F0'
-      }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#111827', margin: 0, marginBottom: '4px' }}>
-          {player.name}
-        </h3>
-        <p style={{ fontSize: '12px', color: '#64748B', margin: 0 }}>{player.email}</p>
-      </div>
-      <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <span style={{
-          padding: '4px 10px',
-          background: '#FFFBEB',
-          color: '#92400E',
-          borderRadius: '6px',
-          fontSize: '11px',
-          fontWeight: '700'
-        }}>
-          {player.learningPathway}
-        </span>
-      </div>
-      <div style={{
-        padding: '12px 16px',
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '12px',
-        borderBottom: '1.5px solid #E2E8F0'
-      }}>
-        <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', textAlign: 'center' }}>
-          <p style={{ fontSize: '10px', color: '#64748B', margin: 0, marginBottom: '4px', fontWeight: '600' }}>Points</p>
-          <p style={{ fontSize: '16px', fontWeight: 'bold', color: '#060030ff', margin: 0 }}>
-            {player.totalPoints}
-          </p>
-        </div>
-        <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', textAlign: 'center' }}>
-          <p style={{ fontSize: '10px', color: '#64748B', margin: 0, marginBottom: '4px', fontWeight: '600' }}>Cards</p>
-          <p style={{ fontSize: '16px', fontWeight: 'bold', color: '#060030ff', margin: 0 }}>
-            {player.sessionCardIds?.length || 0}
-          </p>
-        </div>
-      </div>
-      <div style={{ padding: '12px 16px', marginTop: 'auto' }}>
-        <button
-          onClick={() => handleSelectPlayer(player)}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #060030ff, #252c35)',
-            color: 'white',
-            fontSize: '12px',
-            fontWeight: '700',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(82,102,129,0.3)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-        >
-          Start Session
-        </button>
-      </div>
-    </div>
-  );
-
   return (
     <Layout>
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
+      <style>{`@keyframes skPulse { 0%,100%{opacity:.5} 50%{opacity:1} }`}</style>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px 40px' }}>
 
         {/* ── Header ── */}
         {isLoading ? (
-          <SkeletonContainer>
-            <div style={{
-              background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-              borderRadius: '16px',
-              padding: '32px',
-              marginBottom: '32px',
-              minHeight: '160px'
-            }}>
-              <div style={{ height: '40px', background: 'rgba(255,255,255,0.12)', borderRadius: '8px', marginBottom: '12px', width: '250px', animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' }} />
-              <div style={{ height: '16px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', width: '400px', marginBottom: '24px', animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite', animationDelay: '0.1s' }} />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
-                {[1, 2, 3].map(i => (
-                  <div key={i} style={{ height: '60px', background: 'rgba(255,255,255,0.08)', borderRadius: '8px', animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite', animationDelay: `${i * 0.1}s` }} />
-                ))}
+          <div style={{
+            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+            borderRadius: '20px', padding: '28px 32px', marginBottom: '24px', minHeight: '200px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
+              <Sk w={52} h={52} r={14} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <Sk w={200} h={28} r={6} />
+                <Sk w={280} h={14} r={6} />
               </div>
-              <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
             </div>
-          </SkeletonContainer>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginTop: '28px' }}>
+              {[1,2,3,4].map(i => (
+                <div key={i} style={{ height: '70px', background: 'rgba(255,255,255,0.09)', borderRadius: '12px', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i*0.08}s` }} />
+              ))}
+            </div>
+          </div>
         ) : (
           <div style={{
-            background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-            borderRadius: '16px',
-            padding: '32px',
-            color: 'white',
-            marginBottom: '32px',
-            boxShadow: '0 4px 12px rgba(37,44,53,0.2)'
+            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+            borderRadius: '20px',
+            padding: '28px 32px',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            boxShadow: '0 12px 40px rgba(6,0,48,.3)',
+            flexWrap: 'wrap',
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            <div style={{ marginBottom: '20px' }}>
-              <h1 style={{ fontSize: '32px', fontWeight: 'bold', margin: 0, marginBottom: '8px' }}>Start Session</h1>
-              <p style={{ fontSize: '15px', opacity: 0.9, margin: 0 }}>Select a player or batch to view and start session cards</p>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-              <div style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Users size={24} style={{ opacity: 0.7 }} />
+            <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '220px', height: '220px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '-60px', right: '120px', width: '160px', height: '160px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)', pointerEvents: 'none' }} />
+            <div style={{ position: 'relative', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Zap size={24} color="#fff" />
+                </div>
                 <div>
-                  <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Total Players</p>
-                  <p style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{totalPlayers}</p>
+                  <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Start Session</h1>
+                  <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>Select a player to begin a coaching session</p>
                 </div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Zap size={24} style={{ opacity: 0.7 }} />
-                <div>
-                  <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Session Cards</p>
-                  <p style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{totalSessionCards}</p>
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Trophy size={24} style={{ opacity: 0.7 }} />
-                <div>
-                  <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>Total Points</p>
-                  <p style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{totalPoints.toLocaleString()}</p>
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Layers size={24} style={{ opacity: 0.7 }} />
-                <div>
-                  <p style={{ fontSize: '12px', opacity: 0.8, margin: 0 }}>My Batches</p>
-                  <p style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>{batches.length}</p>
-                </div>
-              </div>
-            </div>
 
-            {/* View mode toggle */}
-            <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '10px', padding: '4px', width: 'fit-content' }}>
-              {[
-                { key: 'players', label: 'All Players', icon: Users },
-                { key: 'batches', label: 'By Batch', icon: Layers }
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setViewMode(key)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '8px 16px', borderRadius: '7px', border: 'none',
-                    background: viewMode === key ? 'white' : 'transparent',
-                    color: viewMode === key ? '#060030ff' : 'rgba(255,255,255,0.8)',
-                    fontWeight: viewMode === key ? '700' : '500',
-                    fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s ease'
-                  }}
-                >
-                  {key === 'players' ? <Users size={14} /> : <Layers size={14} />} {label}
-                </button>
-              ))}
+              {/* Stats row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '24px' }}>
+                {headerStats.map(({ icon, label, value }) => (
+                  <div key={label} style={{ background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', borderRadius: '14px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {createElement(icon, { size: 18, color: '#fff' })}
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.75)', margin: 0, fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
+                      <p style={{ fontSize: '20px', fontWeight: '800', color: '#fff', margin: '2px 0 0', lineHeight: 1 }}>{value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* View mode toggle */}
+              <div style={{ display: 'inline-flex', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', padding: '4px', gap: '2px' }}>
+                {viewTabs.map(({ key, label, icon }) => (
+                  <button
+                    key={key}
+                    onClick={() => setViewMode(key)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '7px',
+                      padding: '9px 18px', borderRadius: '9px', border: 'none',
+                      background: viewMode === key ? 'white' : 'transparent',
+                      color: viewMode === key ? '#6366F1' : 'rgba(255,255,255,0.8)',
+                      fontWeight: viewMode === key ? '700' : '500',
+                      fontSize: '13px', cursor: 'pointer',
+                      transition: 'all 0.22s ease',
+                      boxShadow: viewMode === key ? '0 2px 10px rgba(0,0,0,0.15)' : 'none'
+                    }}
+                  >
+                    {createElement(icon, { size: 14 })} {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        {/* ── All Players view ── */}
+        {/* ── Players view ── */}
         {viewMode === 'players' && (
           <>
-            {/* Search & Filter */}
-            {isLoading ? (
-              <SkeletonContainer>
-                <div style={{ background: '#FFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', padding: '20px', marginBottom: '32px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                    {[1, 2, 3].map(i => (
-                      <div key={i} style={{ height: '44px', background: '#f5f5f5', borderRadius: '10px', animation: `pulse 2s cubic-bezier(0.4,0,0.6,1) infinite`, animationDelay: `${i * 0.1}s` }} />
-                    ))}
-                  </div>
-                  <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+            {/* Search & filter bar */}
+            {!isLoading && (
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                border: '1.5px solid #E2E8F0',
+                padding: '16px 20px',
+                marginBottom: '28px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center',
+                flexWrap: 'wrap'
+              }}>
+                {/* Search */}
+                <div style={{ position: 'relative', flex: '1 1 220px', minWidth: '180px' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: searchFocused ? '#6366F1' : '#94A3B8', pointerEvents: 'none', transition: 'color 0.2s' }} />
+                  <input
+                    type="text"
+                    placeholder="Search players by name..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    style={{
+                      width: '100%', padding: '10px 36px 10px 38px',
+                      border: `1.5px solid ${searchFocused ? '#6366F1' : '#E2E8F0'}`,
+                      borderRadius: '10px', fontSize: '14px', outline: 'none',
+                      background: '#F8FAFC', color: '#0F172A',
+                      boxShadow: searchFocused ? '0 0 0 3px rgba(99,102,241,0.1)' : 'none',
+                      transition: 'all 0.2s ease', boxSizing: 'border-box'
+                    }}
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', display: 'flex', padding: 0 }}>
+                      <X size={14} />
+                    </button>
+                  )}
                 </div>
-              </SkeletonContainer>
-            ) : (
-              <div style={{ background: '#FFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', padding: '20px', marginBottom: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Search size={18} color="#64748B" />
-                    <input
-                      type="text"
-                      placeholder="Search by name..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      style={{ width: '100%', padding: '10px 10px 10px 40px', border: '2px solid #E2E8F0', borderRadius: '8px', fontSize: '14px', outline: 'none', transition: 'all 0.3s ease', backgroundColor: 'white' }}
-                      onFocus={(e) => { e.target.style.borderColor = '#060030ff'; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
-                      onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
-                    />
-                  </div>
+
+                {/* Sort */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    style={{ padding: '12px 14px', borderRadius: '8px', border: '1.5px solid #E2E8F0', background: '#F8FAFC', cursor: 'pointer', fontSize: '13px', color: '#111827', fontWeight: '500', outline: 'none' }}
-                    onFocus={(e) => { e.target.style.borderColor = '#060030ff'; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
+                    style={{ appearance: 'none', padding: '10px 34px 10px 14px', borderRadius: '10px', border: '1.5px solid #E2E8F0', background: '#F8FAFC', cursor: 'pointer', fontSize: '13px', color: '#0F172A', fontWeight: '500', outline: 'none', transition: 'all 0.2s' }}
+                    onFocus={(e) => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)'; }}
                     onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
                   >
-                    <option value="name">Sort by Name</option>
-                    <option value="points">Sort by Points</option>
-                    <option value="pathway">Sort by Pathway</option>
+                    <option value="name">Sort: Name</option>
+                    <option value="points">Sort: Points</option>
+                    <option value="pathway">Sort: Pathway</option>
                   </select>
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#475569', pointerEvents: 'none' }} />
+                </div>
+
+                {/* Pathway filter */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
                   <select
                     value={filterStage}
                     onChange={(e) => setFilterStage(e.target.value)}
-                    style={{ padding: '12px 14px', borderRadius: '8px', border: '1.5px solid #E2E8F0', background: filterStage !== 'all' ? '#F0E8FF' : '#F8FAFC', cursor: 'pointer', fontSize: '13px', color: '#111827', fontWeight: '500', outline: 'none' }}
-                    onFocus={(e) => { e.target.style.borderColor = '#060030ff'; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
-                    onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                    style={{ appearance: 'none', padding: '10px 34px 10px 14px', borderRadius: '10px', border: `1.5px solid ${filterStage !== 'all' ? '#6366F1' : '#E2E8F0'}`, background: filterStage !== 'all' ? 'rgba(99,102,241,0.1)' : '#F8FAFC', cursor: 'pointer', fontSize: '13px', color: filterStage !== 'all' ? '#6366F1' : '#0F172A', fontWeight: filterStage !== 'all' ? '600' : '500', outline: 'none', transition: 'all 0.2s' }}
+                    onFocus={(e) => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = filterStage !== 'all' ? '#6366F1' : '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
                   >
                     <option value="all">All Pathways</option>
-                    {uniquePathways.map(pathway => (
-                      <option key={pathway} value={pathway}>{pathway}</option>
-                    ))}
+                    {uniquePathways.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: filterStage !== 'all' ? '#6366F1' : '#475569', pointerEvents: 'none' }} />
                 </div>
+
+                <span style={{ fontSize: '13px', color: '#94A3B8', fontWeight: '500', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
+                  {filteredPlayers.length} of {players.length} players
+                </span>
               </div>
             )}
 
-            {/* Players grid */}
+            {/* Player cards grid */}
             {isLoading ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                {[1, 2, 3, 4, 5, 6].map(i => (
-                  <div key={i} style={{ background: '#FFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', animation: `pulse 2s ease-in-out infinite ${i * 0.1}s` }}>
-                    <div style={{ width: '100%', height: '160px', background: 'rgba(200,200,200,0.3)', borderRadius: '8px', marginBottom: '16px' }} />
-                    <div style={{ width: '70%', height: '18px', background: 'rgba(200,200,200,0.3)', borderRadius: '4px', marginBottom: '8px' }} />
-                    <div style={{ width: '50%', height: '14px', background: 'rgba(200,200,200,0.3)', borderRadius: '4px', marginBottom: '16px' }} />
-                    <div style={{ width: '100%', height: '36px', background: 'rgba(200,200,200,0.3)', borderRadius: '6px' }} />
+                {[1,2,3,4,5,6].map(i => (
+                  <div key={i} style={{ background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0', overflow: 'hidden', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i * 0.07}s` }}>
+                    <div style={{ height: '90px', background: '#EEF2F7' }} />
+                    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <Sk w="80%" h={14} r={6} />
+                      <Sk w="55%" h={14} r={6} />
+                      <Sk w="100%" h={38} r={8} />
+                    </div>
                   </div>
                 ))}
-                <style>{`@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.7}}`}</style>
               </div>
             ) : filteredPlayers.length > 0 ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                {filteredPlayers.map(renderPlayerCard)}
+                <>
+                  {filteredPlayers.map((player) => (
+                    <div
+                      key={player.playerId}
+                      style={{
+                        background: '#FFFFFF',
+                        borderRadius: '16px',
+                        border: '1.5px solid #E2E8F0',
+                        overflow: 'hidden',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                        transition: 'box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = '0 10px 36px rgba(99,102,241,0.22)';
+                        e.currentTarget.style.borderColor = '#6366F1';
+                        e.currentTarget.style.transform = 'translateY(-5px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                        e.currentTarget.style.borderColor = '#E2E8F0';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                      onClick={() => handleSelectPlayer(player)}
+                    >
+                      {/* Card header with avatar */}
+                      <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: '1.5px solid #E2E8F0' }}>
+                        <div style={{
+                          width: '52px', height: '52px', borderRadius: '14px', flexShrink: 0,
+                          background: avatarGradient(player.name),
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '20px', fontWeight: '800', color: 'white',
+                          boxShadow: '0 4px 12px rgba(99,102,241,0.25)'
+                        }}>
+                          {(player.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0F172A', margin: '0 0 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {player.name}
+                          </h3>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%',
+                              background: player.status === 'active' ? '#10B981' : '#94A3B8'
+                            }} />
+                            <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '500', textTransform: 'capitalize' }}>
+                              {player.status || 'active'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pathway badge */}
+                      <div style={{ padding: '12px 20px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <BookOpen size={12} color="#6366F1" />
+                        <span style={{
+                          fontSize: '11px', fontWeight: '600', color: '#6366F1',
+                          background: 'rgba(99,102,241,0.1)', padding: '3px 9px',
+                          borderRadius: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%'
+                        }}>
+                          {player.learningPathway}
+                        </span>
+                      </div>
+
+                      {/* Stats */}
+                      <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '11px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
+                            <Star size={11} color="#6366F1" />
+                            <span style={{ fontSize: '10px', color: '#94A3B8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Points</span>
+                          </div>
+                          <p style={{ fontSize: '18px', fontWeight: '800', color: '#6366F1', margin: 0, lineHeight: 1 }}>
+                            {(player.totalPoints || 0).toLocaleString()}
+                          </p>
+                        </div>
+                        <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '11px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
+                            <Zap size={11} color="#10B981" />
+                            <span style={{ fontSize: '10px', color: '#94A3B8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Cards</span>
+                          </div>
+                          <p style={{ fontSize: '18px', fontWeight: '800', color: '#10B981', margin: 0, lineHeight: 1 }}>
+                            {player.sessionCardIds?.length || 0}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* CTA */}
+                      <div style={{ padding: '0 20px 20px', marginTop: 'auto' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleSelectPlayer(player); }}
+                          style={{
+                            width: '100%', padding: '11px 16px',
+                            borderRadius: '10px', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+                            color: 'white', fontSize: '13px', fontWeight: '700',
+                            border: 'none', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                            transition: 'all 0.2s ease',
+                            letterSpacing: '0.2px'
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'; e.currentTarget.style.boxShadow = 'none'; }}
+                        >
+                          View Session Cards <ArrowRight size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </>
               </div>
             ) : (
-              <div style={{ background: '#FFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', padding: '48px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                <Users size={56} style={{ margin: '0 auto 16px', opacity: 0.3, color: '#D1D5DB' }} />
-                <p style={{ fontSize: '18px', fontWeight: '700', color: '#111827', margin: 0, marginBottom: '8px' }}>
+              <div style={{
+                background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0',
+                padding: '64px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+              }}>
+                <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                  <Users size={32} color="#94A3B8" />
+                </div>
+                <p style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>
                   {players.length === 0 ? 'No players assigned yet' : 'No players match your filters'}
                 </p>
-                <p style={{ fontSize: '14px', color: '#64748B', margin: 0, marginBottom: '16px' }}>
-                  {players.length === 0 ? 'Players will appear here once assigned to you' : 'Try adjusting your search or filter criteria'}
+                <p style={{ fontSize: '14px', color: '#475569', margin: '0 0 24px' }}>
+                  {players.length === 0 ? 'Players will appear here once assigned to you' : 'Try adjusting your search or filters'}
                 </p>
                 {(filterStage !== 'all' || searchTerm) && (
                   <button
                     onClick={() => { setSearchTerm(''); setFilterStage('all'); }}
-                    style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#060030ff', color: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.8'; }}
+                    style={{ padding: '10px 20px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
                   >
-                    Clear All Filters
+                    Clear Filters
                   </button>
                 )}
               </div>
@@ -638,59 +575,74 @@ const StartSession = () => {
           </>
         )}
 
-        {/* ── By Batch view ── */}
+        {/* ── Batches view ── */}
         {viewMode === 'batches' && (
           batchesLoading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-              {[1, 2, 3].map(i => (
-                <div key={i} style={{ background: '#FFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', padding: '24px', animation: `pulse 2s ease-in-out infinite ${i * 0.1}s` }}>
-                  <div style={{ height: '24px', width: '60%', background: 'rgba(200,200,200,0.3)', borderRadius: '6px', marginBottom: '12px' }} />
-                  <div style={{ height: '16px', width: '40%', background: 'rgba(200,200,200,0.3)', borderRadius: '4px', marginBottom: '20px' }} />
-                  <div style={{ height: '40px', background: 'rgba(200,200,200,0.3)', borderRadius: '8px' }} />
+              {[1,2,3].map(i => (
+                <div key={i} style={{ background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0', overflow: 'hidden', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i*0.08}s` }}>
+                  <div style={{ height: '80px', background: '#EEF2F7' }} />
+                  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <Sk w="60%" h={14} r={6} />
+                    <Sk w="40%" h={14} r={6} />
+                    <Sk w="100%" h={38} r={8} />
+                  </div>
                 </div>
               ))}
-              <style>{`@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.7}}`}</style>
             </div>
           ) : batches.length === 0 ? (
-            <div style={{ background: '#FFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', padding: '48px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-              <Layers size={56} style={{ margin: '0 auto 16px', opacity: 0.3, color: '#D1D5DB' }} />
-              <p style={{ fontSize: '18px', fontWeight: '700', color: '#111827', margin: 0, marginBottom: '8px' }}>No batches assigned</p>
-              <p style={{ fontSize: '14px', color: '#64748B', margin: 0 }}>Ask an admin to assign you to a batch from the Manage Batches page</p>
+            <div style={{ background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0', padding: '64px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                <Layers size={32} color="#94A3B8" />
+              </div>
+              <p style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>No batches assigned</p>
+              <p style={{ fontSize: '14px', color: '#475569', margin: 0 }}>
+                Ask an admin to assign you to a batch from the Manage Batches page
+              </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-              {batches.map(batch => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+              {batches.map((batch) => (
                 <div
                   key={batch.batchId}
                   style={{
-                    background: '#FFF', borderRadius: '14px', border: '2px solid #E2E8F0',
+                    background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0',
                     overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                    transition: 'all 0.3s ease'
+                    transition: 'box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease'
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 8px 24px rgba(82,102,129,0.15)'; e.currentTarget.style.borderColor = '#060030ff'; e.currentTarget.style.transform = 'translateY(-4px)'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 10px 36px rgba(99,102,241,0.22)'; e.currentTarget.style.borderColor = '#6366F1'; e.currentTarget.style.transform = 'translateY(-4px)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <div style={{ padding: '20px', background: 'linear-gradient(135deg, #060030ff, #252c35)', color: 'white' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                      <Layers size={20} style={{ opacity: 0.8 }} />
+                  <div style={{ padding: '20px', background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)', color: 'white', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Layers size={18} />
+                      </div>
                       <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>{batch.batchName}</h3>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ padding: '3px 10px', background: 'rgba(255,255,255,0.15)', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ padding: '4px 12px', background: 'rgba(255,255,255,0.16)', borderRadius: '20px', fontSize: '12px', fontWeight: '600', border: '1px solid rgba(255,255,255,0.2)' }}>
                         {batch.players?.length || 0} Players
                       </span>
                     </div>
                   </div>
-                  <div style={{ padding: '16px' }}>
+
+                  <div style={{ padding: '16px 20px' }}>
                     {batch.players && batch.players.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
-                        <p style={{ fontSize: '11px', color: '#64748B', fontWeight: '600', margin: '0 0 6px' }}>PLAYERS</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {batch.players.slice(0, 3).map(p => (
-                            <span key={p.playerId} style={{ fontSize: '13px', color: '#374151' }}>{p.playerName}</span>
+                        <p style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '700', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Players</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {batch.players.slice(0, 4).map((p, idx) => (
+                            <div key={p.playerId || idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ width: '26px', height: '26px', borderRadius: '8px', background: avatarGradient(p.playerName || ''), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: 'white', flexShrink: 0 }}>
+                                {(p.playerName || '?').charAt(0).toUpperCase()}
+                              </div>
+                              <span style={{ fontSize: '13px', color: '#0F172A', fontWeight: '500' }}>{p.playerName}</span>
+                            </div>
                           ))}
-                          {batch.players.length > 3 && (
-                            <span style={{ fontSize: '12px', color: '#9CA3AF' }}>+{batch.players.length - 3} more</span>
+                          {batch.players.length > 4 && (
+                            <span style={{ fontSize: '12px', color: '#94A3B8', paddingLeft: '34px' }}>+{batch.players.length - 4} more</span>
                           )}
                         </div>
                       </div>
@@ -698,16 +650,15 @@ const StartSession = () => {
                     <button
                       onClick={() => navigate('/coach/batch-session', { state: { batch } })}
                       style={{
-                        width: '100%', padding: '10px', borderRadius: '8px',
-                        background: 'linear-gradient(135deg, #060030ff, #252c35)',
-                        color: 'white', fontSize: '13px', fontWeight: '700',
-                        border: 'none', cursor: 'pointer', transition: 'all 0.2s ease',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                        width: '100%', padding: '11px 16px', borderRadius: '10px',
+                        background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', fontSize: '13px', fontWeight: '700',
+                        border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        transition: 'all 0.2s ease'
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(6,0,48,0.3)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(99,102,241,0.35)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'; e.currentTarget.style.boxShadow = 'none'; }}
                     >
-                      Start Batch
+                      Start Batch Session <ArrowRight size={14} />
                     </button>
                   </div>
                 </div>
@@ -715,7 +666,6 @@ const StartSession = () => {
             </div>
           )
         )}
-
       </div>
     </Layout>
   );

@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client'
 import './styles/critical.css' // Load critical CSS first
 import './index.css'
 import './styles/global.css'
+import './styles/theme.css' // Theme tokens + dark mode (loads last to win the cascade)
+import { ThemeProvider } from './context/ThemeContext.jsx'
 import App from './App.jsx'
 
 // Fix for iPad/Safari media query issues
@@ -40,6 +42,8 @@ if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 )

@@ -1,4 +1,4 @@
-# CoachLife — Project Reference
+# CoachLife - Project Reference
 
 ## What This Is
 
@@ -15,9 +15,9 @@ The app serves as the operational interface for administrators and coaches: admi
 | **Player** | A student enrolled at Technology Garage |
 | **Coach** | An instructor assigned to one or more players |
 | **Learning Pathway** | A curriculum (e.g., "AI Foundation for Kids") containing ordered sessions |
-| **Session** | One unit of a Learning Pathway — has a topic, objective, and activities |
+| **Session** | One unit of a Learning Pathway - has a topic, objective, and activities |
 | **Session Card** | A player-specific copy of a session's activities, generated for each scheduled session |
-| **Activity** | A single task/exercise within a session — carries points and accepts feedback |
+| **Activity** | A single task/exercise within a session - carries points and accepts feedback |
 | **Points** | Earned by completing activities; accumulated as `totalPoints`, redeemable as `PointBalance` |
 | **Rewards** | Items players can redeem using their point balance |
 
@@ -31,31 +31,31 @@ The app serves as the operational interface for administrators and coaches: admi
 ## Features
 
 ### Admin Features
-- **Player Management** — Add, edit, delete players; set name, contact info, date of birth, blood group, address, Learning Pathway, status
-- **Coach Management** — Register new coaches (triggers registration API), edit details, delete coaches
-- **Assign Players** — Assign a player to a coach, remove, or swap between coaches (one coach per player at a time)
-- **Learning Pathway Builder** — List all pathway sessions grouped by `LearningPathway` name; delete sessions
-- **Add / Edit Pathway Session** — Create or edit a session with topic, objective, activities, activity points, session takeaways, SessionType (Primary/Secondary/Advanced)
-- **View Pathway Session** — Read-only view of a session's full details
-- **Session Card Management** — View all players, select one, see their session cards, generate standard or custom cards, view/edit/delete cards
-- **Custom Card Generation** — Navigate to custom-generate-card page to create a tailored session card for a player
-- **Rewards Management** — Add, edit, delete rewards (name, description, points required, active flag)
-- **Redeem History** — View all redemption records across players
-- **Admin Profile** — View/edit profile information
+- **Player Management** - Add, edit, delete players; set name, contact info, date of birth, blood group, address, Learning Pathway, status
+- **Coach Management** - Register new coaches (triggers registration API), edit details, delete coaches
+- **Assign Players** - Assign a player to a coach, remove, or swap between coaches (one coach per player at a time)
+- **Learning Pathway Builder** - List all pathway sessions grouped by `LearningPathway` name; delete sessions
+- **Add / Edit Pathway Session** - Create or edit a session with topic, objective, activities, activity points, session takeaways, SessionType (Primary/Secondary/Advanced)
+- **View Pathway Session** - Read-only view of a session's full details
+- **Session Card Management** - View all players, select one, see their session cards, generate standard or custom cards, view/edit/delete cards
+- **Custom Card Generation** - Navigate to custom-generate-card page to create a tailored session card for a player
+- **Rewards Management** - Add, edit, delete rewards (name, description, points required, active flag)
+- **Redeem History** - View all redemption records across players
+- **Admin Profile** - View/edit profile information
 
 ### Coach Features
-- **My Players** — View list of assigned players; see their learning pathway, points, and progress
-- **Player Detail** — View full profile and session history for a specific player
-- **Player Sessions** — View sessions history for a player
-- **Start Session** — Select a player → view their session cards → generate a new card if needed → start a session
-- **Session Detail** — Work through a session card: view activities with instructions/story/code sections, rate each activity, provide feedback per activity, set overall session rating and coach comment, submit session
-- **Past Sessions** — View completed sessions across all assigned players
-- **Coach Profile** — View/edit own profile
+- **My Players** - View list of assigned players; see their learning pathway, points, and progress
+- **Player Detail** - View full profile and session history for a specific player
+- **Player Sessions** - View sessions history for a player
+- **Start Session** - Select a player → view their session cards → generate a new card if needed → start a session
+- **Session Detail** - Work through a session card: view activities with instructions/story/code sections, rate each activity, provide feedback per activity, set overall session rating and coach comment, submit session
+- **Past Sessions** - View completed sessions across all assigned players
+- **Coach Profile** - View/edit own profile
 
 ### Shared Features
-- **Dashboard** — Role-aware landing page (same component, different data for admin vs coach)
-- **Leaderboard** — All players ranked by total points; auto-refreshes every 10 minutes; coaches see their assigned players highlighted
-- **User Profile** — Common profile page
+- **Dashboard** - Role-aware landing page (same component, different data for admin vs coach)
+- **Leaderboard** - All players ranked by total points; auto-refreshes every 10 minutes; coaches see their assigned players highlighted
+- **User Profile** - Common profile page
 
 ---
 
@@ -67,11 +67,11 @@ The app serves as the operational interface for administrators and coaches: admi
 4. Coach opens the card → navigates to **Session Detail** (`/coach/session/:sessionId`)
 5. Coach works through each activity in sequence (`activitySequence` order): expands it, rates it (1–5 stars), adds per-activity feedback
 6. Coach fills in overall session rating and coach comment
-7. Coach submits — session status changes to `completed`, player earns points
+7. Coach submits - session status changes to `completed`, player earns points
 8. Points accumulate in `totalPoints`; redeemable portion tracked in `PointBalance`
 
 ### Custom Card Generation
-Admin can also use `/admin/custom-generate-card` to create a card with a specific session/topic rather than the next sequential one. Navigation state must include `{ playerId, playerName, LearningPathway }` — the `LearningPathway` sent to the API is taken from the **player's profile**, not from whichever pathway the admin browsed activities from.
+Admin can also use `/admin/custom-generate-card` to create a card with a specific session/topic rather than the next sequential one. Navigation state must include `{ playerId, playerName, LearningPathway }` - the `LearningPathway` sent to the API is taken from the **player's profile**, not from whichever pathway the admin browsed activities from.
 
 ---
 
@@ -85,7 +85,7 @@ Admin can also use `/admin/custom-generate-card` to create a card with a specifi
 | HTTP | Axios (+ native `fetch` for some endpoints) |
 | Icons | Lucide React |
 | Charts | Recharts |
-| Styling | Inline styles throughout — no Tailwind in JSX |
+| Styling | Inline styles throughout - no Tailwind in JSX |
 | Crypto | crypto-js (SHA256 password hashing on login) |
 
 ---
@@ -94,7 +94,7 @@ Admin can also use `/admin/custom-generate-card` to create a card with a specifi
 
 ```
 src/
-  App.jsx               # All routes — public/admin/coach, lazy-loaded
+  App.jsx               # All routes - public/admin/coach, lazy-loaded
   context/store.js      # Zustand store: auth, players, coaches, API actions
   components/           # Shared UI components
   pages/
@@ -106,16 +106,16 @@ src/
 ```
 
 ### Key Components (`src/components/`)
-- `Layout.jsx` — Page shell with Sidebar + Navbar
-- `Sidebar.jsx` — Role-aware navigation links
-- `ProtectedRoute.jsx` — Role-based route guard; redirects if wrong role
-- `UnauthorizedModal.jsx` — Shown on session expiry (after 3 consecutive 401s)
-- `SessionCard.jsx` — Session card display component
-- `ActivityCard.jsx` — Activity display within a session
-- `RatingStars.jsx` — Star rating input
-- `SkeletonLoader.jsx` — Loading placeholders
-- `Toast.jsx` — Ephemeral notification banners
-- `Modal.jsx` — Reusable modal wrapper
+- `Layout.jsx` - Page shell with Sidebar + Navbar
+- `Sidebar.jsx` - Role-aware navigation links
+- `ProtectedRoute.jsx` - Role-based route guard; redirects if wrong role
+- `UnauthorizedModal.jsx` - Shown on session expiry (after 3 consecutive 401s)
+- `SessionCard.jsx` - Session card display component
+- `ActivityCard.jsx` - Activity display within a session
+- `RatingStars.jsx` - Star rating input
+- `SkeletonLoader.jsx` - Loading placeholders
+- `Toast.jsx` - Ephemeral notification banners
+- `Modal.jsx` - Reusable modal wrapper
 
 ---
 
@@ -171,7 +171,7 @@ src/
 - On success: user object + `userToken` stored in Zustand + `localStorage` (`coachlife_auth` key)
 - Zustand's `persist` middleware hydrates auth on page reload
 - Axios request interceptor attaches `userToken` header to **every** request
-- **Do not use `Authorization: Bearer` header** — it causes CORS issues; use `userToken` header only
+- **Do not use `Authorization: Bearer` header** - it causes CORS issues; use `userToken` header only
 - 401 handling: counts consecutive errors; after 3, shows `UnauthorizedModal` → user clicks logout → clears all state + redirects to `/login`
 - Roles stored as array in `currentUser.roles`; primary role in `currentUser.role` (string)
 - `ProtectedRoute` checks `requiredRole` against `currentUser.roles`
@@ -217,7 +217,7 @@ https://<api-id>.execute-api.ap-south-1.amazonaws.com/<stage>/<function-name>
 | Update reward | POST | `CL_Update_Reward` |
 | Delete reward | DELETE | `CL_Delete_Reward` |
 
-### API Response Shape — always check, it varies
+### API Response Shape - always check, it varies
 ```js
 // Could be any of these shapes:
 if (Array.isArray(data)) items = data;
@@ -290,7 +290,7 @@ else if (data.body && typeof data.body === 'string') items = JSON.parse(data.bod
 ```js
 {
   activitySequence: number,        // display order
-  activityTitle: string,           // activity name (API field — not activityName)
+  activityTitle: string,           // activity name (API field - not activityName)
   description: string,             // what the activity is
   story: string | string[],        // narrative context (may be array of paragraphs)
   instructionsToCoach: string[],   // step-by-step coach instructions
@@ -357,27 +357,27 @@ showUnauthorizedModal, unauthorizedMessage, unauthorizedErrorCount
 - Call `clearCoachesCache()` to force refetch
 
 ### Key store actions
-- `login(username, password)` — hashes PW, calls API, sets auth state
-- `logout()` — clears all auth state + localStorage instantly
-- `fetchPlayers()` — GET with cache; normalizes response to app shape
-- `fetchCoaches()` — GET with cache; normalizes response
-- `fetchAssignedPlayersForCoach(coachId)` — POST; returns players assigned to that coach
-- `assignPlayerToCoach(playerId, coachId)` — POST; updates local state too
-- `removePlayerFromCoach(payload)` — POST with `{playerId, fromCoachId}`
-- `swapPlayerBetweenCoaches(playerId, fromCoachId, toCoachId)` — POST
-- `fetchLearningPathway()` — GET; stores in `learningPathway[]`
-- `fetchUserProfile(userId)` — POST; returns profile data
+- `login(username, password)` - hashes PW, calls API, sets auth state
+- `logout()` - clears all auth state + localStorage instantly
+- `fetchPlayers()` - GET with cache; normalizes response to app shape
+- `fetchCoaches()` - GET with cache; normalizes response
+- `fetchAssignedPlayersForCoach(coachId)` - POST; returns players assigned to that coach
+- `assignPlayerToCoach(playerId, coachId)` - POST; updates local state too
+- `removePlayerFromCoach(payload)` - POST with `{playerId, fromCoachId}`
+- `swapPlayerBetweenCoaches(playerId, fromCoachId, toCoachId)` - POST
+- `fetchLearningPathway()` - GET; stores in `learningPathway[]`
+- `fetchUserProfile(userId)` - POST; returns profile data
 
 ---
 
 ## Coding Conventions
 
-- **All styling is inline styles** (JSX `style={{}}` objects) — never add CSS classes or Tailwind
-- **Brand color:** `#060030ff` (dark navy) — primary buttons, focus borders, gradients
+- **All styling is inline styles** (JSX `style={{}}` objects) - never add CSS classes or Tailwind
+- **Brand color:** `#060030ff` (dark navy) - primary buttons, focus borders, gradients
 - **Error color:** `#EF4444` / `#DC2626`
 - **Focus style:** `borderColor: '#060030ff'`, `boxShadow: '0 0 0 3px rgba(6, 0, 48, 0.1)'`
 - **Hover effects** use `onMouseEnter` / `onMouseLeave` inline style mutations (not CSS pseudo-classes)
-- **No TypeScript** — plain JS/JSX
+- **No TypeScript** - plain JS/JSX
 - **No comments** unless the why is non-obvious
 - Button gradients: `linear-gradient(135deg, #060030ff, #000000ff)` or `linear-gradient(135deg, #060030ff, #252c35)`
 
@@ -409,11 +409,11 @@ const { userToken, currentUser } = useStore();
 
 ## Performance Conventions
 
-- **`useMemo` for filtered/sorted lists** — wrap any `.filter().sort()` chain that runs on every render in `useMemo` with the correct deps (e.g., `[players, searchTerm, filter, sortBy]`)
-- **`React.memo` for list-item components** — define card/row components at module level (outside the parent), wrap with `memo()`, and pass all needed values as props
-- **`useCallback` for functions passed as props to memoized children** — especially functions that close over state (e.g., `shouldShowStartButton` closes over `sessions`)
-- **`AbortController` in data-fetching `useEffect`** — always return `() => controller.abort()` as cleanup; ignore `CanceledError` in catch
-- **Do not use `location.key` in `useEffect` deps** — page components already unmount/remount on navigation; `location.key` causes double-fetches
+- **`useMemo` for filtered/sorted lists** - wrap any `.filter().sort()` chain that runs on every render in `useMemo` with the correct deps (e.g., `[players, searchTerm, filter, sortBy]`)
+- **`React.memo` for list-item components** - define card/row components at module level (outside the parent), wrap with `memo()`, and pass all needed values as props
+- **`useCallback` for functions passed as props to memoized children** - especially functions that close over state (e.g., `shouldShowStartButton` closes over `sessions`)
+- **`AbortController` in data-fetching `useEffect`** - always return `() => controller.abort()` as cleanup; ignore `CanceledError` in catch
+- **Do not use `location.key` in `useEffect` deps** - page components already unmount/remount on navigation; `location.key` causes double-fetches
 
 ---
 
@@ -429,16 +429,16 @@ npm run lint     # ESLint
 
 ## Known Gotchas
 
-- **`userToken` header, not `Authorization`** — using `Authorization` causes CORS preflight failures. The one exception is `customCardGenerate.jsx` which intentionally sends both headers (Postman-compatible pattern for that specific Lambda).
-- **Response shape varies per endpoint** — always unwrap all known variants before using data
-- **Some endpoints use `fetch`, some use `axios`** — both are present; this is intentional per-page choice, not a bug
-- **`selectedPlayer` in Zustand is persisted** — so the session card manage page remembers the last selected player across navigations; reset on page load via `location.key` effect
-- **Session card delete modal appears twice** in SessionCardManage.jsx (duplicate Modal blocks) — existing issue in code
-- **`sessionHistory` in store has hardcoded demo data** — real session data comes from API, not this local array; the local array is used for demo/fallback only
-- **Player `name` field normalization** — API returns `playerName`, store normalizes to both `name` and `playerName` for compatibility across components
-- **401 threshold is 3 consecutive errors** — single 401s don't log out the user; only 3+ in a row trigger the modal
-- **`activityTitle` not `activityName`** — the API uses `activityTitle` as the activity name field; legacy references to `activityName` exist in some components but the canonical field is `activityTitle`
-- **`SessionCard` in SessionCardsView is `memo()`-wrapped at module level** — do not move it back inside the component body; it must stay outside to avoid being recreated on every parent render
-- **`AbortController` pattern in axios** — axios throws `CanceledError` (not `AbortError`) when a request is aborted; always check `err.name !== 'CanceledError'` in catch blocks before setting error state
-- **`LearningPathwayBuilder` fetches on `[userToken]` dep only** — `location.key` was intentionally removed; the component unmounts/remounts on each navigation so the effect still fires once per visit
-- **Custom card `LearningPathway` comes from the player, not the browsed pathway** — `SessionCardManage` passes `LearningPathway` in navigation state; `customCardGenerate.jsx` reads it as `location.state?.LearningPathway`
+- **`userToken` header, not `Authorization`** - using `Authorization` causes CORS preflight failures. The one exception is `customCardGenerate.jsx` which intentionally sends both headers (Postman-compatible pattern for that specific Lambda).
+- **Response shape varies per endpoint** - always unwrap all known variants before using data
+- **Some endpoints use `fetch`, some use `axios`** - both are present; this is intentional per-page choice, not a bug
+- **`selectedPlayer` in Zustand is persisted** - so the session card manage page remembers the last selected player across navigations; reset on page load via `location.key` effect
+- **Session card delete modal appears twice** in SessionCardManage.jsx (duplicate Modal blocks) - existing issue in code
+- **`sessionHistory` in store has hardcoded demo data** - real session data comes from API, not this local array; the local array is used for demo/fallback only
+- **Player `name` field normalization** - API returns `playerName`, store normalizes to both `name` and `playerName` for compatibility across components
+- **401 threshold is 3 consecutive errors** - single 401s don't log out the user; only 3+ in a row trigger the modal
+- **`activityTitle` not `activityName`** - the API uses `activityTitle` as the activity name field; legacy references to `activityName` exist in some components but the canonical field is `activityTitle`
+- **`SessionCard` in SessionCardsView is `memo()`-wrapped at module level** - do not move it back inside the component body; it must stay outside to avoid being recreated on every parent render
+- **`AbortController` pattern in axios** - axios throws `CanceledError` (not `AbortError`) when a request is aborted; always check `err.name !== 'CanceledError'` in catch blocks before setting error state
+- **`LearningPathwayBuilder` fetches on `[userToken]` dep only** - `location.key` was intentionally removed; the component unmounts/remounts on each navigation so the effect still fires once per visit
+- **Custom card `LearningPathway` comes from the player, not the browsed pathway** - `SessionCardManage` passes `LearningPathway` in navigation state; `customCardGenerate.jsx` reads it as `location.state?.LearningPathway`

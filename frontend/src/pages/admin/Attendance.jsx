@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import SkeletonLoaderStyles, { SkeletonLoader } from '../../components/SkeletonLoader';
+import SkeletonLoaderStyles from '../../components/SkeletonLoader';
 import {
   CalendarCheck, CheckCircle, Save, ChevronDown, Users,
   ChevronLeft, ChevronRight, UserCheck, BarChart2, User,
@@ -28,6 +29,37 @@ const STATUS_CONFIG = {
   Late:    { bg: '#fef3c7', color: '#d97706', border: '#fde68a', dot: '#d97706' },
   Excused: { bg: '#ede9fe', color: '#7c3aed', border: '#ddd6fe', dot: '#7c3aed' },
   '':      { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe', dot: '#2563eb' },
+};
+
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+);
+
+const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+      background: '#fff', border: `1.5px solid ${hov ? accent + '44' : '#E2E8F0'}`,
+      borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px',
+      boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
+      transition: 'all .2s', flex: 1, minWidth: '140px',
+    }}>
+      <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <SIcon size={22} color={accent} />
+      </div>
+      <div>
+        <p style={{ fontSize: '10.5px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', margin: '0 0 4px', letterSpacing: '.5px' }}>{label}</p>
+        <p style={{ fontSize: '23px', fontWeight: '800', color: '#0F172A', margin: 0 }}>{value}</p>
+      </div>
+    </div>
+  );
 };
 
 function toDateStr(date) {
@@ -66,14 +98,14 @@ function AttendanceSkeleton() {
       {/* Header skeleton */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
         <div>
-          <SkeletonLoader width="200px" height="28px" borderRadius="8px" style={{ marginBottom: '8px' }} />
-          <SkeletonLoader width="280px" height="16px" borderRadius="4px" />
+          <Sk w="200px" h="28px" r={8} />
+          <div style={{ marginTop: '8px' }}><Sk w="280px" h="16px" r={4} /></div>
         </div>
-        <SkeletonLoader width="120px" height="38px" borderRadius="8px" />
+        <Sk w="120px" h="38px" r={8} />
       </div>
 
       {/* Tab bar skeleton */}
-      <SkeletonLoader width="360px" height="44px" borderRadius="10px" style={{ marginBottom: '24px' }} />
+      <div style={{ marginBottom: '24px' }}><Sk w="360px" h="44px" r={10} /></div>
 
       {/* Content skeleton - 2-col layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px,380px) 1fr', gap: '20px' }}>
@@ -83,18 +115,18 @@ function AttendanceSkeleton() {
           padding: '20px', overflow: 'hidden',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <SkeletonLoader width="32px" height="32px" borderRadius="8px" />
-            <SkeletonLoader width="100px" height="20px" borderRadius="4px" />
-            <SkeletonLoader width="32px" height="32px" borderRadius="8px" />
+            <Sk w="32px" h="32px" r={8} />
+            <Sk w="100px" h="20px" r={4} />
+            <Sk w="32px" h="32px" r={8} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '12px' }}>
             {Array.from({ length: 7 }).map((_, i) => (
-              <SkeletonLoader key={i} width="100%" height="12px" borderRadius="3px" />
+              <Sk key={i} w="100%" h="12px" r={3} />
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
             {Array.from({ length: 35 }).map((_, i) => (
-              <SkeletonLoader key={i} width="100%" height="38px" borderRadius="8px" />
+              <Sk key={i} w="100%" h="38px" r={8} />
             ))}
           </div>
         </div>
@@ -103,15 +135,15 @@ function AttendanceSkeleton() {
         <div style={{
           background: 'white', borderRadius: '16px', border: '1px solid #e5e7eb', padding: '20px',
         }}>
-          <SkeletonLoader width="160px" height="14px" borderRadius="4px" style={{ marginBottom: '8px' }} />
-          <SkeletonLoader width="220px" height="28px" borderRadius="6px" style={{ marginBottom: '24px' }} />
+          <div style={{ marginBottom: '8px' }}><Sk w="160px" h="14px" r={4} /></div>
+          <div style={{ marginBottom: '24px' }}><Sk w="220px" h="28px" r={6} /></div>
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               padding: '10px', background: '#f9fafb', borderRadius: '8px', marginBottom: '8px',
             }}>
-              <SkeletonLoader width="120px" height="14px" borderRadius="4px" />
-              <SkeletonLoader width="70px" height="22px" borderRadius="999px" />
+              <Sk w="120px" h="14px" r={4} />
+              <Sk w="70px" h="22px" r={999} />
             </div>
           ))}
         </div>
@@ -128,10 +160,10 @@ function SkeletonTableRows({ cols = 7, rows = 5 }) {
         <tr key={i}>
           {Array.from({ length: cols }).map((_, j) => (
             <td key={j} style={{ padding: '14px 16px' }}>
-              <SkeletonLoader
-                width={j === 0 ? '140px' : j === cols - 1 ? '80px' : '100%'}
-                height="14px"
-                borderRadius="4px"
+              <Sk
+                w={j === 0 ? '140px' : j === cols - 1 ? '80px' : '100%'}
+                h="14px"
+                r={4}
               />
             </td>
           ))}
@@ -149,8 +181,12 @@ function SkeletonStats({ count = 6 }) {
         <div key={i} style={{
           background: 'white', borderRadius: '10px', border: '1px solid #e5e7eb', padding: '14px 16px',
         }}>
-          <SkeletonLoader width="50px" height="28px" borderRadius="4px" style={{ marginBottom: '6px', marginLeft: 'auto', marginRight: 'auto' }} />
-          <SkeletonLoader width="70%" height="12px" borderRadius="3px" style={{ margin: '0 auto' }} />
+          <div style={{ marginBottom: '6px', marginLeft: 'auto', marginRight: 'auto', width: 'fit-content' }}>
+            <Sk w="50px" h="28px" r={4} />
+          </div>
+          <div style={{ margin: '0 auto', width: '70%' }}>
+            <Sk w="100%" h="12px" r={3} />
+          </div>
         </div>
       ))}
     </div>
@@ -160,6 +196,8 @@ function SkeletonStats({ count = 6 }) {
 export default function Attendance() {
   const navigate = useNavigate();
   const { userToken, players, fetchPlayers } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
 
   // ── shared
   const [batches, setBatches]               = useState([]);
@@ -482,6 +520,33 @@ export default function Attendance() {
     return map;
   }, [allRecords]);
 
+  // Per-player count of sessions that are still pending make-up (absent/excused, not yet corrected).
+  // Computed purely from allRecords - no extra API calls needed.
+  const playerPendingCounts = useMemo(() => {
+    const counts = new Map();
+    const playerSessionMap = new Map();
+    allRecords.forEach(r => {
+      const pid = String(r.playerId || '');
+      const sn = r.sessionNumber;
+      if (!pid || sn == null) return;
+      if (!playerSessionMap.has(pid)) playerSessionMap.set(pid, new Map());
+      const sessionMap = playerSessionMap.get(pid);
+      const existing = sessionMap.get(sn);
+      const currentAt = new Date(r.markedAt || 0);
+      if (!existing || currentAt > new Date(existing.markedAt || 0)) {
+        sessionMap.set(sn, r);
+      }
+    });
+    playerSessionMap.forEach((sessionMap, pid) => {
+      let n = 0;
+      sessionMap.forEach(r => {
+        if (r.attendanceStatus === 'Absent' || r.attendanceStatus === 'Excused') n++;
+      });
+      if (n > 0) counts.set(pid, n);
+    });
+    return counts;
+  }, [allRecords]);
+
   const batchDisplayRows = useMemo(() => {
     const batch = displayBatches.find(b => b.batchId === selectedBatchId);
 
@@ -589,11 +654,15 @@ export default function Attendance() {
         const row = batchDisplayRows.find(r => r.key === key);
         if (!row) return Promise.resolve();
         const sessionNumber = row.sessionNumber ?? null;
+        const player = players.find(p => String(p.playerId) === String(row.playerId));
+        const cardIds = Array.isArray(player?.sessionCardIds) ? player.sessionCardIds : [];
+        const sessionCardId = cardIds.length > 0 ? cardIds[cardIds.length - 1] : null;
         return axios.post(CL_MARK_ATTENDANCE_URL, {
           playerId: row.playerId, playerName: row.playerName,
           batchId: row.batchId, batchName: row.batchName,
           sessionNumber, sessionDate: row.sessionDate || batchDate,
           attendanceStatus: row.attendanceStatus, notes: row.notes,
+          sessionCardId,
         }, { headers });
       }));
       setEdits({});
@@ -723,6 +792,7 @@ export default function Attendance() {
 
   return (
     <Layout>
+      <style>{`@keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }`}</style>
       <SkeletonLoaderStyles />
       {toastMsg && (
         <Toast message={toastMsg} type={toastType} duration={3000} onClose={() => setToastMsg('')} />
@@ -730,26 +800,20 @@ export default function Attendance() {
 
       <div style={{ padding: 'clamp(16px, 3vw, 28px)', maxWidth: '1200px', margin: '0 auto' }}>
 
-        {/* ── Header ─────────────────────────────────────────────────── */}
+        {/* ── Standard Header Banner ─────────────────────────────────── */}
         <div style={{
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          flexWrap: 'wrap', gap: '16px', marginBottom: '28px',
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
         }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-            <div style={{
-              width: '48px', height: '48px', borderRadius: '12px',
-              background: `linear-gradient(135deg, ${BRAND}, #000)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              <CalendarCheck size={22} color="white" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CalendarCheck size={24} color="#fff" />
             </div>
             <div>
-              <h1 style={{ fontSize: 'clamp(18px,3vw,24px)', fontWeight: 700, color: '#111827', margin: 0 }}>
-                Attendance
-              </h1>
-              <p style={{ color: '#6b7280', fontSize: '14px', margin: '3px 0 0' }}>
-                Track and manage session attendance by batch
-              </p>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Attendance</h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>Track and manage session attendance by batch</p>
             </div>
           </div>
 
@@ -758,11 +822,12 @@ export default function Attendance() {
               onClick={() => setShowInstructionModal(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: '7px',
-                padding: '10px 16px', borderRadius: '10px', border: '1.5px solid #d1d5db',
-                background: 'white', color: '#374151', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
+                padding: '10px 16px', borderRadius: '10px',
+                background: 'rgba(255,255,255,0.12)', border: '1.5px solid rgba(255,255,255,0.3)',
+                color: '#fff', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = BRAND; e.currentTarget.style.color = BRAND; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#374151'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}
             >
               <CircleHelp size={16} /> Instructions
             </button>
@@ -771,23 +836,34 @@ export default function Attendance() {
               onClick={() => navigate('/admin/manage-batches')}
               style={{
                 display: 'flex', alignItems: 'center', gap: '7px',
-                padding: '10px 20px', borderRadius: '10px', border: 'none',
-                background: `linear-gradient(135deg, ${BRAND}, #000)`,
-                color: 'white', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(6,0,48,0.25)',
+                padding: '10px 20px', borderRadius: '10px',
+                background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.4)',
+                color: '#fff', fontWeight: 600, fontSize: '14px', cursor: 'pointer',
               }}
-              onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
-              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)'; }}
             >
               <Layers size={16} /> Manage Batches
             </button>
           </div>
         </div>
 
+        {/* ── Summary Cards ──────────────────────────────────────────── */}
+        {!loading && (
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <SummaryCard label="Total Records" value={allRecords.length} icon={CalendarCheck} accent="#6366F1" />
+            <SummaryCard label="Present" value={allRecords.filter(r => r.attendanceStatus === 'Present').length} icon={CheckCircle} accent="#10B981" />
+            <SummaryCard label="Absent" value={allRecords.filter(r => r.attendanceStatus === 'Absent').length} icon={Users} accent="#EF4444" />
+            <SummaryCard label="Batches" value={batches.length} icon={Layers} accent="#F59E0B" />
+          </div>
+        )}
+
         {/* ── Tab bar ────────────────────────────────────────────────── */}
         <div style={{
-          display: 'flex', gap: '4px', background: '#f3f4f6',
+          display: 'flex', gap: '4px',
+          background: dark ? 'rgba(255,255,255,0.06)' : '#f3f4f6',
           padding: '4px', borderRadius: '12px', marginBottom: '24px', width: 'fit-content',
+          border: dark ? '1px solid rgba(255,255,255,0.1)' : 'none',
         }}>
           {TABS.map((tab) => {
             const active = activeTab === tab.key;
@@ -799,9 +875,13 @@ export default function Attendance() {
                   display: 'flex', alignItems: 'center', gap: '6px',
                   padding: '8px 20px', borderRadius: '9px', border: 'none', cursor: 'pointer',
                   fontSize: '13px', fontWeight: 600, transition: 'all 0.2s',
-                  background: active ? 'white' : 'transparent',
-                  color: active ? BRAND : '#6b7280',
-                  boxShadow: active ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                  background: active
+                    ? (dark ? 'linear-gradient(135deg, rgb(6,0,48) 0%, rgb(26,0,96) 55%, rgb(59,0,128) 100%)' : 'white')
+                    : 'transparent',
+                  color: active
+                    ? (dark ? '#ffffff' : BRAND)
+                    : (dark ? 'rgba(255,255,255,0.5)' : '#6b7280'),
+                  boxShadow: active ? '0 1px 4px rgba(0,0,0,0.15)' : 'none',
                 }}
               >
                 <tab.Icon size={14} />
@@ -995,27 +1075,30 @@ export default function Attendance() {
 
                   {/* Date detail panel */}
                   <div style={{
-                    background: 'white', borderRadius: '16px', border: '1px solid #e5e7eb',
+                    background: dark ? 'var(--cl-surface)' : 'white',
+                    borderRadius: '16px', border: `1px solid ${dark ? 'var(--cl-border)' : '#e5e7eb'}`,
                     overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                   }}>
                     <div style={{
-                      padding: '16px 20px', borderBottom: '1px solid #f3f4f6',
+                      padding: '16px 20px', borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#f3f4f6'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       flexWrap: 'wrap', gap: '8px',
-                      background: `linear-gradient(135deg, ${BRAND}08, ${BRAND}04)`,
+                      background: dark ? 'rgba(99,102,241,0.06)' : `linear-gradient(135deg, ${BRAND}08, ${BRAND}04)`,
                     }}>
                       <div>
-                        <p style={{ margin: 0, fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: 600 }}>
+                        <p style={{ margin: 0, fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: 600 }}>
                           Selected Date
                         </p>
-                        <p style={{ margin: '3px 0 0', fontSize: '22px', fontWeight: 800, color: '#111827' }}>
+                        <p style={{ margin: '3px 0 0', fontSize: '22px', fontWeight: 800, color: dark ? 'var(--cl-text)' : '#111827' }}>
                           {fmtSelected}
                         </p>
                       </div>
                       {selectedDateBatches.length > 0 && (
                         <span style={{
                           padding: '5px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: 700,
-                          background: `${BRAND}12`, color: BRAND, border: `1px solid ${BRAND}30`,
+                          background: dark ? 'rgba(99,102,241,0.15)' : `${BRAND}12`,
+                          color: dark ? '#818CF8' : BRAND,
+                          border: `1px solid ${dark ? 'rgba(99,102,241,0.3)' : `${BRAND}30`}`,
                         }}>
                           {selectedDateBatches.reduce((n, b) => n + b.players.length, 0)} records
                         </span>
@@ -1026,15 +1109,16 @@ export default function Attendance() {
                       <div style={{ padding: '60px 24px', textAlign: 'center' }}>
                         <div style={{
                           width: '64px', height: '64px', borderRadius: '16px',
-                          background: '#f3f4f6', margin: '0 auto 16px',
+                          background: dark ? 'rgba(255,255,255,0.06)' : '#f3f4f6',
+                          margin: '0 auto 16px',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                          <CalendarCheck size={28} color="#d1d5db" />
+                          <CalendarCheck size={28} color={dark ? '#4B5563' : '#d1d5db'} />
                         </div>
-                        <p style={{ fontSize: '15px', fontWeight: 600, margin: '0 0 6px', color: '#374151' }}>
+                        <p style={{ fontSize: '15px', fontWeight: 600, margin: '0 0 6px', color: dark ? 'var(--cl-text-2)' : '#374151' }}>
                           No sessions on {fmtSelected}
                         </p>
-                        <p style={{ fontSize: '13px', margin: 0, color: '#9ca3af' }}>
+                        <p style={{ fontSize: '13px', margin: 0, color: dark ? 'var(--cl-text-3)' : '#9ca3af' }}>
                           {calendarSelectedPlayer
                             ? `No records for ${calendarSelectedPlayer.playerName || calendarSelectedPlayer.name}`
                             : 'Marked attendance will appear here'}
@@ -1046,14 +1130,17 @@ export default function Attendance() {
                           <div key={batch.batchId}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                               <span style={{
-                                fontSize: '11px', fontWeight: 700, color: BRAND,
+                                fontSize: '11px', fontWeight: 700,
+                                color: dark ? '#818CF8' : BRAND,
                                 textTransform: 'uppercase', letterSpacing: '0.6px',
                               }}>
                                 {batch.batchName}
                               </span>
                               <span style={{
                                 fontSize: '11px', padding: '2px 8px', borderRadius: '999px',
-                                background: '#f3f4f6', color: '#6b7280', fontWeight: 600,
+                                background: dark ? 'rgba(255,255,255,0.08)' : '#f3f4f6',
+                                color: dark ? 'var(--cl-text-3)' : '#6b7280',
+                                fontWeight: 600,
                               }}>
                                 {batch.players.length} players
                               </span>
@@ -1065,18 +1152,19 @@ export default function Attendance() {
                                   style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                     padding: '10px 14px', borderRadius: '10px',
-                                    background: '#f9fafb', border: '1px solid #f3f4f6',
+                                    background: dark ? 'rgba(255,255,255,0.04)' : '#f9fafb',
+                                    border: `1px solid ${dark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}`,
                                     transition: 'border-color 0.15s',
                                   }}
-                                  onMouseEnter={e => e.currentTarget.style.borderColor = '#e5e7eb'}
-                                  onMouseLeave={e => e.currentTarget.style.borderColor = '#f3f4f6'}
+                                  onMouseEnter={e => e.currentTarget.style.borderColor = dark ? 'rgba(255,255,255,0.15)' : '#e5e7eb'}
+                                  onMouseLeave={e => e.currentTarget.style.borderColor = dark ? 'rgba(255,255,255,0.08)' : '#f3f4f6'}
                                 >
                                   <div>
-                                    <p style={{ margin: 0, fontWeight: 600, fontSize: '14px', color: '#111827' }}>
+                                    <p style={{ margin: 0, fontWeight: 600, fontSize: '14px', color: dark ? 'var(--cl-text)' : '#111827' }}>
                                       {p.playerName}
                                     </p>
                                     {p.notes && (
-                                      <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#9ca3af', fontStyle: 'italic' }}>
+                                      <p style={{ margin: '2px 0 0', fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#9ca3af', fontStyle: 'italic' }}>
                                         {p.notes}
                                       </p>
                                     )}
@@ -1340,6 +1428,7 @@ export default function Attendance() {
                                     const norm = String(cardInfo?.status || '').toLowerCase().replace(/[\s_-]/g, '');
                                     const isCompleted  = norm === 'completed';
                                     const isInProgress = ['inprogress', 'upcoming', 'draft'].includes(norm);
+                                    const pendingCount = playerPendingCounts.get(String(row.playerId)) || 0;
                                     return (
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
@@ -1363,6 +1452,15 @@ export default function Attendance() {
                                                 border: '1px solid #bfdbfe', whiteSpace: 'nowrap',
                                               }}>In Progress</span>
                                             ) : null
+                                          )}
+                                          {!cardInfoLoading && pendingCount > 0 && (
+                                            <span title={`${pendingCount} past session${pendingCount > 1 ? 's' : ''} missed - make-up pending`} style={{
+                                              fontSize: '10px', padding: '1px 7px', borderRadius: '999px',
+                                              background: '#FEF3C7', color: '#92400E', fontWeight: 700,
+                                              border: '1px solid #FCD34D', whiteSpace: 'nowrap', cursor: 'default',
+                                            }}>
+                                              {pendingCount} make-up{pendingCount > 1 ? 's' : ''}
+                                            </span>
                                           )}
                                         </div>
                                         <button
@@ -1598,7 +1696,7 @@ export default function Attendance() {
                         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '680px' }}>
                           <thead>
                             <tr style={{ background: '#f9fafb' }}>
-                              {['Date', 'Session #', 'Batch', 'Status', 'Override', 'Source', 'Notes', 'Override Notes', 'Marked At'].map(h => (
+                              {['Date', 'Session #', 'Batch', 'Status', 'Make-up', 'Override', 'Source', 'Notes', 'Override Notes', 'Marked At'].map(h => (
                                 <th key={h} style={{
                                   padding: '11px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700,
                                   color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.6px',
@@ -1609,10 +1707,10 @@ export default function Attendance() {
                           </thead>
                           <tbody>
                             {playerLoading ? (
-                              <SkeletonTableRows cols={9} rows={5} />
+                              <SkeletonTableRows cols={10} rows={5} />
                             ) : playerDisplayRecords.length === 0 ? (
                               <tr>
-                                <td colSpan={9} style={{ padding: '52px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' }}>
+                                <td colSpan={10} style={{ padding: '52px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' }}>
                                   No attendance records found for this player
                                 </td>
                               </tr>
@@ -1636,6 +1734,17 @@ export default function Attendance() {
                                 </td>
                                 <td style={{ padding: '11px 16px' }}>
                                   <StatusBadge status={r.attendanceStatus} />
+                                </td>
+                                <td style={{ padding: '11px 16px' }}>
+                                  {(r.attendanceStatus === 'Absent' || r.attendanceStatus === 'Excused') ? (
+                                    <span style={{
+                                      fontSize: '11px', padding: '3px 8px', borderRadius: '999px', fontWeight: 600,
+                                      background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D',
+                                      whiteSpace: 'nowrap',
+                                    }}>Make-up pending</span>
+                                  ) : (
+                                    <span style={{ color: '#d1d5db', fontSize: '13px' }}>-</span>
+                                  )}
                                 </td>
                                 <td style={{ padding: '8px 16px' }}>
                                   <select

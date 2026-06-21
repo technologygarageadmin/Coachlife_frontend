@@ -13,7 +13,7 @@ export const ActivityCard = ({ activity }) => {
       <div className="flex-1 min-w-0">
         <h3 className="text-sm font-semibold text-gray-900">{activity.name || activity.activityName}</h3>
         <p className="text-sm text-gray-600 mt-1">
-          {activity.duration || '—'} • {activity.points || activity.defaultPoints || 0} points
+          {activity.duration || '-'} • {activity.points || activity.defaultPoints || 0} points
         </p>
         {activity.description && (
           <p className="text-xs text-gray-500 mt-2">{activity.description}</p>

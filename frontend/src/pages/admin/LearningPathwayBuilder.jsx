@@ -4,8 +4,31 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { SkeletonContainer } from '../../components/SkeletonLoader';
-import { BookOpen, Search, Loader, AlertCircle, Plus, Trash, SquarePen, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { BookOpen, Search, Loader, AlertCircle, Plus, Trash, SquarePen, Eye, ChevronDown, ChevronUp, Star, Layers } from 'lucide-react';
 import axios from 'axios';
+import { useTheme } from '../../context/ThemeContext';
+
+const SummaryCard = ({ label, value, icon: SIcon, accent, dark }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+      background: dark ? 'var(--cl-surface)' : '#fff',
+      border: `1.5px solid ${hov ? accent + '44' : (dark ? 'var(--cl-border)' : '#F1F5F9')}`,
+      borderRadius: '16px', padding: '18px 20px',
+      boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
+      display: 'flex', alignItems: 'center', gap: '14px',
+      transition: 'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
+    }}>
+      <div style={{ width: '48px', height: '48px', borderRadius: '13px', flexShrink: 0, background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <SIcon size={22} color={accent} />
+      </div>
+      <div>
+        <p style={{ fontSize: '10.5px', fontWeight: '700', color: dark ? 'var(--cl-text-3)' : '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '.6px' }}>{label}</p>
+        <p style={{ fontSize: '23px', fontWeight: '800', color: dark ? 'var(--cl-text)' : '#0F172A', margin: '3px 0 0', letterSpacing: '-1px' }}>{value}</p>
+      </div>
+    </div>
+  );
+};
 
 const PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 const DELETE_PATHWAY_API_URL = 'https://w5qtdpsr58.execute-api.ap-south-1.amazonaws.com/default/CL_Delete_Learningpathway';
@@ -13,6 +36,8 @@ const DELETE_PATHWAY_API_URL = 'https://w5qtdpsr58.execute-api.ap-south-1.amazon
 const LearningPathwayBuilder = () => {
   const { userToken } = useStore();
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
   const [pathways, setPathways] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -292,71 +317,49 @@ const LearningPathwayBuilder = () => {
             </div>
           </SkeletonContainer>
         ) : (
-        <div style={{
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: '40px 32px',
-          marginBottom: '32px',
-          borderRadius: '12px',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          boxShadow: '0 8px 32px rgba(37, 44, 53, 0.15)'
-        }}>
-          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <>
+          {/* ── Header banner ── */}
+          <div style={{
+            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+            borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+            boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+                <BookOpen size={24} color="#fff" />
+              </div>
               <div>
-                <h1 style={{ fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0' }}>Learning Pathways</h1>
-                <p style={{ fontSize: '14px', opacity: 0.9, margin: 0 }}>Manage {stats.total} learning session{stats.total !== 1 ? 's' : ''} and stages</p>
-              </div>
-              <button
-                onClick={() => navigate('/admin/learning-pathway/add')}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '10px 20px',
-                    borderRadius: '8px',
-                    fontWeight: '600',
-                    background: 'rgba(255, 255, 255, 0.15)',
-                    color: 'white',
-                    border: '2px solid rgba(255, 255, 255, 1)',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s',
-                    backdropFilter: 'blur(10px)',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-                  }}
-                >
-                <Plus size={18} /> Add Pathway/Session Card
-              </button>
-            </div>
-
-            {/* Stats Row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Pathways</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{stats.total}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Learning Pathway</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{stats.stages}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Points</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{stats.totalPoints}</p>
+                <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Learning Pathways</h1>
+                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
+                  {stats.total} sessions across {stats.stages} pathway{stats.stages !== 1 ? 's' : ''}
+                </p>
               </div>
             </div>
+            <button
+              onClick={() => navigate('/admin/learning-pathway/add')}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '12px 22px', borderRadius: '12px',
+                background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(8px)',
+                border: '1.5px solid rgba(255,255,255,.3)',
+                color: '#fff', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer',
+                transition: 'all .2s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.15)'; e.currentTarget.style.transform = 'none'; }}
+            >
+              <Plus size={16} /> Add Pathway/Session Card
+            </button>
           </div>
-        </div>
+
+          {/* ── Summary stats ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+            <SummaryCard label="Total Sessions" value={stats.total} icon={BookOpen} accent="#6366F1" dark={dark} />
+            <SummaryCard label="Learning Pathways" value={stats.stages} icon={Layers} accent="#10B981" dark={dark} />
+            <SummaryCard label="Total Points" value={stats.totalPoints.toLocaleString()} icon={Star} accent="#F59E0B" dark={dark} />
+          </div>
+        </>
         )}
 
         <div style={{ padding: '0 32px' }}>
@@ -366,36 +369,35 @@ const LearningPathwayBuilder = () => {
             padding: '12px 16px',
             display: 'flex',
             alignItems: 'center',
-            backgroundColor: 'white',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+            background: dark ? 'var(--cl-surface)' : 'white',
+            border: `1px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`,
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
             gap: '10px',
             marginBottom: '24px',
             transition: 'all 0.3s'
           }}>
-            <Search size={18} color="#060030ff" />
+            <Search size={18} color={dark ? 'var(--cl-text-3)' : '#060030ff'} />
             <input
               type="text"
               placeholder="Search by activity, stage, or project..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
-                  width: '100%',
-                  padding: '10px 10px 10px 40px',
-                  border: '2px solid #E2E8F0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                  backgroundColor: 'white'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#060030ff';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(82, 102, 129, 0.1)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#E2E8F0';
-                  e.target.style.boxShadow = 'none';
-                }}
+                width: '100%',
+                border: 'none',
+                outline: 'none',
+                fontSize: '14px',
+                background: 'transparent',
+                color: dark ? 'var(--cl-text)' : '#111827',
+              }}
+              onFocus={(e) => {
+                e.target.parentElement.style.borderColor = '#6366F1';
+                e.target.parentElement.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.12)';
+              }}
+              onBlur={(e) => {
+                e.target.parentElement.style.borderColor = dark ? 'var(--cl-border)' : '#E2E8F0';
+                e.target.parentElement.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
+              }}
             />
           </div>
 
@@ -586,10 +588,10 @@ const LearningPathwayBuilder = () => {
                         onClick={() => toggleStage(group.stage)}
                         style={{
                           padding: '16px 20px',
-                          background: expandedStages[group.stage] 
-                            ? 'linear-gradient(135deg, #060030ff 0%, #000000FF 100%)' 
-                            : 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)',
-                          borderBottom: expandedStages[group.stage] ? '2px solid #4F46E5' : '1px solid #E5E7EB',
+                          background: expandedStages[group.stage]
+                            ? 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)'
+                            : (dark ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)'),
+                          borderBottom: expandedStages[group.stage] ? '2px solid #4F46E5' : `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                           position: 'sticky',
                           top: 0,
                           zIndex: 10,
@@ -603,30 +605,30 @@ const LearningPathwayBuilder = () => {
                           boxShadow: expandedStages[group.stage] 
                             ? '0 4px 12px rgba(99, 102, 241, 0.2)' 
                             : '0 1px 3px rgba(0, 0, 0, 0.1)',
-                          border: expandedStages[group.stage] ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid #E5E7EB'
+                          border: expandedStages[group.stage] ? '1px solid rgba(255,255,255,0.2)' : `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`
                         }}
                         onMouseEnter={(e) => {
                           if (expandedStages[group.stage]) {
-                            e.currentTarget.style.boxShadow = '0 6px 16px rgba(99, 102, 241, 0.3)';
+                            e.currentTarget.style.boxShadow = '0 6px 16px rgba(99,102,241,0.3)';
                           } else {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #ECECF1 0%, #E0E7FF 100%)';
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+                            e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg, #ECECF1 0%, #E0E7FF 100%)';
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (expandedStages[group.stage]) {
-                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.2)';
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #000000FF 100%)';
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.2)';
+                            e.currentTarget.style.background = 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)';
                           } else {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)';
-                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
+                            e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)';
+                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
                           }
                         }}
                       >
                         <h3 style={{
                           fontSize: '15px',
                           fontWeight: '700',
-                          color: expandedStages[group.stage] ? 'white' : '#111827',
+                          color: expandedStages[group.stage] ? 'white' : (dark ? 'var(--cl-text)' : '#111827'),
                           margin: 0,
                           display: 'flex',
                           alignItems: 'center',
@@ -647,13 +649,13 @@ const LearningPathwayBuilder = () => {
                             justifyContent: 'center',
                             minWidth: '28px',
                             height: '28px',
-                            backgroundColor: expandedStages[group.stage] 
-                              ? 'rgba(255, 255, 255, 0.3)' 
-                              : 'rgba(99, 102, 241, 0.1)',
+                            backgroundColor: expandedStages[group.stage]
+                              ? 'rgba(255,255,255,0.3)'
+                              : (dark ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.1)'),
                             borderRadius: '6px',
                             fontSize: '13px',
                             fontWeight: '600',
-                            color: expandedStages[group.stage] ? 'rgba(255, 255, 255, 0.95)' : '#090083',
+                            color: expandedStages[group.stage] ? 'rgba(255,255,255,0.95)' : (dark ? '#818CF8' : '#090083'),
                             marginLeft: '8px',
                             transition: 'all 0.3s ease'
                           }}>
@@ -723,16 +725,16 @@ const LearningPathwayBuilder = () => {
                       </div>
 
                       {expandedStages[group.stage] && (
-                        <div style={{ 
-                          display: 'grid', 
-                          gap: '12px', 
+                        <div style={{
+                          display: 'grid',
+                          gap: '12px',
                           padding: '16px',
-                          background: 'white',
+                          background: dark ? 'var(--cl-surface)' : 'white',
                           borderRadius: '0 0 12px 12px',
-                          border: '1px solid #E5E7EB',
+                          border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                           borderTop: 'none',
                           animation: 'slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          boxShadow: '0 4px 12px rgba(99, 102, 241, 0.08)'
+                          boxShadow: '0 4px 12px rgba(99,102,241,0.08)'
                         }}
                         >
                           <style>{`
@@ -752,43 +754,43 @@ const LearningPathwayBuilder = () => {
                           {group.pathways.map((pathway, idx) => (
                             <div key={idx} style={{
                               padding: '16px',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                               borderRadius: '8px',
-                              background: 'white',
+                              background: dark ? 'rgba(255,255,255,0.03)' : 'white',
                               transition: 'all 0.3s'
                             }}
                             onMouseEnter={(e) => {
-                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-                              e.currentTarget.style.borderColor = '#D1D5DB';
+                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                              e.currentTarget.style.borderColor = dark ? 'rgba(255,255,255,0.2)' : '#D1D5DB';
                             }}
                             onMouseLeave={(e) => {
                               e.currentTarget.style.boxShadow = 'none';
-                              e.currentTarget.style.borderColor = '#E5E7EB';
+                              e.currentTarget.style.borderColor = dark ? 'var(--cl-border)' : '#E5E7EB';
                             }}>
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '16px', alignItems: 'start' }}>
                                 <div>
-                                  <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '700', color: '#111827' }}>
+                                  <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '700', color: dark ? 'var(--cl-text)' : '#111827' }}>
                                     Session {pathway.session}: {pathway.Topic}
                                   </h4>
-                                  <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#666', lineHeight: '1.5' }}>
+                                  <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#666', lineHeight: '1.5' }}>
                                     {pathway.Objective}
                                   </p>
                                   <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
                                     <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#666', textTransform: 'uppercase' }}>Pathway: </span>
-                                      <span style={{ fontSize: '12px', color: '#111827', fontWeight: '500' }}>{pathway.LearningPathway}</span>
+                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Pathway: </span>
+                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.LearningPathway}</span>
                                     </div>
                                     <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#666', textTransform: 'uppercase' }}>Type: </span>
-                                      <span style={{ fontSize: '12px', color: '#111827', fontWeight: '500' }}>{pathway.SessionType}</span>
+                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Type: </span>
+                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.SessionType}</span>
                                     </div>
                                     <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#666', textTransform: 'uppercase' }}>Activities: </span>
-                                      <span style={{ fontSize: '12px', color: '#111827', fontWeight: '500' }}>{pathway.activities?.length || 0}</span>
+                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Activities: </span>
+                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.activities?.length || 0}</span>
                                     </div>
                                     <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#666', textTransform: 'uppercase' }}>Points: </span>
-                                      <span style={{ fontSize: '12px', color: '#111827', fontWeight: '500' }}>{pathway.totalPoints || 0}</span>
+                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Points: </span>
+                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.totalPoints || 0}</span>
                                     </div>
                                   </div>
                                 </div>

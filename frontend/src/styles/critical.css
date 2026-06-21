@@ -9,17 +9,18 @@
 
 :root {
   /* Core Colors */
-  --primary: #252c35;
-  --secondary: #060030ff;
-  --body-bg: #dde3e8;
-  --text: #252c35;
-  --text-secondary: #060030ff;
+  --primary: #1E293B;
+  --secondary: #6366F1;
+  --body-bg: #F0F4F8;
+  --text: #1E293B;
+  --text-secondary: #6366F1;
   --white: #ffffff;
-  --light: #f8f9fa;
-  
+  --light: #F8FAFC;
+
   /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #060030ff 0%, #000000ff 100%);
-  --gradient-reverse: linear-gradient(135deg, #060030ff 0%, #252c35 100%);
+  --gradient-primary: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --gradient-reverse: linear-gradient(160deg, #0B0D1F 0%, #131526 100%);
+  --gradient-sidebar: linear-gradient(160deg, #0B0D1F 0%, #131526 60%, #0E1020 100%);
 }
 
 html {
@@ -34,7 +35,8 @@ body {
   overflow-x: hidden;
   background-color: var(--body-bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -45,8 +47,8 @@ body {
 /* Navbar - critical for initial render */
 .navbar {
   background: white;
-  border-bottom: 1px solid var(--body-bg);
-  box-shadow: 0 2px 8px rgba(37, 44, 53, 0.08);
+  border-bottom: 1px solid #EEF2F7;
+  box-shadow: 0 1px 12px rgba(0, 0, 0, 0.06);
 }
 
 /* Main container layout */
@@ -65,7 +67,8 @@ body {
 .page-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 0;
+  background-color: var(--body-bg);
 }
 
 /* Prevent layout shift */

@@ -22,6 +22,9 @@ export default defineConfig([
         sourceType: 'module',
       },
     },
+  },
+  {
+    files: ['**/*.{js,jsx}'],
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },

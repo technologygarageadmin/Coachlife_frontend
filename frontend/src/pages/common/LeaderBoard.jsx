@@ -1,12 +1,41 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Flame, Grid3x3, List, Loader, Trophy, Star, Users } from "lucide-react";
+import { Award, Flame, Grid3x3, List, Loader, Star, Trophy, Users } from "lucide-react";
 import { Layout } from "../../components/Layout";
 import { useStore } from "../../context/store";
-import { SkeletonContainer } from "../../components/SkeletonLoader";
+import { useTheme } from "../../context/ThemeContext";
 
 const API_ENDPOINT =
   "https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players";
+
+/* ── Design system helpers ── */
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const SummaryCard = ({ label, value, icon: SIcon, accent, dark }) => {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+      background: dark ? 'var(--cl-surface)' : '#fff',
+      border: `1.5px solid ${hov ? accent + '44' : (dark ? 'var(--cl-border)' : '#E2E8F0')}`,
+      borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px',
+      boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
+      transition: 'all .2s', cursor: 'default', flex: 1, minWidth: '140px',
+    }}>
+      <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {React.createElement(SIcon, { size: 22, color: accent })}
+      </div>
+      <div>
+        <p style={{ fontSize: '10.5px', fontWeight: '700', color: dark ? 'var(--cl-text-3)' : '#94A3B8', textTransform: 'uppercase', margin: '0 0 4px', letterSpacing: '.5px' }}>{label}</p>
+        <p style={{ fontSize: '23px', fontWeight: '800', color: dark ? 'var(--cl-text)' : '#0F172A', margin: 0 }}>{value}</p>
+      </div>
+    </div>
+  );
+};
 
 /* ======================================================
    MAIN PAGE
@@ -14,6 +43,8 @@ const API_ENDPOINT =
 export default function LeaderBoard() {
   const navigate = useNavigate();
   const { userToken, hasRole, currentUser, fetchAssignedPlayersForCoach } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
 
   const [players, setPlayers] = useState([]);
   const [assignedPlayerIds, setAssignedPlayerIds] = useState(new Set());
@@ -54,7 +85,7 @@ export default function LeaderBoard() {
   async function loadCoachAssignments() {
     try {
       const result = await fetchAssignedPlayersForCoach(currentUser.id);
-      
+
       if (result.success && result.players) {
         // Handle both direct player objects and nested player.player structure
         const assignedIds = new Set(result.players.map(p => {
@@ -117,9 +148,18 @@ export default function LeaderBoard() {
     [players]
   );
 
+  const topScorer = sortedPlayers[0];
+  const avgPoints = players.length
+    ? Math.round(players.reduce((s, p) => s + p.totalPoints, 0) / players.length)
+    : 0;
+  const topBalance = players.length
+    ? Math.max(...players.map(p => p.balance))
+    : 0;
+
   return (
     <Layout>
-      <div style={styles.page} className="page-container">
+      <style>{`@keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }`}</style>
+      <div style={{ ...styles.page, background: dark ? 'var(--cl-bg)' : '#F8FAFC' }} className="page-container">
         <Hero
           totalPlayers={players.length}
           topPlayer={sortedPlayers[0]}
@@ -128,14 +168,24 @@ export default function LeaderBoard() {
           loading={loading}
         />
 
+        {/* Summary row */}
+        {!loading && players.length > 0 && (
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            <SummaryCard label="Total Players" value={players.length} icon={Users} accent="#6366F1" dark={dark} />
+            <SummaryCard label="Top Scorer" value={topScorer?.name || '-'} icon={Trophy} accent="#F59E0B" dark={dark} />
+            <SummaryCard label="Avg Points" value={avgPoints.toLocaleString()} icon={Star} accent="#10B981" dark={dark} />
+            <SummaryCard label="Top Balance" value={topBalance.toLocaleString()} icon={Award} accent="#EC4899" dark={dark} />
+          </div>
+        )}
+
         {loading ? (
           <Skeleton />
         ) : sortedPlayers.length === 0 ? (
           <EmptyState />
         ) : view === "grid" ? (
-          <GridView players={sortedPlayers} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} />
+          <GridView players={sortedPlayers} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} dark={dark} />
         ) : (
-          <ListView players={sortedPlayers} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} />
+          <ListView players={sortedPlayers} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} dark={dark} />
         )}
       </div>
     </Layout>
@@ -147,122 +197,119 @@ export default function LeaderBoard() {
 ====================================================== */
 function Hero({ totalPlayers, view, setView, loading }) {
   const [headerHover, setHeaderHover] = React.useState(false);
-  
+
   if (loading) {
     return (
-      <SkeletonContainer>
-        <div style={{
-          ...styles.hero,
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-          minHeight: '200px'
-        }}>
-          <style>{`
-            @keyframes pulse {
-              0%, 100% { opacity: 1; }
-              50% { opacity: 0.5; }
-            }
-          `}</style>
-          <div style={styles.heroLeft}>
-            <div style={styles.titleContainer}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '8px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                flexShrink: 0
-              }} />
-              <div style={{ flex: 1 }}>
-                <div style={{
-                  height: '40px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '8px',
-                  marginBottom: '12px',
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.1s',
-                  width: '300px'
-                }} />
-                <div style={{
-                  height: '16px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '6px',
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.2s',
-                  width: '400px'
-                }} />
-              </div>
-            </div>
-          </div>
-          <div style={styles.heroRight}>
-            <div style={styles.heroStats}>
-              <div style={{
-                ...styles.statBox,
-                background: 'rgba(255, 255, 255, 0.06)',
-                minHeight: '80px'
-              }}>
-                <div style={{
-                  height: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '4px',
-                  marginBottom: '8px',
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.1s',
-                  width: '60%'
-                }} />
-                <div style={{
-                  height: '24px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '6px',
-                  marginTop: '8px',
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.2s'
-                }} />
-              </div>
-              <div style={{
-                ...styles.statBox,
-                background: 'rgba(255, 255, 255, 0.06)',
-                minHeight: '80px'
-              }}>
-                <div style={{
-                  height: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '4px',
-                  marginBottom: '8px',
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.15s',
-                  width: '60%'
-                }} />
-                <div style={{
-                  height: '24px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '6px',
-                  marginTop: '8px',
-                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.25s'
-                }} />
-              </div>
-            </div>
+      <div style={{
+        ...styles.hero,
+        minHeight: '200px'
+      }}>
+        <style>{`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+        `}</style>
+        <div style={styles.heroLeft}>
+          <div style={styles.titleContainer}>
             <div style={{
-              display: 'flex',
-              gap: '8px'
-            }}>
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              flexShrink: 0
+            }} />
+            <div style={{ flex: 1 }}>
               <div style={{
-                width: '60px',
-                height: '36px',
+                height: '40px',
                 background: 'rgba(255, 255, 255, 0.1)',
                 borderRadius: '8px',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.2s'
+                marginBottom: '12px',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.1s',
+                width: '300px'
               }} />
               <div style={{
-                width: '60px',
-                height: '36px',
+                height: '16px',
                 background: 'rgba(255, 255, 255, 0.1)',
-                borderRadius: '8px',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.25s'
+                borderRadius: '6px',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.2s',
+                width: '400px'
               }} />
             </div>
           </div>
         </div>
-      </SkeletonContainer>
+        <div style={styles.heroRight}>
+          <div style={styles.heroStats}>
+            <div style={{
+              ...styles.statBox,
+              background: 'rgba(255, 255, 255, 0.06)',
+              minHeight: '80px'
+            }}>
+              <div style={{
+                height: '12px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '4px',
+                marginBottom: '8px',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.1s',
+                width: '60%'
+              }} />
+              <div style={{
+                height: '24px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                marginTop: '8px',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.2s'
+              }} />
+            </div>
+            <div style={{
+              ...styles.statBox,
+              background: 'rgba(255, 255, 255, 0.06)',
+              minHeight: '80px'
+            }}>
+              <div style={{
+                height: '12px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '4px',
+                marginBottom: '8px',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.15s',
+                width: '60%'
+              }} />
+              <div style={{
+                height: '24px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '6px',
+                marginTop: '8px',
+                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.25s'
+              }} />
+            </div>
+          </div>
+          <div style={{
+            display: 'flex',
+            gap: '8px'
+          }}>
+            <div style={{
+              width: '60px',
+              height: '36px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '8px',
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.2s'
+            }} />
+            <div style={{
+              width: '60px',
+              height: '36px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '8px',
+              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.25s'
+            }} />
+          </div>
+        </div>
+      </div>
     );
   }
-  
+
   return (
-    <div 
+    <div
       style={{
         ...styles.hero,
         ...(headerHover && { boxShadow: "0 20px 60px rgba(6, 0, 48, 0.3)", transform: "translateY(-2px)" })
@@ -273,9 +320,9 @@ function Hero({ totalPlayers, view, setView, loading }) {
     >
       <div style={styles.heroLeft} className="hero-left">
         <div style={styles.titleContainer} className="title-container">
-          {/* <div style={styles.flameIconWrapper}>
-            <Flame size={36} style={styles.titleIcon} />
-          </div> */}
+          <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Trophy size={24} color="#fff" />
+          </div>
           <div>
             <h1 style={styles.heroTitle} className="hero-title">Leaderboard</h1>
             <p style={styles.heroSubtitle} className="hero-subtitle">
@@ -319,20 +366,20 @@ function Hero({ totalPlayers, view, setView, loading }) {
 /* ======================================================
    GRID VIEW
 ====================================================== */
-function GridView({ players, navigate, hasRole, currentUser, assignedPlayerIds }) {
+function GridView({ players, navigate, hasRole, currentUser, assignedPlayerIds, dark }) {
   return (
     <div style={styles.grid} className="grid-container">
       {players.map((p, i) => (
-        <GridCard key={p.id} player={p} rank={i} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} />
+        <GridCard key={p.id} player={p} rank={i} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} dark={dark} />
       ))}
     </div>
   );
 }
 
-function GridCard({ player, rank, navigate, hasRole, assignedPlayerIds }) {
+function GridCard({ player, rank, navigate, hasRole, assignedPlayerIds, dark }) {
   const isTop = rank < 3;
   const [hover, setHover] = React.useState(false);
-  
+
   // Allow access if admin OR (coach AND player is assigned to this coach)
   const isAdmin = hasRole('admin');
   const isCoach = hasRole('coach');
@@ -354,11 +401,19 @@ function GridCard({ player, rank, navigate, hasRole, assignedPlayerIds }) {
     navigate(route, { state: { player } });
   };
 
+  const avatarBg = isTop ? '#FFD700' : pal(player.name)[0];
+  const cardBg = isTop
+    ? (dark ? 'rgba(255,215,0,0.07)' : 'linear-gradient(135deg, #FFF9E6 0%, #FFFFFF 100%)')
+    : (dark ? 'var(--cl-surface)' : 'white');
+  const balanceBg = dark ? 'rgba(14,165,233,0.12)' : 'linear-gradient(135deg, #E0F2FE 0%, #BAE6FD 100%)';
+  const balanceColor = dark ? '#7DD3FC' : '#0369A1';
+
   return (
-    <div 
-      style={{ 
-        ...styles.card, 
-        ...(isTop && styles.topCard),
+    <div
+      style={{
+        ...styles.card,
+        background: cardBg,
+        ...(isTop && { border: '2px solid #FFD700' }),
         ...(hover && canAccess && { transform: "translateY(-8px)", boxShadow: "0 20px 48px rgba(0,0,0,0.15)" }),
         cursor: canAccess ? "pointer" : "default",
         opacity: 1
@@ -371,23 +426,23 @@ function GridCard({ player, rank, navigate, hasRole, assignedPlayerIds }) {
         {isTop ? <Flame size={18} /> : rank + 1}
       </div>
 
-      <div style={styles.avatar(isTop)}>
+      <div style={{ ...styles.avatar(isTop), background: avatarBg }}>
         {player.name.charAt(0).toUpperCase()}
       </div>
 
-      <div style={styles.name}>{player.name}</div>
+      <div style={{ ...styles.name, color: dark ? 'var(--cl-text)' : '#0F172A' }}>{player.name}</div>
 
-      <div style={styles.points}>
+      <div style={{ ...styles.points, color: dark ? 'var(--cl-text)' : '#1e293b' }}>
         {player.totalPoints.toLocaleString()}
-        <span style={styles.pointsLabel}>points</span>
+        <span style={{ ...styles.pointsLabel, color: dark ? 'var(--cl-text-3)' : '#64748B' }}>points</span>
       </div>
 
-      <div style={styles.row}>
+      <div style={{ ...styles.row, color: dark ? 'var(--cl-text-3)' : '#64748B', borderTop: `1px solid ${dark ? 'var(--cl-border)' : '#e2e8f0'}` }}>
         <span>Redeemed</span>
-        <strong>{player.redeemed.toLocaleString()}</strong>
+        <strong style={{ color: dark ? 'var(--cl-text-2)' : 'inherit' }}>{player.redeemed.toLocaleString()}</strong>
       </div>
 
-      <div style={styles.balance}>
+      <div style={{ ...styles.balance, background: balanceBg, color: balanceColor }}>
         Balance: {player.balance.toLocaleString()}
       </div>
     </div>
@@ -397,20 +452,20 @@ function GridCard({ player, rank, navigate, hasRole, assignedPlayerIds }) {
 /* ======================================================
    LIST VIEW
 ====================================================== */
-function ListView({ players, navigate, hasRole, currentUser, assignedPlayerIds }) {
+function ListView({ players, navigate, hasRole, currentUser, assignedPlayerIds, dark }) {
   return (
     <div style={styles.list}>
       {players.map((p, i) => (
-        <ListRow key={p.id} player={p} rank={i} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} />
+        <ListRow key={p.id} player={p} rank={i} navigate={navigate} hasRole={hasRole} currentUser={currentUser} assignedPlayerIds={assignedPlayerIds} dark={dark} />
       ))}
     </div>
   );
 }
 
-function ListRow({ player, rank, navigate, hasRole, assignedPlayerIds }) {
+function ListRow({ player, rank, navigate, hasRole, assignedPlayerIds, dark }) {
   const isTop = rank < 3;
   const [hover, setHover] = React.useState(false);
-  
+
   // Allow access if admin OR (coach AND player is assigned to this coach)
   const isAdmin = hasRole('admin');
   const isCoach = hasRole('coach');
@@ -424,14 +479,17 @@ function ListRow({ player, rank, navigate, hasRole, assignedPlayerIds }) {
     navigate(route, { state: { player } });
   };
 
+  const avatarBg = isTop ? '#FFD700' : pal(player.name)[0];
+
+  const rowBg = dark ? 'var(--cl-surface)' : 'white';
+  const hoverBg = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
   return (
-    <div 
+    <div
       style={{
         ...styles.listRow,
-        ...(hover && canAccess && { 
-          background: "#F8FAFC",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.1)"
-        }),
+        background: hover && canAccess ? hoverBg : rowBg,
+        ...(hover && canAccess && { boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }),
         cursor: canAccess ? "pointer" : "default"
       }}
       className="list-row"
@@ -443,17 +501,17 @@ function ListRow({ player, rank, navigate, hasRole, assignedPlayerIds }) {
         {isTop ? <Flame size={16} /> : rank + 1}
       </div>
 
-      <div style={styles.listAvatar(isTop)}>
+      <div style={{ ...styles.listAvatar(isTop), background: avatarBg }}>
         {player.name.charAt(0)}
       </div>
 
-      <div style={styles.listName}>{player.name}</div>
+      <div style={{ ...styles.listName, color: dark ? 'var(--cl-text)' : 'inherit' }}>{player.name}</div>
 
-      <div style={styles.listPoints}>
+      <div style={{ ...styles.listPoints, color: dark ? 'var(--cl-text)' : 'inherit' }}>
         {player.totalPoints.toLocaleString()}
       </div>
 
-      <div style={styles.listBalance}>
+      <div style={{ ...styles.listBalance, color: dark ? '#7DD3FC' : '#0369A1' }}>
         {player.balance.toLocaleString()}
       </div>
     </div>
@@ -479,7 +537,7 @@ function Skeleton() {
           height: '32px',
           background: 'rgba(200, 200, 200, 0.3)',
           borderRadius: '6px',
-          animation: 'pulse 2s ease-in-out infinite'
+          animation: 'skPulse 1.6s ease-in-out infinite'
         }} />
         <div style={{ display: 'flex', gap: '12px' }}>
           {[1, 2].map((i) => (
@@ -488,7 +546,7 @@ function Skeleton() {
               height: '36px',
               background: 'rgba(200, 200, 200, 0.3)',
               borderRadius: '6px',
-              animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
+              animation: `skPulse 1.6s ease-in-out infinite ${i * 0.1}s`
             }} />
           ))}
         </div>
@@ -502,7 +560,7 @@ function Skeleton() {
             borderRadius: '12px',
             border: '1px solid #E2E8F0',
             padding: '20px',
-            animation: `pulse 2s ease-in-out infinite ${i * 0.08}s`
+            animation: `skPulse 1.6s ease-in-out infinite ${i * 0.08}s`
           }}>
             {/* Avatar Skeleton */}
             <div style={{
@@ -512,7 +570,7 @@ function Skeleton() {
               borderRadius: '50%',
               marginBottom: '16px'
             }} />
-            
+
             {/* Title and Subtitle Skeleton */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{
@@ -565,13 +623,6 @@ function Skeleton() {
           </div>
         ))}
       </div>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.4; }
-          50% { opacity: 0.7; }
-        }
-      `}</style>
     </div>
   );
 }
@@ -598,17 +649,17 @@ const styles = {
   },
 
   hero: {
-    background: "linear-gradient(135deg, #060030ff 0%, #000000ff 100%)",
+    background: "linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)",
     color: "white",
-    padding: "clamp(20px, 5vw, 48px) clamp(16px, 4vw, 40px)",
-    borderRadius: "clamp(16px, 2vw, 24px)",
+    padding: "28px 32px",
+    borderRadius: "20px",
     display: "flex",
     flexDirection: "row",
     gap: "clamp(24px, 5vw, 48px)",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "clamp(24px, 4vw, 40px)",
-    boxShadow: "0 16px 48px rgba(6, 0, 48, 0.2), inset 0 1px 0 rgba(255,255,255,0.1)",
+    marginBottom: "24px",
+    boxShadow: "0 12px 40px rgba(6,0,48,.3)",
     border: "1px solid rgba(255,255,255,0.08)",
     transition: "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
     position: "relative",
@@ -642,39 +693,37 @@ const styles = {
     filter: "drop-shadow(0 0 12px rgba(255, 215, 0, 0.5))",
   },
 
-  heroTitle: { 
-    fontSize: "clamp(28px, 6vw, 42px)", 
+  heroTitle: {
+    fontSize: "clamp(28px, 6vw, 42px)",
     fontWeight: 950,
-    margin: 0,
-    letterSpacing: "-1px",
+    margin: "0 0 3px",
+    letterSpacing: "-.5px",
     color: "#ffffff",
   },
-  
-  heroSubtitle: { 
-    opacity: 0.9,
-    fontSize: "clamp(12px, 2.5vw, 15px)",
-    marginTop: "clamp(6px, 1vw, 8px)",
-    color: "rgba(255, 255, 255, 0.8)",
-    letterSpacing: "0.3px",
-    fontWeight: 500,
+
+  heroSubtitle: {
+    fontSize: "13px",
+    color: "rgba(255,255,255,.6)",
+    margin: 0,
+    fontWeight: "500",
   },
 
-  heroRight: { 
-    display: "flex", 
-    gap: "clamp(16px, 3vw, 32px)", 
+  heroRight: {
+    display: "flex",
+    gap: "clamp(16px, 3vw, 32px)",
     flexWrap: "wrap",
     alignItems: "center",
     flex: 1,
     justifyContent: "flex-end",
   },
-  
-  heroStats: { 
-    display: "flex", 
-    gap: "clamp(12px, 2vw, 16px)", 
+
+  heroStats: {
+    display: "flex",
+    gap: "clamp(12px, 2vw, 16px)",
     flexWrap: "wrap",
     flex: 1,
   },
-  
+
   statBox: {
     background: "linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)",
     padding: "clamp(14px, 2vw, 18px) clamp(16px, 3vw, 44px)",
@@ -688,18 +737,18 @@ const styles = {
   statBoxHover: {
     cursor: "pointer",
   },
-  
-  heroStatLabel: { 
-    fontSize: "clamp(10px, 1.8vw, 12px)", 
+
+  heroStatLabel: {
+    fontSize: "clamp(10px, 1.8vw, 12px)",
     opacity: 0.8,
     fontWeight: 600,
     letterSpacing: "0.5px",
     textTransform: "uppercase",
     color: "rgba(255, 255, 255, 0.8)",
   },
-  
-  heroStatValue: { 
-    fontSize: "clamp(18px, 3.5vw, 24px)", 
+
+  heroStatValue: {
+    fontSize: "clamp(18px, 3.5vw, 24px)",
     fontWeight: 900,
     marginTop: "clamp(6px, 1vw, 8px)",
     color: "#ffffff",
@@ -752,7 +801,7 @@ const styles = {
     transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
     cursor: "pointer",
   },
-  topCard: { 
+  topCard: {
     border: "2px solid #FFD700",
     background: "linear-gradient(135deg, #FFF9E6 0%, #FFFFFF 100%)",
   },
@@ -777,9 +826,6 @@ const styles = {
     height: "clamp(48px, 10vw, 64px)",
     borderRadius: "50%",
     margin: "0 auto clamp(8px, 1.5vw, 12px)",
-    background: top
-      ? "linear-gradient(135deg,#FFD700,#FFB703)"
-      : "linear-gradient(135deg,#060030,#000)",
     color: "white",
     fontSize: "clamp(20px, 4vw, 28px)",
     fontWeight: 900,
@@ -836,9 +882,6 @@ const styles = {
     width: 44,
     height: 44,
     borderRadius: "50%",
-    background: top
-      ? "linear-gradient(135deg,#FFD700,#FFB703)"
-      : "linear-gradient(135deg,#060030,#000)",
     color: "white",
     display: "flex",
     alignItems: "center",

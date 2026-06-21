@@ -1,207 +1,217 @@
-import { Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
-import { Button } from '../../components/Button';
-import { Users, BookOpen, Target, TrendingUp, Plus, Star, Clock, Award, Search, Filter, ChevronRight, Zap, CheckCircle2, AlertCircle, Loader } from 'lucide-react';
+import {
+  Users, BookOpen, Target, Plus, Award,
+  Search, ChevronRight, AlertCircle, Loader, Layers,
+  X, ExternalLink, Calendar, Trophy,
+} from 'lucide-react';
+
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+);
+
+const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+      background: '#fff', border: `1.5px solid ${hov ? accent + '44' : '#E2E8F0'}`,
+      borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px',
+      boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
+      transition: 'all .2s', flex: 1, minWidth: '140px',
+    }}>
+      <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {React.createElement(SIcon, { size: 22, color: accent })}
+      </div>
+      <div>
+        <p style={{ fontSize: '10.5px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', margin: '0 0 4px', letterSpacing: '.5px' }}>{label}</p>
+        <p style={{ fontSize: '23px', fontWeight: '800', color: '#0F172A', margin: 0 }}>{value}</p>
+      </div>
+    </div>
+  );
+};
+
+const BATCHES_URL   = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
+const VIEW_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 
 const CoachDashboard = () => {
-  const { currentUser, players, sessionHistory, sessionDrafts, fetchPlayers } = useStore();
-  const [searchplayer, setSearchplayer] = useState('');
-  const [filterLevel, setFilterLevel] = useState('All');
-  const [isLoading, setIsLoading] = useState(true);
+  const { currentUser, fetchAssignedPlayersForCoach, userToken } = useStore();
+  const navigate = useNavigate();
 
+  const [myPlayers, setMyPlayers]           = useState([]);
+  const [batchCount, setBatchCount]         = useState(0);
+  const [isLoading, setIsLoading]           = useState(true);
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [playerCards, setPlayerCards]       = useState([]);
+  const [loadingCards, setLoadingCards]     = useState(false);
+  const [searchPlayer, setSearchPlayer]     = useState('');
+
+  // Fetch assigned players + batch count
   useEffect(() => {
-    // Fetch players data on mount
-    fetchPlayers();
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, [fetchPlayers]);
-  
-  const myplayers = players.filter((p) => p.primaryCoach === currentUser.id);
-  const mySessions = sessionHistory.filter((s) => s.coachId === currentUser.id);
-  const myDrafts = sessionDrafts.filter((s) => s.coachId === currentUser.id);
-  const completedSessions = mySessions.filter((s) => s.status === 'completed').length;
-  
-  const avgRating = (
-    mySessions.reduce((sum, s) => sum + (s.rating || 0), 0) / mySessions.length || 0
-  ).toFixed(1);
+    if (!currentUser?.id || !userToken) return;
+    (async () => {
+      setIsLoading(true);
+      try {
+        const result = await fetchAssignedPlayersForCoach(currentUser.id);
+        if (result.success && result.players) {
+          const normalized = result.players.map(item => {
+            const p = item.player || item;
+            return {
+              playerId: p._id || p.id || p.playerId,
+              name: p.playerName || p.name || '',
+              LearningPathway: p.LearningPathway || '',
+              totalPoints: p.TotalPoints || p.totalPoints || 0,
+              PointBalance: p.PointBalance || 0,
+              sessionCardIds: item.sessionCardIds || p.sessionCardIds || [],
+              status: p.status || 'active',
+            };
+          });
+          setMyPlayers(normalized);
 
-  // Filter and search players
-  const filteredplayers = myplayers.filter(player => {
-    const matchesSearch = player.name.toLowerCase().includes(searchplayer.toLowerCase());
-    const matchesPathway = filterLevel === 'All' || player.learningPathway === filterLevel;
-    return matchesSearch && matchesPathway;
-  });
+          try {
+            const bRes = await fetch(BATCHES_URL, {
+              headers: { 'Content-Type': 'application/json', userToken }
+            });
+            if (bRes.ok) {
+              let bd = await bRes.json();
+              if (bd?.body && typeof bd.body === 'string') bd = JSON.parse(bd.body);
+              const batches = Array.isArray(bd) ? bd : (bd.batches || []);
+              const pids = new Set(normalized.map(p => String(p.playerId)));
+              const mine = batches.filter(b =>
+                (b.playerIds || (b.players || []).map(pl => pl.playerId || pl))
+                  .some(id => pids.has(String(id)))
+              );
+              setBatchCount(mine.length);
+            }
+          } catch { /* non-critical */ }
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [currentUser?.id, userToken]);
 
-  const levels = ['All', ...new Set(myplayers.map(s => s.learningPathway).filter(Boolean))];
-  const topplayers = myplayers.sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0)).slice(0, 3);
+  // Fetch session cards when a player is selected
+  useEffect(() => {
+    if (!selectedPlayer) { setPlayerCards([]); return; }
+    const ids = selectedPlayer.sessionCardIds || [];
+    if (!ids.length) { setPlayerCards([]); return; }
+    const controller = new AbortController();
+    (async () => {
+      setLoadingCards(true);
+      try {
+        const cards = await Promise.all(ids.map(async id => {
+          try {
+            const res = await fetch(VIEW_CARD_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', userToken },
+              body: JSON.stringify({ sessionCardId: id }),
+              signal: controller.signal,
+            });
+            if (!res.ok) return null;
+            const d = await res.json();
+            return d.sessionCard || d.data || d;
+          } catch { return null; }
+        }));
+        setPlayerCards(cards.filter(Boolean));
+      } catch (e) {
+        if (e.name !== 'AbortError') setPlayerCards([]);
+      } finally {
+        setLoadingCards(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [selectedPlayer?.playerId]);
+
+  const totalSessions = useMemo(
+    () => myPlayers.reduce((s, p) => s + (p.sessionCardIds?.length || 0), 0),
+    [myPlayers]
+  );
+
+  const totalPoints = useMemo(
+    () => myPlayers.reduce((s, p) => s + (p.totalPoints || 0), 0),
+    [myPlayers]
+  );
+
+  const playerStats = useMemo(() => {
+    if (!selectedPlayer) return null;
+    const norm = s => (s || '').toLowerCase().replace(' ', '_');
+    return {
+      total:     selectedPlayer.sessionCardIds?.length || 0,
+      completed: playerCards.filter(c => norm(c.status) === 'completed').length,
+      pending:   playerCards.filter(c => norm(c.status) === 'pending').length,
+      upcoming:  playerCards.filter(c => ['upcoming', 'in_progress'].includes(norm(c.status))).length,
+    };
+  }, [selectedPlayer, playerCards]);
+
+  const filteredPlayers = useMemo(
+    () => myPlayers.filter(p => p.name.toLowerCase().includes(searchPlayer.toLowerCase())),
+    [myPlayers, searchPlayer]
+  );
+
+  const handleSelectPlayer = (player) => {
+    setSelectedPlayer(prev => prev?.playerId === player.playerId ? null : player);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedPlayer(null);
+    setPlayerCards([]);
+  };
+
+  const statsRow = selectedPlayer
+    ? [
+        { label: 'Total Sessions',    value: loadingCards ? '…' : playerStats?.total,     color: 'rgba(255,255,255,0.15)' },
+        { label: 'Completed',         value: loadingCards ? '…' : playerStats?.completed,  color: 'rgba(74,222,128,0.2)' },
+        { label: 'Pending (Absent)',  value: loadingCards ? '…' : playerStats?.pending,    color: 'rgba(251,191,36,0.2)' },
+        { label: 'Upcoming / Active', value: loadingCards ? '…' : playerStats?.upcoming,   color: 'rgba(96,165,250,0.2)' },
+      ]
+    : [
+        { label: 'My Players',        value: myPlayers.length,  color: 'rgba(255,255,255,0.15)' },
+        { label: 'Batches Assigned',  value: batchCount,        color: 'rgba(255,255,255,0.15)' },
+        { label: 'Total Sessions',    value: totalSessions,     color: 'rgba(255,255,255,0.15)' },
+        { label: 'Completed',         value: '-',               color: 'rgba(255,255,255,0.08)' },
+        { label: 'Pending',           value: '-',               color: 'rgba(255,255,255,0.08)' },
+      ];
 
   if (isLoading) {
     return (
       <Layout>
+        <style>{`@keyframes skPulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
-          {/* Header Skeleton */}
+          {/* Header skeleton */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(6, 0, 48, 0.4) 0%, rgba(0, 0, 0, 0.4) 100%)',
-            padding: '40px 32px',
-            marginBottom: '32px',
-            borderRadius: '12px',
-            border: '1px solid rgba(226, 232, 240, 0.3)'
+            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+            borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+            boxShadow: '0 12px 40px rgba(6,0,48,.3)'
           }}>
-            <div style={{ maxWidth: '1400px' }}>
-              <div style={{ marginBottom: '24px' }}>
-                <div style={{
-                  width: '280px',
-                  height: '32px',
-                  background: 'rgba(200, 200, 200, 0.3)',
-                  borderRadius: '6px',
-                  marginBottom: '12px',
-                  animation: 'pulse 2s ease-in-out infinite'
-                }} />
-                <div style={{
-                  width: '420px',
-                  height: '16px',
-                  background: 'rgba(200, 200, 200, 0.3)',
-                  borderRadius: '6px',
-                  animation: 'pulse 2s ease-in-out infinite 0.1s'
-                }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} style={{
-                    background: 'rgba(248, 250, 252, 0.5)',
-                    borderRadius: '8px',
-                    padding: '16px',
-                    animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
-                  }}>
-                    <div style={{
-                      width: '60%',
-                      height: '20px',
-                      background: 'rgba(200, 200, 200, 0.3)',
-                      borderRadius: '6px',
-                      marginBottom: '12px'
-                    }} />
-                    <div style={{
-                      width: '40%',
-                      height: '28px',
-                      background: 'rgba(200, 200, 200, 0.3)',
-                      borderRadius: '6px'
-                    }} />
-                  </div>
-                ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', flexShrink: 0 }} />
+              <div>
+                <div style={{ width: '200px', height: '28px', background: 'rgba(255,255,255,.15)', borderRadius: '6px', marginBottom: '8px' }} />
+                <div style={{ width: '280px', height: '14px', background: 'rgba(255,255,255,.1)', borderRadius: '4px' }} />
               </div>
             </div>
           </div>
-
-          {/* Content Skeleton */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
-            {/* Main Section Skeleton */}
-            <div>
-              <div style={{
-                width: '200px',
-                height: '24px',
-                background: 'rgba(200, 200, 200, 0.3)',
-                borderRadius: '6px',
-                marginBottom: '16px',
-                animation: 'pulse 2s ease-in-out infinite'
-              }} />
-              <div style={{
-                background: 'white',
-                borderRadius: '8px',
-                padding: '24px',
-                border: '1px solid #E2E8F0'
-              }}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    paddingBottom: '16px',
-                    marginBottom: '16px',
-                    borderBottom: i < 5 ? '1px solid #F1F5F9' : 'none'
-                  }}>
-                    <div style={{
-                      width: '48px',
-                      height: '48px',
-                      background: 'rgba(200, 200, 200, 0.3)',
-                      borderRadius: '50%',
-                      animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
-                    }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{
-                        width: '60%',
-                        height: '16px',
-                        background: 'rgba(200, 200, 200, 0.3)',
-                        borderRadius: '6px',
-                        marginBottom: '8px',
-                        animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
-                      }} />
-                      <div style={{
-                        width: '40%',
-                        height: '14px',
-                        background: 'rgba(200, 200, 200, 0.3)',
-                        borderRadius: '6px',
-                        animation: `pulse 2s ease-in-out infinite ${(i * 0.1) + 0.1}s`
-                      }} />
-                    </div>
-                  </div>
-                ))}
+          {/* Summary cards skeleton */}
+          <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} style={{ flex: 1, minWidth: '140px', background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <Sk w="46px" h="46px" r={12} />
+                <div style={{ flex: 1 }}>
+                  <Sk w="70%" h="11px" r={4} />
+                  <div style={{ marginTop: '8px' }}><Sk w="50%" h="23px" r={4} /></div>
+                </div>
               </div>
-            </div>
-
-            {/* Sidebar Skeleton */}
-            <div>
-              <div style={{
-                width: '200px',
-                height: '24px',
-                background: 'rgba(200, 200, 200, 0.3)',
-                borderRadius: '6px',
-                marginBottom: '16px',
-                animation: 'pulse 2s ease-in-out infinite'
-              }} />
-              <div style={{
-                background: 'white',
-                borderRadius: '8px',
-                padding: '24px',
-                border: '1px solid #E2E8F0',
-                marginBottom: '24px'
-              }}>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} style={{
-                    paddingBottom: '16px',
-                    marginBottom: '16px',
-                    borderBottom: i < 3 ? '1px solid #F1F5F9' : 'none'
-                  }}>
-                    <div style={{
-                      width: '70%',
-                      height: '16px',
-                      background: 'rgba(200, 200, 200, 0.3)',
-                      borderRadius: '6px',
-                      marginBottom: '8px',
-                      animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
-                    }} />
-                    <div style={{
-                      width: '50%',
-                      height: '14px',
-                      background: 'rgba(200, 200, 200, 0.3)',
-                      borderRadius: '6px',
-                      animation: `pulse 2s ease-in-out infinite ${(i * 0.1) + 0.1}s`
-                    }} />
-                  </div>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
-
-          <style>{`
-            @keyframes pulse {
-              0%, 100% { opacity: 0.4; }
-              50% { opacity: 0.7; }
-            }
-          `}</style>
         </div>
       </Layout>
     );
@@ -209,688 +219,449 @@ const CoachDashboard = () => {
 
   return (
     <Layout>
+      <style>{`
+        @keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      `}</style>
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
-        {/* Header Section with Stats */}
-        <div style={{
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: '40px 32px',
-          marginBottom: '32px',
-          borderRadius: '12px',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          boxShadow: '0 8px 32px rgba(37, 44, 53, 0.15)'
-        }}>
-          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              marginBottom: '24px'
-            }}>
-              <div>
-                <h1 style={{
-                  fontSize: '32px',
-                  fontWeight: '700',
-                  margin: '0 0 4px 0'
-                }}>
-                  Coach Dashboard
-                </h1>
-                <p style={{
-                  fontSize: '14px',
-                  opacity: 0.9,
-                  margin: 0
-                }}>
-                  Welcome back, {currentUser.username}! Manage your {myplayers.length} player{myplayers.length !== 1 ? 's' : ''} and sessions
-                </p>
-              </div>
-              <Link to="/coach/start-session" style={{
-                padding: '10px 20px',
-                background: 'rgba(255, 255, 255, 0.15)',
-                border: '2px solid rgba(255, 255, 255, 0.4)',
-                borderRadius: '8px',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '13px',
-                cursor: 'pointer',
-                textDecoration: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-              }}>
-                <Plus size={16} />
-                Start Session
-              </Link>
-            </div>
 
-            {/* Stats Inside Header */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-              gap: '16px'
-            }}>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>My Players</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{myplayers.length}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sessions Completed</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{completedSessions}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Draft Sessions</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{myDrafts.length}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Average Rating</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{avgRating}/5</p>
-              </div>
+        {/* Standard Header Banner */}
+        <div style={{
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BookOpen size={24} color="#fff" />
             </div>
+            <div>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>
+                {selectedPlayer ? selectedPlayer.name : 'Coach Dashboard'}
+              </h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
+                {selectedPlayer
+                  ? `${selectedPlayer.LearningPathway || 'No pathway'} · ${selectedPlayer.sessionCardIds?.length || 0} session cards`
+                  : `Welcome back, ${currentUser?.username}! Your coaching overview`}
+              </p>
+            </div>
+          </div>
+
+          {/* Right-side actions */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {selectedPlayer && (
+              <>
+                <button
+                  onClick={() => navigate(`/coach/player/${selectedPlayer.playerId}`)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '9px 16px', borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.3)',
+                    color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                >
+                  <ExternalLink size={14} /> View Profile
+                </button>
+                <button
+                  onClick={handleClearSelection}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '9px 16px', borderRadius: '8px',
+                    background: 'rgba(239,68,68,0.25)', border: '1.5px solid rgba(239,68,68,0.45)',
+                    color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.4)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                >
+                  <X size={14} /> All Clear
+                </button>
+              </>
+            )}
+            {!selectedPlayer && (
+              <Link to="/coach/start-session" style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '9px 16px', borderRadius: '8px',
+                background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.3)',
+                color: 'white', fontSize: '13px', fontWeight: '700', textDecoration: 'none'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+              >
+                <Plus size={14} /> Start Session
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* Two Column Section */}
+        {/* Summary Cards */}
+        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          <SummaryCard label="My Players" value={myPlayers.length} icon={Users} accent="#6366F1" />
+          <SummaryCard label="My Batches" value={batchCount} icon={Layers} accent="#10B981" />
+          <SummaryCard label="Active Cards" value={totalSessions} icon={BookOpen} accent="#F59E0B" />
+          <SummaryCard label="Points Earned" value={totalPoints.toLocaleString()} icon={Trophy} accent="#8B5CF6" />
+        </div>
+
+        {/* Stats row inside a secondary card when a player is selected */}
+        {selectedPlayer && (
+          <div style={{
+            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+            borderRadius: '14px', padding: '20px 24px', marginBottom: '24px',
+            boxShadow: '0 8px 24px rgba(6,0,48,.2)'
+          }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statsRow.length}, 1fr)`, gap: '12px' }}>
+              {statsRow.map(stat => (
+                <div key={stat.label} style={{
+                  background: stat.color, borderRadius: '10px', padding: '14px 16px',
+                  border: '1px solid rgba(255,255,255,0.15)', transition: 'background 0.3s'
+                }}>
+                  <p style={{ fontSize: '10px', opacity: 0.8, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600', color: 'white' }}>
+                    {stat.label}
+                  </p>
+                  <p style={{ fontSize: '22px', fontWeight: '800', margin: 0, color: 'white' }}>
+                    {stat.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Selected player's recent cards preview */}
+            {!loadingCards && playerCards.length > 0 && (
+              <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {playerCards.slice(-4).reverse().map((card, i) => {
+                  const norm = (s => (s || '').toLowerCase().replace(' ', '_'));
+                  const st = norm(card.status);
+                  const cfg = st === 'completed' ? { bg: 'rgba(74,222,128,0.2)', color: '#bbf7d0' }
+                            : st === 'pending'   ? { bg: 'rgba(251,191,36,0.2)',  color: '#fde68a' }
+                            :                      { bg: 'rgba(96,165,250,0.2)',  color: '#bfdbfe' };
+                  return (
+                    <div key={i} style={{
+                      background: cfg.bg, border: `1px solid ${cfg.color}`,
+                      borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600',
+                      color: 'rgba(255,255,255,0.9)'
+                    }}>
+                      S{card.session || (i + 1)} · {card.Topic?.substring(0, 18) || 'Session'} · {card.status || '-'}
+                    </div>
+                  );
+                })}
+                {playerCards.length > 4 && (
+                  <div style={{
+                    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600',
+                    color: 'rgba(255,255,255,0.7)'
+                  }}>
+                    +{playerCards.length - 4} more
+                  </div>
+                )}
+              </div>
+            )}
+            {loadingCards && (
+              <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.75, fontSize: '13px', color: 'white' }}>
+                <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Loading session cards…
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Two columns: Quick Actions + My Players */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
-          gap: '24px',
-          marginBottom: '32px'
+          gridTemplateColumns: 'minmax(260px, 360px) 1fr',
+          gap: '24px', marginBottom: '28px', alignItems: 'start'
         }}>
           {/* Quick Actions */}
           <div style={{
-            background: '#FFFFFF',
-            borderRadius: '14px',
-            border: '1.5px solid #E2E8F0',
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+            background: '#FFFFFF', borderRadius: '14px',
+            border: '1.5px solid #E2E8F0', overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
             <div style={{
-              padding: '24px',
-              borderBottom: '1.5px solid #E2E8F0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
+              padding: '20px 24px', borderBottom: '1.5px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', gap: '12px'
             }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                background: '#E8F2F8',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                width: '40px', height: '40px', background: 'rgba(99,102,241,0.1)',
+                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
-                <Target size={24} color="#060030ff" />
+                <Target size={20} color="#6366F1" />
               </div>
-              <h2 style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                color: '#111827',
-                margin: 0
-              }}>
-                Quick Actions
-              </h2>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>Quick Actions</h2>
             </div>
-            <div style={{ padding: '16px' }}>
+            <div style={{ padding: '12px' }}>
               {[
-                { icon: Users, label: 'View My players', to: '/coach/players' },
-                { icon: Plus, label: 'Start New Session', to: '/coach/start-session' },
-                { icon: Award, label: 'My Profile', to: '/coach/profile' },
-                { icon: BookOpen, label: 'Past Sessions', to: '/coach/past-sessions' }
+                { icon: Users,    label: 'My Players',    to: '/coach/players' },
+                { icon: Plus,     label: 'Start Session',  to: '/coach/start-session' },
+                { icon: Award,    label: 'Past Sessions',  to: '/coach/past-sessions' },
+                { icon: Award,    label: 'My Profile',     to: '/coach/profile' },
               ].map((action, idx) => {
                 const Icon = action.icon;
                 return (
-                  <Link
-                    key={idx}
-                    to={action.to}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '14px 16px',
-                      background: '#F8FAFC',
-                      borderRadius: '10px',
-                      marginBottom: idx < 3 ? '10px' : 0,
-                      cursor: 'pointer',
-                      textDecoration: 'none',
-                      color: '#111827',
-                      transition: 'all 0.2s ease',
-                      border: '1px solid transparent'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#E8F2F8';
-                      e.currentTarget.style.borderColor = '#060030ff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#F8FAFC';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }}
+                  <Link key={idx} to={action.to} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', background: '#F8FAFC', borderRadius: '10px',
+                    marginBottom: idx < 3 ? '8px' : 0, textDecoration: 'none',
+                    color: '#0F172A', transition: 'all 0.2s ease', border: '1px solid transparent'
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; e.currentTarget.style.borderColor = '#6366F1'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = 'transparent'; }}
                   >
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}>
-                      <Icon size={20} color="#060030ff" />
-                      <span style={{ fontWeight: '600', fontSize: '14px' }}>{action.label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <Icon size={18} color="#6366F1" />
+                      <span style={{ fontWeight: '600', fontSize: '13px' }}>{action.label}</span>
                     </div>
-                    <ChevronRight size={18} color="#060030ff" />
+                    <ChevronRight size={16} color="#6366F1" />
                   </Link>
                 );
               })}
             </div>
+
+            {/* Batch count pill */}
+            {batchCount > 0 && (
+              <div style={{
+                margin: '0 12px 12px', padding: '12px 14px',
+                background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(99,102,241,0.08))',
+                borderRadius: '10px', border: '1px solid #6366F1',
+                display: 'flex', alignItems: 'center', gap: '10px'
+              }}>
+                <Layers size={18} color="#6366F1" />
+                <div>
+                  <p style={{ fontSize: '11px', color: '#475569', margin: 0, textTransform: 'uppercase', fontWeight: '600' }}>Batches Assigned</p>
+                  <p style={{ fontSize: '18px', fontWeight: '800', color: '#6366F1', margin: 0 }}>{batchCount}</p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Recent Sessions */}
+          {/* My Players - selectable list */}
           <div style={{
-            background: '#FFFFFF',
-            borderRadius: '14px',
-            border: '1.5px solid #E2E8F0',
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
+            background: '#FFFFFF', borderRadius: '14px',
+            border: '1.5px solid #E2E8F0', overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
             <div style={{
-              padding: '24px',
-              borderBottom: '1.5px solid #E2E8F0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
+              padding: '20px 24px', borderBottom: '1.5px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', gap: '12px'
             }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                background: '#F0FDF4',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                width: '40px', height: '40px', background: 'rgba(99,102,241,0.1)',
+                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
-                <Clock size={24} color="#10B981" />
+                <Users size={20} color="#6366F1" />
               </div>
-              <h2 style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                color: '#111827',
-                margin: 0
-              }}>
-                Recent Sessions
-              </h2>
-            </div>
-            <div style={{ padding: '16px', maxHeight: '280px', overflowY: 'auto' }}>
-              {mySessions.length === 0 ? (
-                <div style={{
-                  padding: '32px 16px',
-                  textAlign: 'center',
-                  color: '#64748B'
-                }}>
-                  <p>No sessions yet</p>
-                </div>
-              ) : (
-                mySessions.slice(-4).reverse().map((session, idx) => (
-                  <div
-                    key={session.sessionId}
-                    style={{
-                      padding: '14px 16px',
-                      borderBottom: idx < 3 ? '1px solid #F3F4F6' : 'none',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <div>
-                      <p style={{
-                        margin: 0,
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        color: '#111827'
-                      }}>
-                        {session.player}
-                      </p>
-                      <p style={{
-                        margin: '4px 0 0 0',
-                        fontSize: '12px',
-                        color: '#64748B'
-                      }}>
-                        {session.date}
-                      </p>
-                    </div>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}>
-                      <div style={{
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        background: session.status === 'completed' ? '#F0FDF4' : '#FFFBEB',
-                        color: session.status === 'completed' ? '#10B981' : '#060030ff'
-                      }}>
-                        {session.status === 'completed' ? '✓' : '⏱'} {session.status}
-                      </div>
-                      {session.rating && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          color: '#EF4444'
-                        }}>
-                          <Star size={14} fill="#EF4444" color="#EF4444" />
-                          {session.rating}/5
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
+              <div>
+                <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>My Players</h2>
+                <p style={{ fontSize: '12px', color: '#475569', margin: 0 }}>
+                  {selectedPlayer ? `${selectedPlayer.name} selected` : 'Click a player to view their stats'}
+                </p>
+              </div>
+              {selectedPlayer && (
+                <button
+                  onClick={handleClearSelection}
+                  style={{
+                    marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '6px 12px', borderRadius: '7px',
+                    background: '#FEE2E2', border: '1px solid #FECACA',
+                    color: '#DC2626', fontSize: '12px', fontWeight: '700', cursor: 'pointer'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#FECACA'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#FEE2E2'}
+                >
+                  <X size={12} /> All Clear
+                </button>
+              )}
+              {!selectedPlayer && (
+                <span style={{
+                  marginLeft: 'auto', padding: '5px 12px',
+                  background: 'rgba(99,102,241,0.1)', color: '#6366F1',
+                  borderRadius: '6px', fontSize: '13px', fontWeight: '700'
+                }}>{myPlayers.length}</span>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Top Performers Section */}
-        {topplayers.length > 0 && (
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: '14px',
-            border: '1.5px solid #E2E8F0',
-            overflow: 'hidden',
-            marginBottom: '32px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
-          }}>
-            <div style={{
-              padding: '24px',
-              borderBottom: '1.5px solid #E2E8F0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}>
+            {/* Search */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                background: 'linear-gradient(135deg, #FFFBEB, #FEF2F2)',
-                borderRadius: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '9px 12px', background: '#F8FAFC',
+                borderRadius: '8px', border: '1.5px solid #E2E8F0'
               }}>
-                <Award size={24} color="#EF4444" />
+                <Search size={16} color="#475569" />
+                <input
+                  type="text"
+                  placeholder="Search players…"
+                  value={searchPlayer}
+                  onChange={e => setSearchPlayer(e.target.value)}
+                  style={{
+                    border: 'none', background: 'transparent', outline: 'none',
+                    fontSize: '13px', color: '#0F172A', flex: 1
+                  }}
+                />
               </div>
-              <h2 style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                color: '#111827',
-                margin: 0
-              }}>
-                Top Performers This Month
-              </h2>
             </div>
-            <div style={{ padding: '20px' }}>
-              {topplayers.map((player, idx) => {
-                const medals = ['🥇', '🥈', '🥉'];
+
+            {/* Player rows */}
+            <div style={{ maxHeight: '480px', overflowY: 'auto' }}>
+              {filteredPlayers.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#475569' }}>
+                  <AlertCircle size={32} style={{ margin: '0 auto 12px', opacity: 0.4, display: 'block' }} />
+                  <p style={{ margin: 0, fontSize: '14px' }}>No players found</p>
+                </div>
+              ) : filteredPlayers.map((player, idx) => {
+                const isSelected = selectedPlayer?.playerId === player.playerId;
+                const sessions = player.sessionCardIds?.length || 0;
+                const [accent] = pal(player.name);
                 return (
                   <div
                     key={player.playerId}
+                    onClick={() => handleSelectPlayer(player)}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px',
-                      padding: '16px',
-                      background: '#F8FAFC',
-                      borderRadius: '10px',
-                      marginBottom: idx < topplayers.length - 1 ? '12px' : 0
+                      display: 'flex', alignItems: 'center', gap: '14px',
+                      padding: '14px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
+                      borderBottom: idx < filteredPlayers.length - 1 ? '1px solid #E2E8F0' : 'none',
+                      borderLeft: isSelected ? '4px solid #6366F1' : '4px solid transparent',
+                      background: isSelected
+                        ? 'linear-gradient(90deg, rgba(99,102,241,0.1) 0%, transparent 100%)'
+                        : 'transparent',
                     }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8FAFC'; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                   >
-                    <span style={{
-                      fontSize: '24px',
-                      fontWeight: 'bold'
+                    {/* Avatar */}
+                    <div style={{
+                      width: '42px', height: '42px', borderRadius: '50%', flexShrink: 0,
+                      background: isSelected ? 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)' : accent,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'white', fontWeight: '800', fontSize: '16px',
+                      boxShadow: isSelected ? '0 0 0 3px rgba(99,102,241,0.2)' : 'none'
                     }}>
-                      {medals[idx]}
-                    </span>
-                    <div style={{ flex: 1 }}>
-                      <p style={{
-                        margin: 0,
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        color: '#111827'
-                      }}>
-                        {player.name}
-                      </p>
-                      <p style={{
-                        margin: '4px 0 0 0',
-                        fontSize: '12px',
-                        color: '#64748B'
-                      }}>
-                        {player.learningPathway}
+                      {player.name.charAt(0).toUpperCase()}
+                    </div>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                        <p style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {player.name}
+                        </p>
+                        {isSelected && (
+                          <span style={{
+                            fontSize: '10px', fontWeight: '700', padding: '2px 7px',
+                            borderRadius: '999px', background: '#6366F1',
+                            color: 'white', flexShrink: 0
+                          }}>SELECTED</span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {player.LearningPathway || '-'}
                       </p>
                     </div>
-                    <div style={{
-                      textAlign: 'right'
-                    }}>
-                      <p style={{
-                        margin: 0,
-                        fontSize: '16px',
-                        fontWeight: '700',
-                        color: '#252c35'
+
+                    {/* Meta */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: '11px', fontWeight: '700', padding: '3px 8px',
+                        borderRadius: '6px', background: 'rgba(99,102,241,0.1)',
+                        color: '#6366F1'
                       }}>
-                        {player.totalPoints}
-                      </p>
-                      <p style={{
-                        margin: '4px 0 0 0',
-                        fontSize: '11px',
-                        color: '#64748B'
-                      }}>
-                        points
-                      </p>
+                        {sessions} session{sessions !== 1 ? 's' : ''}
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>
+                        {player.totalPoints} pts
+                      </span>
+                    </div>
+
+                    {/* Chevron or spinner */}
+                    <div style={{ flexShrink: 0, marginLeft: '4px' }}>
+                      {isSelected && loadingCards
+                        ? <Loader size={16} color="#6366F1" style={{ animation: 'spin 1s linear infinite' }} />
+                        : <ChevronRight size={16} color={isSelected ? '#6366F1' : '#94A3B8'} />}
                     </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+
+        {/* Selected player session card breakdown */}
+        {selectedPlayer && !loadingCards && playerCards.length > 0 && (
+          <div style={{
+            background: '#FFFFFF', borderRadius: '14px',
+            border: '1.5px solid #E2E8F0', overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginBottom: '28px'
+          }}>
+            <div style={{
+              padding: '18px 24px', borderBottom: '1.5px solid #E2E8F0',
+              display: 'flex', alignItems: 'center', gap: '12px'
+            }}>
+              <div style={{
+                width: '40px', height: '40px', background: '#F0FDF4',
+                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Calendar size={20} color="#10B981" />
+              </div>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>
+                {selectedPlayer.name}'s Session Cards
+              </h2>
+              <Link
+                to={`/coach/player/${selectedPlayer.playerId}/sessions`}
+                style={{
+                  marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px',
+                  fontSize: '12px', fontWeight: '600', color: '#6366F1', textDecoration: 'none'
+                }}
+              >
+                View All <ChevronRight size={14} />
+              </Link>
+            </div>
+            <div style={{ padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+              {playerCards.slice().reverse().slice(0, 8).map((card, i) => {
+                const norm = s => (s || '').toLowerCase().replace(' ', '_');
+                const st = norm(card.status);
+                const statusCfg = {
+                  completed:   { bg: '#F0FDF4', color: '#16A34A', border: '#BBF7D0', label: 'Completed' },
+                  pending:     { bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', label: 'Pending' },
+                  in_progress: { bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE', label: 'In Progress' },
+                  upcoming:    { bg: '#F9FAFB', color: '#6B7280', border: '#E5E7EB', label: 'Upcoming' },
+                }[st] || { bg: '#F9FAFB', color: '#6B7280', border: '#E5E7EB', label: card.status || '-' };
+
+                return (
+                  <div key={i} style={{
+                    padding: '10px 14px', borderRadius: '10px',
+                    background: statusCfg.bg, border: `1.5px solid ${statusCfg.border}`,
+                    minWidth: '160px', flex: '0 0 auto'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '700', color: statusCfg.color }}>S{card.session || (i + 1)}</span>
+                      <span style={{
+                        fontSize: '10px', fontWeight: '700', padding: '2px 7px',
+                        borderRadius: '999px', background: statusCfg.border, color: statusCfg.color
+                      }}>{statusCfg.label}</span>
+                    </div>
+                    <p style={{ fontSize: '12px', fontWeight: '600', color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
+                      {card.Topic || 'Session'}
+                    </p>
+                  </div>
+                );
+              })}
+              {playerCards.length > 8 && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '10px',
+                  background: '#F8FAFC', border: '1.5px solid #E2E8F0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  minWidth: '80px', color: '#475569', fontSize: '13px', fontWeight: '700'
+                }}>
+                  +{playerCards.length - 8}
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {/* players List with Search and Filter */}
-        <div style={{
-          background: '#FFFFFF',
-          borderRadius: '14px',
-          border: '1.5px solid #E2E8F0',
-          overflow: 'hidden',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)'
-        }}>
-          <div style={{
-            padding: '24px',
-            borderBottom: '1.5px solid #E2E8F0',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            <div style={{
-              width: '44px',
-              height: '44px',
-              background: '#E8F2F8',
-              borderRadius: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Users size={24} color="#060030ff" />
-            </div>
-            <h2 style={{
-              fontSize: '18px',
-              fontWeight: '700',
-              color: '#111827',
-              margin: 0
-            }}>
-              My players
-            </h2>
-            <span style={{
-              marginLeft: 'auto',
-              padding: '6px 12px',
-              background: '#E8F2F8',
-              color: '#252c35',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: '700'
-            }}>
-              {filteredplayers.length}
-            </span>
-          </div>
-
-          {/* Search and Filter Bar */}
-          <div style={{
-            padding: '16px 20px',
-            borderBottom: '1px solid #E2E8F0',
-            display: 'flex',
-            gap: '12px',
-            flexWrap: 'wrap'
-          }}>
-            <div style={{
-              flex: 1,
-              minWidth: '200px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 14px',
-              background: '#F8FAFC',
-              borderRadius: '10px',
-              border: '1.5px solid #E2E8F0',
-              transition: 'all 0.2s ease'
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = '#060030ff';
-              e.currentTarget.style.boxShadow = '0 0 0 4px rgba(82, 102, 129, 0.1)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '#E2E8F0';
-              e.currentTarget.style.boxShadow = 'none';
-            }}>
-              <Search size={18} color="#64748B" />
-              <input
-                type="text"
-                placeholder="Search players..."
-                value={searchplayer}
-                onChange={(e) => setSearchplayer(e.target.value)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  outline: 'none',
-                  fontSize: '13px',
-                  color: '#111827',
-                  flex: 1,
-                  fontWeight: '500'
-                }}
-              />
-            </div>
-
-            <select
-              value={filterLevel}
-              onChange={(e) => setFilterLevel(e.target.value)}
-              style={{
-                padding: '10px 14px',
-                background: '#F8FAFC',
-                border: '1.5px solid #E2E8F0',
-                borderRadius: '10px',
-                fontSize: '13px',
-                fontWeight: '500',
-                color: '#111827',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#060030ff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = '#E2E8F0';
-              }}
-            >
-              {levels.map((level) => (
-                <option key={level} value={level}>
-                  {level === 'All' ? 'All Levels' : `Level ${level}`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* players Grid */}
-          <div style={{
-            padding: '20px'
-          }}>
-            {filteredplayers.length === 0 ? (
-              <div style={{
-                padding: '48px 32px',
-                textAlign: 'center',
-                color: '#64748B'
-              }}>
-                <AlertCircle size={40} style={{ margin: '0 auto 16px', opacity: 0.5 }} />
-                <p style={{ fontSize: '15px', margin: 0 }}>No players found matching your filters</p>
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                gap: '16px'
-              }}>
-                {filteredplayers.map((player) => (
-                  <Link
-                    key={player.playerId}
-                    to={`/coach/player/${player.playerId}`}
-                    style={{
-                      background: '#F8FAFC',
-                      border: '2px solid #E2E8F0',
-                      borderRadius: '12px',
-                      padding: '16px',
-                      textDecoration: 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease',
-                      color: '#111827'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#060030ff';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(82, 102, 129, 0.1)';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#E2E8F0';
-                      e.currentTarget.style.boxShadow = 'none';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      marginBottom: '12px'
-                    }}>
-                      <h3 style={{
-                        fontSize: '14px',
-                        fontWeight: '700',
-                        margin: 0,
-                        color: '#111827'
-                      }}>
-                        {player.name}
-                      </h3>
-                      <span style={{
-                        padding: '4px 10px',
-                        background: '#E8F2F8',
-                        color: '#252c35',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                        fontWeight: '700'
-                      }}>
-                        {player.learningPathway?.substring(0, 10)}
-                      </span>
-                    </div>
-
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '12px',
-                      marginBottom: '12px'
-                    }}>
-                      <div>
-                        <p style={{
-                          fontSize: '11px',
-                          color: '#64748B',
-                          margin: 0,
-                          marginBottom: '4px'
-                        }}>
-                          Pathway
-                        </p>
-                        <p style={{
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          color: '#111827',
-                          margin: 0
-                        }}>
-                          {player.learningPathway}
-                        </p>
-                      </div>
-                      <div>
-                        <p style={{
-                          fontSize: '11px',
-                          color: '#64748B',
-                          margin: 0,
-                          marginBottom: '4px'
-                        }}>
-                          Points
-                        </p>
-                        <p style={{
-                          fontSize: '13px',
-                          fontWeight: '600',
-                          color: '#060030ff',
-                          margin: 0
-                        }}>
-                          {player.totalPoints}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '6px'
-                      }}>
-                        <span style={{
-                          fontSize: '11px',
-                          color: '#64748B',
-                          fontWeight: '600'
-                        }}>
-                          Progress
-                        </span>
-                        <span style={{
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          color: '#252c35'
-                        }}>
-                          {player.progress}%
-                        </span>
-                      </div>
-                      <div style={{
-                        width: '100%',
-                        height: '6px',
-                        background: '#E2E8F0',
-                        borderRadius: '3px',
-                        overflow: 'hidden'
-                      }}>
-                        <div style={{
-                          width: `${player.progress}%`,
-                          height: '100%',
-                          background: 'linear-gradient(90deg, #060030ff, #252c35)',
-                          transition: 'width 0.5s ease'
-                        }} />
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </Layout>
   );
 };
 
 export default CoachDashboard;
-
-

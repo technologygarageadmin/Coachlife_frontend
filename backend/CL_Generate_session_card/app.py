@@ -62,10 +62,10 @@ def generate_session_card(player_id: str) -> dict:
     if last_session:
         status = last_session.get("status")
 
-        if status not in ["upcoming", "in_progress", "completed"]:
+        if status not in ["upcoming", "in_progress", "in progress", "completed", "absent", "excused", "pending"]:
             return {"message": f"Invalid session status: {status}"}
 
-        if status in ["upcoming", "in_progress"]:
+        if status in ["upcoming", "in_progress", "in progress"]:
             return {"message": f"Previous session is still {status}"}
 
     next_session = 1 if not last_session else last_session["session"] + 1
@@ -167,8 +167,20 @@ def lambda_handler(event, context):
 
         result = generate_session_card(player_id)
 
+        # Map logical outcomes to real HTTP codes so the client can tell a genuine
+        # "card created" from a no-op ("previous session still in progress", etc.)
+        message = result.get("message", "")
+        if message == "Session created":
+            status_code = 200
+        elif message in ("Player not found", "No pathway found"):
+            status_code = 404
+        elif "still" in message or message == "Session already exists":
+            status_code = 409
+        else:
+            status_code = 400
+
         return {
-            "statusCode": 200,
+            "statusCode": status_code,
             "headers": cors_headers(),
             "body": json.dumps(result)
         }

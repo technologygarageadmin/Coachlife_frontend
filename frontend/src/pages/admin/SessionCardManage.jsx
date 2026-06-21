@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import { SkeletonLoader } from '../../components/SkeletonLoader';
 import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle } from 'lucide-react';
 
 // API Endpoints
@@ -17,10 +16,46 @@ const API_ENDPOINTS = {
   GENERATE_SESSION_CARD: 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
 };
 
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+);
+
+const SummaryCard = ({ label, value, icon: SIcon, accent, dark }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+      background: dark ? 'var(--cl-surface)' : '#fff',
+      border: `1.5px solid ${hov ? accent + '44' : (dark ? 'var(--cl-border)' : '#F1F5F9')}`,
+      borderRadius: '16px', padding: '18px 20px',
+      boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
+      display: 'flex', alignItems: 'center', gap: '14px',
+      transition: 'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
+      flex: 1, minWidth: '140px',
+    }}>
+      <div style={{ width: '48px', height: '48px', borderRadius: '13px', flexShrink: 0, background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <SIcon size={22} color={accent} />
+      </div>
+      <div>
+        <p style={{ fontSize: '10.5px', fontWeight: '700', color: dark ? 'var(--cl-text-3)' : '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '.6px' }}>{label}</p>
+        <p style={{ fontSize: '22px', fontWeight: '800', color: dark ? 'var(--cl-text)' : '#0F172A', margin: '3px 0 0', letterSpacing: '-1px' }}>{value}</p>
+      </div>
+    </div>
+  );
+};
+
 const SessionCardManage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userToken, selectedPlayer, setSelectedPlayer } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
   const [players, setPlayers] = useState([]);
   const [sessionCards, setSessionCards] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +91,15 @@ const SessionCardManage = () => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Auto-select batch when navigated from BatchSessionView
+  useEffect(() => {
+    const batchId = location.state?.batchId;
+    if (batchId) {
+      setViewMode('batch');
+      setSelectedBatchId(batchId);
+    }
   }, []);
 
   // Fetch players on mount (only once)
@@ -437,6 +481,7 @@ const SessionCardManage = () => {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }
       `}</style>
 
       {toastMessage && (
@@ -449,57 +494,46 @@ const SessionCardManage = () => {
       )}
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: isMobile ? '0 12px' : isNarrow ? '0 20px' : '0 32px' }}>
-        {/* Header */}
+        {/* ── Header banner ── */}
         <div style={{
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000 100%)',
-          borderRadius: '12px',
-          padding: isMobile ? '20px 16px' : isNarrow ? '24px 24px' : '32px',
-          marginBottom: isMobile ? '16px' : '32px',
-          color: 'white',
-          boxShadow: '0 4px 20px rgba(6, 0, 48, 0.1)'
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '20px',
+          padding: isMobile ? '20px 16px' : '28px 32px',
+          marginBottom: '24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap',
+          boxShadow: '0 12px 40px rgba(6,0,48,.3)',
         }}>
-          <div style={{ marginBottom: isMobile ? '16px' : '24px' }}>
-            <h1 style={{ fontSize: isMobile ? '22px' : isNarrow ? '28px' : '36px', fontWeight: '800', margin: '0 0 8px 0' }}>
-              Session Card Management
-            </h1>
-            <p style={{ fontSize: isMobile ? '13px' : '15px', opacity: 0.9, margin: 0 }}>
-              Create, manage, and monitor session cards for all players
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.2)', flexShrink: 0 }}>
+              <Sparkles size={24} color="#fff" />
+            </div>
+            <div>
+              <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>
+                Session Card Management
+              </h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
+                Create, manage, and monitor session cards for all players
+              </p>
+            </div>
           </div>
+        </div>
 
-          {/* Stats Row */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: isMobile ? '10px' : '16px'
-          }}>
-            {[
-              { label: 'Total Players', value: players.length },
-              { label: 'Total Cards', value: sessionCards.length },
-              { label: 'Selected Player', value: selectedPlayer ? '✓' : '-' }
-            ].map(stat => (
-              <div key={stat.label} style={{
-                background: 'rgba(255,255,255,0.1)',
-                borderRadius: '8px',
-                padding: isMobile ? '10px 12px' : '12px 16px',
-                border: '1px solid rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <p style={{ fontSize: isMobile ? '9px' : '11px', opacity: 0.8, margin: '0 0 4px 0', textTransform: 'uppercase' }}>{stat.label}</p>
-                <p style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '700', margin: 0 }}>{stat.value}</p>
-              </div>
-            ))}
-          </div>
+        {/* ── Summary stats ── */}
+        <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          <SummaryCard label="Total Players" value={players.length} icon={Users} accent="#6366F1" dark={dark} />
+          <SummaryCard label="Total Cards" value={sessionCards.length} icon={Star} accent="#F59E0B" dark={dark} />
+          <SummaryCard label="Selected Player" value={selectedPlayer ? selectedPlayer.playerName || '✓' : '-'} icon={User} accent="#10B981" dark={dark} />
         </div>
 
         {/* View toggle: By Student / By Batch */}
         <div style={{
           display: 'inline-flex',
           gap: '4px',
-          background: '#F3F4F6',
+          background: dark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
           padding: '4px',
           borderRadius: '12px',
-          marginBottom: isMobile ? '16px' : '24px'
+          marginBottom: isMobile ? '16px' : '24px',
+          border: dark ? '1px solid rgba(255,255,255,0.1)' : 'none',
         }}>
           {[
             { key: 'student', label: 'By Student', Icon: User },
@@ -521,8 +555,8 @@ const SessionCardManage = () => {
                   fontSize: '13px',
                   fontWeight: '600',
                   transition: 'all 0.2s',
-                  background: active ? 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)' : 'transparent',
-                  color: active ? 'white' : '#6B7280',
+                  background: active ? 'linear-gradient(135deg, #060030ff 0%, #3b0080 100%)' : 'transparent',
+                  color: active ? 'white' : (dark ? 'rgba(255,255,255,0.5)' : '#6B7280'),
                   boxShadow: active ? '0 2px 8px rgba(6,0,48,0.25)' : 'none'
                 }}
               >
@@ -544,18 +578,18 @@ const SessionCardManage = () => {
           }}>
             <div style={{ flex: 1 }}>
               <div style={{ marginBottom: '16px' }}>
-                <SkeletonLoader width="100%" height="20px" borderRadius="8px" style={{ marginBottom: '8px' }} />
+                <Sk w="100%" h="20px" r={8} />
               </div>
               {[...Array(6)].map((_, i) => (
                 <div key={i} style={{ marginBottom: '12px' }}>
-                  <SkeletonLoader width="100%" height="60px" borderRadius="8px" />
+                  <Sk w="100%" h="60px" r={8} />
                 </div>
               ))}
             </div>
             {!isNarrow && (
               <div style={{ flex: 1.5 }}>
-                <SkeletonLoader width="100%" height="300px" borderRadius="12px" style={{ marginBottom: '16px' }} />
-                <SkeletonLoader width="100%" height="200px" borderRadius="12px" />
+                <div style={{ marginBottom: '16px' }}><Sk w="100%" h="300px" r={12} /></div>
+                <Sk w="100%" h="200px" r={12} />
               </div>
             )}
           </div>
@@ -565,17 +599,17 @@ const SessionCardManage = () => {
             gridTemplateColumns: isNarrow ? '1fr' : '1fr 1.5fr',
             gap: isMobile ? '16px' : '24px'
           }}>
-            {/* Players List Section — hidden on narrow when a player is selected */}
+            {/* Players List Section - hidden on narrow when a player is selected */}
             {(!isNarrow || !selectedPlayer) && (
               <div>
-                <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
-                  <div style={{ padding: '20px', borderBottom: '2px solid #E5E7EB', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
+                <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                  <div style={{ padding: '20px', borderBottom: `2px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`, background: dark ? 'rgba(255,255,255,0.03)' : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: '#111827' }}>
+                      <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: dark ? 'var(--cl-text)' : '#111827' }}>
                         Players
                       </h2>
                     </div>
-                    <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                    <p style={{ fontSize: '13px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>
                       {filteredPlayers.length} available
                     </p>
                   </div>
@@ -587,9 +621,9 @@ const SessionCardManage = () => {
                       alignItems: 'center',
                       gap: '10px',
                       padding: '10px 14px',
-                      border: '2px solid #E5E7EB',
+                      border: `2px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                       borderRadius: '8px',
-                      background: '#FFFFFF'
+                      background: dark ? 'rgba(255,255,255,0.04)' : '#FFFFFF'
                     }}>
                       <Search size={18} color="#9CA3AF" />
                       <input
@@ -619,22 +653,24 @@ const SessionCardManage = () => {
                             padding: '14px 16px',
                             borderBottom: '1px solid #E5E7EB',
                             cursor: 'pointer',
-                            background: selectedPlayer?.playerId === player.playerId ? 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)' : '#FFFFFF',
+                            background: selectedPlayer?.playerId === player.playerId
+                              ? (dark ? 'rgba(99,102,241,0.15)' : 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)')
+                              : (dark ? 'transparent' : '#FFFFFF'),
                             transition: 'all 0.3s',
-                            borderLeft: selectedPlayer?.playerId === player.playerId ? '4px solid #060030' : '4px solid transparent',
+                            borderLeft: selectedPlayer?.playerId === player.playerId ? '4px solid #818CF8' : '4px solid transparent',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '12px'
                           }}
                           onMouseEnter={(e) => {
                             if (selectedPlayer?.playerId !== player.playerId) {
-                              e.currentTarget.style.background = '#F9FAFB';
+                              e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : '#F9FAFB';
                               e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(124, 58, 237, 0.1)';
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (selectedPlayer?.playerId !== player.playerId) {
-                              e.currentTarget.style.background = '#FFFFFF';
+                              e.currentTarget.style.background = dark ? 'transparent' : '#FFFFFF';
                               e.currentTarget.style.boxShadow = 'none';
                             }
                           }}
@@ -644,7 +680,7 @@ const SessionCardManage = () => {
                             width: '44px',
                             height: '44px',
                             borderRadius: '50%',
-                            background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
+                            background: `linear-gradient(135deg, ${pal(player.playerName)[0]} 0%, ${pal(player.playerName)[1]} 100%)`,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -660,7 +696,7 @@ const SessionCardManage = () => {
                           {/* Player Info */}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px', gap: '8px' }}>
-                              <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: dark ? 'var(--cl-text)' : '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {player.playerName}
                               </p>
                               {player.LearningPathway && !isMobile && (
@@ -669,8 +705,8 @@ const SessionCardManage = () => {
                                   fontWeight: '700',
                                   padding: '3px 10px',
                                   borderRadius: '12px',
-                                  background: 'rgba(6, 0, 48, 0.1)',
-                                  color: '#060030',
+                                  background: dark ? 'rgba(99,102,241,0.15)' : 'rgba(6, 0, 48, 0.1)',
+                                  color: dark ? '#818CF8' : '#060030',
                                   whiteSpace: 'nowrap',
                                   flexShrink: 0
                                 }}>
@@ -679,11 +715,11 @@ const SessionCardManage = () => {
                               )}
                             </div>
                             {isMobile && player.LearningPathway && (
-                              <p style={{ fontSize: '11px', color: '#060030', fontWeight: '600', margin: '0 0 2px 0' }}>
+                              <p style={{ fontSize: '11px', color: dark ? '#818CF8' : '#060030', fontWeight: '600', margin: '0 0 2px 0' }}>
                                 {player.LearningPathway}
                               </p>
                             )}
-                            <p style={{ fontSize: '12px', color: '#6B7280', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {player.email}
                             </p>
                           </div>
@@ -712,14 +748,14 @@ const SessionCardManage = () => {
                       </div>
                     )}
                   </div>
-                </Card>
+                </div>
               </div>
             )}
 
             {/* Player Details Section */}
             {selectedPlayer ? (
-              <Card style={{ borderRadius: '12px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
-                {/* Back button — only on narrow screens */}
+              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
+                {/* Back button - only on narrow screens */}
                 {isNarrow && (
                   <button
                     onClick={() => setSelectedPlayer(null)}
@@ -746,7 +782,7 @@ const SessionCardManage = () => {
                 {/* Enhanced Header */}
                 <div style={{
                   padding: isMobile ? '24px 16px' : '32px 20px',
-                  background: 'linear-gradient(135deg, #060030ff 0%, #000000 100%)',
+                  background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
                   color: 'white',
                   textAlign: 'center',
                   position: 'relative',
@@ -873,7 +909,7 @@ const SessionCardManage = () => {
                     </h3>
                     <div style={{ display: 'grid', gap: '12px' }}>
                       {[...Array(3)].map((_, i) => (
-                        <SkeletonLoader key={i} width="100%" height="80px" borderRadius="8px" />
+                        <Sk key={i} w="100%" h="80px" r={8} />
                       ))}
                     </div>
                   </div>
@@ -1136,23 +1172,23 @@ const SessionCardManage = () => {
                     </p>
                   </div>
                 )}
-              </Card>
+              </div>
             ) : (
               !isNarrow && (
-                <Card style={{
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                <div style={{
+                  background: dark ? 'var(--cl-surface)' : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)',
+                  border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`,
+                  borderRadius: '16px', overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   minHeight: '400px',
-                  background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)'
                 }}>
-                  <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+                  <div style={{ textAlign: 'center', color: dark ? 'var(--cl-text-3)' : '#9CA3AF' }}>
                     <div style={{
                       width: '72px',
                       height: '72px',
                       borderRadius: '50%',
-                      background: 'rgba(96, 165, 250, 0.1)',
+                      background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(96, 165, 250, 0.1)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -1160,14 +1196,14 @@ const SessionCardManage = () => {
                     }}>
                       <Eye size={36} color='#60A5FA' opacity={0.6} />
                     </div>
-                    <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', margin: '0 0 8px 0' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: '600', color: dark ? 'var(--cl-text-2)' : '#111827', margin: '0 0 8px 0' }}>
                       No Player Selected
                     </h3>
-                    <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
+                    <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>
                       Select a player from the list to view and manage their session cards
                     </p>
                   </div>
-                </Card>
+                </div>
               )
             )}
           </div>
@@ -1178,9 +1214,9 @@ const SessionCardManage = () => {
             gridTemplateColumns: isNarrow ? '1fr' : '1fr 1.5fr',
             gap: isMobile ? '16px' : '24px'
           }}>
-            {/* Batch list — hidden on narrow when a batch is selected */}
+            {/* Batch list - hidden on narrow when a batch is selected */}
             {(!isNarrow || !selectedBatch) && (
-              <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                 <div style={{ padding: '20px', borderBottom: '2px solid #E5E7EB', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
                   <h2 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 8px 0', color: '#111827' }}>Batches</h2>
                   <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>{displayBatches.length} available</p>
@@ -1230,12 +1266,12 @@ const SessionCardManage = () => {
                     </div>
                   )}
                 </div>
-              </Card>
+              </div>
             )}
 
             {/* Selected batch detail */}
             {selectedBatch ? (
-              <Card style={{ borderRadius: '12px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
+              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
                 {isNarrow && (
                   <button
                     onClick={() => setSelectedBatchId('')}
@@ -1252,7 +1288,7 @@ const SessionCardManage = () => {
 
                 <div style={{
                   padding: isMobile ? '20px 16px' : '24px 20px',
-                  background: 'linear-gradient(135deg, #060030ff 0%, #000000 100%)',
+                  background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
                   color: 'white'
                 }}>
                   <h2 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '800', margin: '0 0 4px 0' }}>
@@ -1304,6 +1340,7 @@ const SessionCardManage = () => {
                 <div style={{ padding: '12px', maxHeight: isMobile ? '420px' : '520px', overflowY: 'auto' }}>
                   {selectedBatch.players.map(player => {
                     const status = batchGenStatus[player.playerId]?.state || 'idle';
+                    const playerDisplayName = player.playerName || player.name || '';
                     return (
                       <div
                         key={player.playerId}
@@ -1314,11 +1351,11 @@ const SessionCardManage = () => {
                       >
                         <div style={{
                           width: '40px', height: '40px', borderRadius: '50%',
-                          background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
+                          background: `linear-gradient(135deg, ${pal(playerDisplayName)[0]} 0%, ${pal(playerDisplayName)[1]} 100%)`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: 'white', fontWeight: '700', flexShrink: 0
                         }}>
-                          {(player.playerName || '?').charAt(0).toUpperCase()}
+                          {(playerDisplayName || '?').charAt(0).toUpperCase()}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1350,18 +1387,20 @@ const SessionCardManage = () => {
                             </button>
                           )}
                           {status === 'idle' && (
-                            <span style={{ fontSize: '13px', color: '#D1D5DB' }}>—</span>
+                            <span style={{ fontSize: '13px', color: '#D1D5DB' }}>-</span>
                           )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              </Card>
+              </div>
             ) : (
               !isNarrow && (
-                <Card style={{
-                  borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                <div style={{
+                  background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', overflow: 'hidden',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   minHeight: '400px', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)'
                 }}>
                   <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
@@ -1371,7 +1410,7 @@ const SessionCardManage = () => {
                       Select a batch to generate session cards for all its players
                     </p>
                   </div>
-                </Card>
+                </div>
               )
             )}
           </div>

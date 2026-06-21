@@ -1,6 +1,3 @@
-
-import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
 import UserProfile from '../common/UserProfile';
 
 const CoachProfile = () => {

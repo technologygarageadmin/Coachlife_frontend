@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import React from 'react';
 import axios from 'axios';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import { SkeletonLoader } from '../../components/SkeletonLoader';
 import {
   Layers, Plus, Trash2, X, Users, UserCheck, ChevronLeft, Loader, Search, UserPlus
 } from 'lucide-react';
@@ -14,8 +14,42 @@ const BRAND = '#060030ff';
 const CL_GET_BATCHES_URL  = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
 const CL_MANAGE_BATCH_URL = 'https://rwl4dpqgu5.execute-api.ap-south-1.amazonaws.com/default/CL_Manage_Batch';
 
+/* ── Design system helpers ── */
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+);
+
+const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
+      background: '#fff', border: `1.5px solid ${hov ? accent + '44' : '#E2E8F0'}`,
+      borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px',
+      boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
+      transition: 'all .2s', cursor: 'default', flex: 1, minWidth: '140px',
+    }}>
+      <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {React.createElement(SIcon, { size: 22, color: accent })}
+      </div>
+      <div>
+        <p style={{ fontSize: '10.5px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', margin: '0 0 4px', letterSpacing: '.5px' }}>{label}</p>
+        <p style={{ fontSize: '23px', fontWeight: '800', color: '#0F172A', margin: 0 }}>{value}</p>
+      </div>
+    </div>
+  );
+};
+
 export default function ManageBatches() {
   const { players, fetchPlayers, coaches, fetchCoaches, userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
 
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -229,28 +263,37 @@ export default function ManageBatches() {
     return players.filter(p => (p.playerName || p.name || '').toLowerCase().includes(term));
   }, [players, playerSearch]);
 
+  /* ── Summary stats ── */
+  const totalPlayerCount = batches.reduce((s, b) => s + (b.players?.length ?? b.playerIds?.length ?? 0), 0);
+  const withCoaches = batches.filter(b => (b.coachIds?.length ?? 0) >= 1).length;
+  const noCoach = batches.filter(b => (b.coachIds?.length ?? 0) === 0).length;
+
   return (
     <Layout>
-      <style>{`@keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+        @keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }
+      `}</style>
       {toast && <Toast type={toast.type} message={toast.message} duration={3000} onClose={() => setToast(null)} />}
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
         {/* Header */}
         <div style={{
-          background: `linear-gradient(135deg, ${BRAND} 0%, #000000 100%)`,
-          borderRadius: '12px', padding: '32px', marginBottom: '28px', color: 'white',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px'
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{
-              width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255,255,255,0.12)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
+              width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)',
+              border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center'
             }}>
-              <Layers size={24} />
+              <Layers size={24} color="#fff" />
             </div>
             <div>
-              <h1 style={{ fontSize: '28px', fontWeight: '800', margin: '0 0 4px 0' }}>Manage Batches</h1>
-              <p style={{ fontSize: '14px', opacity: 0.9, margin: 0 }}>Create batches, manage players, and assign coaches</p>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Manage Batches</h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>Create batches, manage players, and assign coaches</p>
             </div>
           </div>
           <button
@@ -267,18 +310,26 @@ export default function ManageBatches() {
           </button>
         </div>
 
+        {/* Summary cards */}
+        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          <SummaryCard label="Total Batches" value={batches.length} icon={Layers} accent="#6366F1" />
+          <SummaryCard label="Total Players" value={totalPlayerCount} icon={Users} accent="#10B981" />
+          <SummaryCard label="With Coaches" value={withCoaches} icon={UserCheck} accent="#F59E0B" />
+          <SummaryCard label="No Coach Yet" value={noCoach} icon={UserPlus} accent="#EF4444" />
+        </div>
+
         {loading ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '24px' }}>
-            <SkeletonLoader width="100%" height="400px" borderRadius="12px" />
-            <SkeletonLoader width="100%" height="400px" borderRadius="12px" />
+            <Sk w="100%" h="400px" r={16} />
+            <Sk w="100%" h="400px" r={16} />
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '24px', marginBottom: '32px' }}>
             {/* Batch list */}
-            <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
-              <div style={{ padding: '18px 20px', borderBottom: '2px solid #E5E7EB', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
-                <h2 style={{ fontSize: '17px', fontWeight: '700', margin: '0 0 4px 0', color: '#111827' }}>Batches</h2>
-                <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>{batches.length} batch{batches.length === 1 ? '' : 'es'}</p>
+            <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ padding: '18px 20px', borderBottom: `2px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`, background: dark ? 'rgba(255,255,255,0.03)' : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
+                <h2 style={{ fontSize: '17px', fontWeight: '700', margin: '0 0 4px 0', color: dark ? 'var(--cl-text)' : '#111827' }}>Batches</h2>
+                <p style={{ fontSize: '13px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>{batches.length} batch{batches.length === 1 ? '' : 'es'}</p>
               </div>
               <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
                 {batches.length > 0 ? batches.map(batch => (
@@ -286,17 +337,19 @@ export default function ManageBatches() {
                     key={batch.batchId}
                     onClick={() => setSelectedBatchId(batch.batchId)}
                     style={{
-                      padding: '14px 16px', borderBottom: '1px solid #E5E7EB', cursor: 'pointer',
-                      background: selectedBatchId === batch.batchId ? 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)' : '#FFFFFF',
-                      borderLeft: selectedBatchId === batch.batchId ? `4px solid ${BRAND}` : '4px solid transparent',
+                      padding: '14px 16px', borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`, cursor: 'pointer',
+                      background: selectedBatchId === batch.batchId
+                        ? (dark ? 'rgba(99,102,241,0.15)' : 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)')
+                        : (dark ? 'transparent' : '#FFFFFF'),
+                      borderLeft: selectedBatchId === batch.batchId ? `4px solid ${pal(batch.batchName)[0]}` : '4px solid transparent',
                     }}
                   >
-                    <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: '#111827' }}>{batch.batchName}</p>
+                    <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: dark ? 'var(--cl-text)' : '#111827' }}>{batch.batchName}</p>
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '12px', color: '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <Users size={13} /> {batch.players?.length ?? batch.playerIds?.length ?? 0}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <UserCheck size={13} /> {batch.coachIds?.length ?? 0} coach{(batch.coachIds?.length ?? 0) === 1 ? '' : 'es'}
                       </span>
                     </div>
@@ -304,16 +357,16 @@ export default function ManageBatches() {
                 )) : (
                   <div style={{ padding: '40px 20px', textAlign: 'center' }}>
                     <Layers size={32} style={{ color: '#7C3AED', opacity: 0.5, marginBottom: '8px' }} />
-                    <p style={{ fontSize: '14px', color: '#111827', fontWeight: '600', margin: '0 0 4px 0' }}>No batches yet</p>
-                    <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>Create one to get started</p>
+                    <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '600', margin: '0 0 4px 0' }}>No batches yet</p>
+                    <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>Create one to get started</p>
                   </div>
                 )}
               </div>
-            </Card>
+            </div>
 
             {/* Batch detail */}
             {selectedBatch ? (
-              <Card style={{ borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
                 <div style={{
                   padding: '20px 24px', background: `linear-gradient(135deg, ${BRAND} 0%, #000000 100%)`, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap'
@@ -421,7 +474,7 @@ export default function ManageBatches() {
                       }}>
                         <div style={{
                           width: '34px', height: '34px', borderRadius: '50%',
-                          background: `linear-gradient(135deg, ${BRAND} 0%, #000000 100%)`,
+                          background: pal(p.playerName)[0],
                           display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '13px', flexShrink: 0
                         }}>
                           {(p.playerName || '?').charAt(0).toUpperCase()}
@@ -449,18 +502,15 @@ export default function ManageBatches() {
                     )}
                   </div>
                 </div>
-              </Card>
+              </div>
             ) : (
-              <Card style={{
-                borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                minHeight: '400px', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)'
-              }}>
-                <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
+              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+                <div style={{ textAlign: 'center', color: dark ? 'var(--cl-text-3)' : '#9CA3AF' }}>
                   <Layers size={36} color='#60A5FA' opacity={0.6} style={{ marginBottom: '16px' }} />
-                  <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', margin: '0 0 8px 0' }}>No Batch Selected</h3>
-                  <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>Select a batch to manage its players and coaches</p>
+                  <h3 style={{ fontSize: '18px', fontWeight: '600', color: dark ? 'var(--cl-text-2)' : '#111827', margin: '0 0 8px 0' }}>No Batch Selected</h3>
+                  <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>Select a batch to manage its players and coaches</p>
                 </div>
-              </Card>
+              </div>
             )}
           </div>
         )}

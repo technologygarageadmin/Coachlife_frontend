@@ -1,257 +1,134 @@
+import React from 'react';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
-import { Button } from '../../components/Button';
-import { BookOpen, CheckCircle, Clock, Star, TrendingUp, Award, Calendar, ChevronRight } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, Star, Calendar, ChevronRight } from 'lucide-react';
+
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width:w, height:h, borderRadius:r, background:'#EEF2F7', animation:'skPulse 1.6s ease-in-out infinite', flexShrink:0 }} />
+);
+
+const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{
+      background:'#fff', border:`1.5px solid ${hov ? accent+'44' : '#E2E8F0'}`,
+      borderRadius:'16px', padding:'20px', display:'flex', alignItems:'center', gap:'16px',
+      boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
+      transition:'all .2s', flex:1, minWidth:'140px',
+    }}>
+      <div style={{ width:'46px', height:'46px', borderRadius:'12px', background:`${accent}18`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        {React.createElement(SIcon, { size:22, color:accent })}
+      </div>
+      <div>
+        <p style={{ fontSize:'10.5px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', margin:'0 0 4px', letterSpacing:'.5px' }}>{label}</p>
+        <p style={{ fontSize:'23px', fontWeight:'800', color:'#0F172A', margin:0 }}>{value}</p>
+      </div>
+    </div>
+  );
+};
 
 const PastSessions = () => {
   const { currentUser, sessionHistory } = useStore();
 
   const mySessions = sessionHistory.filter((s) => s.coachId === currentUser.id);
-  
-  // Organize sessions by status
+
   const pendingSessions = mySessions.filter((s) => s.status === 'pending');
   const completedSessions = mySessions.filter((s) => s.status === 'completed');
+  const avgRating = (mySessions.reduce((sum, s) => sum + (s.rating || 0), 0) / (mySessions.length || 1)).toFixed(1);
 
   return (
     <Layout>
+      <style>{`
+        @keyframes skPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
-        {/* Gradient Header */}
+        {/* Standard banner */}
         <div style={{
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-          borderRadius: '12px',
-          padding: '32px',
-          color: 'white',
-          marginBottom: '32px',
-          boxShadow: '0 4px 15px rgba(37, 44, 53, 0.1)'
-        }}
-        data-aos="fade-up"
-        data-aos-duration="800">
-          <h1 style={{ fontSize: '32px', fontWeight: '700', margin: '0 0 8px 0' }}>
-            Past Sessions
-          </h1>
-          <p style={{ fontSize: '16px', opacity: 0.9, margin: '0' }}>
-            Review and track all your completed coaching sessions
-          </p>
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BookOpen size={24} color="#fff" />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Past Sessions</h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>Review and track all your completed coaching sessions</p>
+            </div>
+          </div>
         </div>
 
-        {/* Statistics Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '16px',
-          marginBottom: '32px'
-        }}
-        data-aos="fade-up"
-        data-aos-delay="100"
-        data-aos-duration="800">
-          {/* Total Sessions Card */}
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '20px',
-            borderLeft: '4px solid #060030ff',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            transition: 'all 0.3s'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.12)';
-            e.currentTarget.style.transform = 'translateY(-4px)';
-          }}
-          on
-          data-aos="zoom-in"
-          data-aos-duration="800"MouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ backgroundColor: '#E8F2F8', borderRadius: '8px', padding: '8px' }}>
-                <BookOpen size={24} color="#060030ff" />
-              </div>
-              <span style={{ fontSize: '14px', color: '#64748B', fontWeight: '500' }}>Total Sessions</span>
-            </div>
-            <p style={{ fontSize: '28px', fontWeight: '700', color: '#111827', margin: '0' }}>
-              {mySessions.length}
-            </p>
-          </div>
-
-          {/* Completed Sessions Card */}
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '20px',
-            borderLeft: '4px solid #10B981',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            transition: 'all 0.3s'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.12)';
-            e.currentTarget.style.transform = 'translateY(-4px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-          data-aos="zoom-in"
-          data-aos-delay="100"
-          data-aos-duration="800">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ backgroundColor: '#F0FDF4', borderRadius: '8px', padding: '8px' }}>
-                <CheckCircle size={24} color="#10B981" />
-              </div>
-              <span style={{ fontSize: '14px', color: '#64748B', fontWeight: '500' }}>Completed</span>
-            </div>
-            <p style={{ fontSize: '28px', fontWeight: '700', color: '#111827', margin: '0' }}>
-              {mySessions.filter((s) => s.status === 'completed').length}
-            </p>
-          </div>
-
-          {/* Average Rating Card */}
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '20px',
-            borderLeft: '4px solid #060030ff',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            transition: 'all 0.3s'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.12)';
-            e.currentTarget.style.transform = 'translateY(-4px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}
-          data-aos="zoom-in"
-          data-aos-delay="200"
-          data-aos-duration="800">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ backgroundColor: '#FFFBEB', borderRadius: '8px', padding: '8px' }}>
-                <Star size={24} color="#060030ff" />
-              </div>
-              <span style={{ fontSize: '14px', color: '#64748B', fontWeight: '500' }}>Average Rating</span>
-            </div>
-            <p style={{ fontSize: '28px', fontWeight: '700', color: '#111827', margin: '0' }}>
-              {(mySessions.reduce((sum, s) => sum + (s.rating || 0), 0) / (mySessions.length || 1)).toFixed(1)}⭐
-            </p>
-          </div>
-
-          {/* Sessions Pending Card */}
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '20px',
-            borderLeft: '4px solid #252c35',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            transition: 'all 0.3s'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.12)';
-            e.currentTarget.style.transform = 'translateY(-4px)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.1)';
-            e.currentTarget.style.transform = 'translateY(0)';
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-              <div style={{ backgroundColor: '#E8F2F8', borderRadius: '8px', padding: '8px' }}>
-                <Clock size={24} color="#252c35" />
-              </div>
-              <span style={{ fontSize: '14px', color: '#64748B', fontWeight: '500' }}>Pending</span>
-            </div>
-            <p style={{ fontSize: '28px', fontWeight: '700', color: '#111827', margin: '0' }}>
-              {mySessions.filter((s) => s.status === 'pending').length}
-            </p>
-          </div>
+        {/* Summary Cards */}
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' }}>
+          <SummaryCard label="Total Sessions" value={mySessions.length} icon={BookOpen} accent="#6366F1" />
+          <SummaryCard label="Completed" value={completedSessions.length} icon={CheckCircle} accent="#10B981" />
+          <SummaryCard label="Pending" value={pendingSessions.length} icon={Clock} accent="#F59E0B" />
+          <SummaryCard label="Avg Rating" value={`${avgRating}⭐`} icon={Star} accent="#8B5CF6" />
         </div>
 
         {/* Pending Sessions */}
         {pendingSessions.length > 0 && (
           <div style={{ marginBottom: '32px' }}>
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '16px',
-              paddingBottom: '12px',
-              borderBottom: '2px solid #E2E8F0'
+              display: 'flex', alignItems: 'center', gap: '8px',
+              marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #E2E8F0'
             }}>
-              <Clock size={20} color="#060030ff" />
-              <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', margin: '0' }}>
+              <Clock size={20} color="#6366F1" />
+              <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#0F172A', margin: '0' }}>
                 Pending Sessions
               </h2>
               <span style={{
-                backgroundColor: '#FFFBEB',
-                color: '#060030ff',
-                fontSize: '12px',
-                fontWeight: '600',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                marginLeft: 'auto'
+                backgroundColor: '#FFFBEB', color: '#6366F1', fontSize: '12px', fontWeight: '600',
+                padding: '4px 10px', borderRadius: '20px', marginLeft: 'auto'
               }}>
                 {pendingSessions.length}
               </span>
             </div>
-            <div style={{
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-              overflow: 'hidden'
-            }}>
+            <div style={{ background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
               {pendingSessions.slice().reverse().map((session, index) => (
                 <div key={session.sessionId} style={{
                   padding: '16px 20px',
                   borderBottom: index !== pendingSessions.length - 1 ? '1px solid #E2E8F0' : 'none',
-                  backgroundColor: 'white',
-                  transition: 'background-color 0.2s'
+                  backgroundColor: '#FFFFFF', transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#FFFBEB'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(99,102,241,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
                 >
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr 1fr 1fr auto',
-                    gap: '16px',
-                    alignItems: 'center'
-                  }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: '16px', alignItems: 'center' }}>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>player</p>
-                      <p style={{ fontSize: '15px', fontWeight: '600', color: '#111827', margin: '0' }}>{session.player}</p>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>player</p>
+                      <p style={{ fontSize: '15px', fontWeight: '600', color: '#0F172A', margin: '0' }}>{session.player}</p>
                     </div>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>Date</p>
-                      <p style={{ fontSize: '14px', fontWeight: '500', color: '#111827', margin: '0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>Date</p>
+                      <p style={{ fontSize: '14px', fontWeight: '500', color: '#0F172A', margin: '0', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Calendar size={14} />
                         {session.date}
                       </p>
                     </div>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>Status</p>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>Status</p>
                       <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        backgroundColor: '#FFFBEB',
-                        color: '#060030ff'
+                        display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '600',
+                        padding: '4px 10px', borderRadius: '6px', backgroundColor: '#FFFBEB', color: '#6366F1'
                       }}>⏳ Pending</span>
                     </div>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>Feedback</p>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>Feedback</p>
                       {session.feedback ? (
-                        <p style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          margin: '0',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          maxWidth: '200px'
-                        }}>{session.feedback}</p>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>{session.feedback}</p>
                       ) : (
                         <p style={{ fontSize: '13px', color: '#CBD5E1', margin: '0', fontStyle: 'italic' }}>No feedback</p>
                       )}
@@ -268,93 +145,58 @@ const PastSessions = () => {
         {completedSessions.length > 0 && (
           <div style={{ marginBottom: '32px' }}>
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '16px',
-              paddingBottom: '12px',
-              borderBottom: '2px solid #E2E8F0'
+              display: 'flex', alignItems: 'center', gap: '8px',
+              marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid #E2E8F0'
             }}>
               <CheckCircle size={20} color="#10B981" />
-              <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', margin: '0' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#0F172A', margin: '0' }}>
                 Completed Sessions
               </h2>
               <span style={{
-                backgroundColor: '#F0FDF4',
-                color: '#10B981',
-                fontSize: '12px',
-                fontWeight: '600',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                marginLeft: 'auto'
+                backgroundColor: '#F0FDF4', color: '#10B981', fontSize: '12px', fontWeight: '600',
+                padding: '4px 10px', borderRadius: '20px', marginLeft: 'auto'
               }}>
                 {completedSessions.length}
               </span>
             </div>
-            <div style={{
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-              overflow: 'hidden'
-            }}>
+            <div style={{ background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
               {completedSessions.slice().reverse().map((session, index) => (
                 <div key={session.sessionId} style={{
                   padding: '16px 20px',
                   borderBottom: index !== completedSessions.length - 1 ? '1px solid #E2E8F0' : 'none',
-                  backgroundColor: 'white',
-                  transition: 'background-color 0.2s'
+                  backgroundColor: '#FFFFFF', transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#F0FDF4'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F0FDF4'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#FFFFFF'}
                 >
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr 1fr 1fr auto',
-                    gap: '16px',
-                    alignItems: 'center'
-                  }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: '16px', alignItems: 'center' }}>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>player</p>
-                      <p style={{ fontSize: '15px', fontWeight: '600', color: '#111827', margin: '0' }}>{session.player}</p>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>player</p>
+                      <p style={{ fontSize: '15px', fontWeight: '600', color: '#0F172A', margin: '0' }}>{session.player}</p>
                     </div>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>Date</p>
-                      <p style={{ fontSize: '14px', fontWeight: '500', color: '#111827', margin: '0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>Date</p>
+                      <p style={{ fontSize: '14px', fontWeight: '500', color: '#0F172A', margin: '0', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Calendar size={14} />
                         {session.date}
                       </p>
                     </div>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>Status & Rating</p>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>Status & Rating</p>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          backgroundColor: '#F0FDF4',
-                          color: '#10B981'
+                          display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '600',
+                          padding: '4px 10px', borderRadius: '6px', backgroundColor: '#F0FDF4', color: '#10B981'
                         }}>✓ Completed</span>
                         {session.rating && (
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#060030ff' }}>⭐ {session.rating}/5</span>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#6366F1' }}>⭐ {session.rating}/5</span>
                         )}
                       </div>
                     </div>
                     <div>
-                      <p style={{ fontSize: '12px', color: '#64748B', margin: '0 0 4px 0' }}>Feedback</p>
+                      <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 4px 0' }}>Feedback</p>
                       {session.feedback ? (
-                        <p style={{
-                          fontSize: '13px',
-                          color: '#475569',
-                          margin: '0',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                          maxWidth: '200px'
-                        }}>{session.feedback}</p>
+                        <p style={{ fontSize: '13px', color: '#475569', margin: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>{session.feedback}</p>
                       ) : (
                         <p style={{ fontSize: '13px', color: '#CBD5E1', margin: '0', fontStyle: 'italic' }}>No feedback</p>
                       )}
@@ -369,26 +211,14 @@ const PastSessions = () => {
 
         {/* Empty State */}
         {mySessions.length === 0 && (
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            textAlign: 'center',
-            padding: '48px 20px'
-          }}>
+          <div style={{ background: '#FFFFFF', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textAlign: 'center', padding: '48px 20px' }}>
             <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '80px',
-              height: '80px',
-              backgroundColor: '#E8F2F8',
-              borderRadius: '50%',
-              marginBottom: '16px'
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: '80px', height: '80px', backgroundColor: '#F8FAFC', borderRadius: '50%', marginBottom: '16px'
             }}>
-              <BookOpen size={40} color="#252c35" />
+              <BookOpen size={40} color="#6366F1" />
             </div>
-            <p style={{ fontSize: '16px', fontWeight: '500', marginBottom: '8px', color: '#64748B' }}>
+            <p style={{ fontSize: '16px', fontWeight: '500', marginBottom: '8px', color: '#475569' }}>
               No sessions yet
             </p>
             <p style={{ fontSize: '14px', color: '#94A3B8', margin: '0' }}>
@@ -402,5 +232,3 @@ const PastSessions = () => {
 };
 
 export default PastSessions;
-
-

@@ -1,4 +1,4 @@
-# CoachLife — Backend Reference
+# CoachLife - Backend Reference
 
 All backend functions are AWS Lambda (Python), one folder per function.
 Each folder contains `lambda_function.py` + `requirements.txt`.
@@ -131,5 +131,5 @@ Frontend sends `userToken` header (not `Authorization: Bearer`).
 Lambdas read it via `event['headers'].get('userToken')`.
 
 ### DB
-MongoDB Atlas — connection string in Lambda environment variables.
+MongoDB Atlas - connection string in Lambda environment variables.
 Collections: `players`, `coaches`, `sessionCards`, `learningPathway`, `rewards`, `redeemHistory`.

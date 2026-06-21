@@ -103,7 +103,7 @@ def lambda_handler(event, context):
         if event.get("httpMethod") != "POST":
             return response(405, {"message": "Method Not Allowed"})
 
-        # Auth — only admins should rename pathways
+        # Auth - only admins should rename pathways
         user = validate_user(event)
         if not user:
             return response(401, {"message": "Unauthorized: invalid or missing userToken"})

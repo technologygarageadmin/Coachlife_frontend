@@ -133,9 +133,9 @@ def create_custom_session_card(payload):
 
     if last_session:
         last_status = str(last_session.get("status", "")).lower().replace(" ", "_")
-        if last_status != "completed":
+        if last_status in ("upcoming", "in_progress"):
             return {
-                "message": f"Last session card is not completed yet (status: '{last_session.get('status', 'unknown')}'). Please complete it before creating a new card."
+                "message": f"Previous session card is still {last_status.replace('_', ' ')}. Please complete or close it before creating a new card."
             }
 
     next_session = 1 if not last_session else last_session["session"] + 1

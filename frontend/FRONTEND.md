@@ -1,4 +1,4 @@
-# CoachLife — Frontend Reference
+# CoachLife - Frontend Reference
 
 React 19 + Vite 7 app. All styling is inline (`style={{}}`). No Tailwind, no CSS modules.
 
@@ -21,7 +21,7 @@ frontend/src/
   App.jsx               # All routes (lazy-loaded)
   main.jsx              # Entry point
   context/
-    store.js            # Zustand store — all state + API actions
+    store.js            # Zustand store - all state + API actions
   components/           # Shared UI
   pages/
     admin/              # Admin-only pages
@@ -53,7 +53,7 @@ frontend/src/
 | `EditPathway.jsx` | `/admin/learning-pathway/:id/edit` | Edit pathway session |
 | `Rewards.jsx` | `/admin/rewards` | Rewards catalog CRUD |
 | `RedeemHistory.jsx` | `/admin/redeem-history` | Redemption log |
-| `Attendance.jsx` | `/admin/attendance` | Batch attendance sheet — Excel-like table, manual override, complete session |
+| `Attendance.jsx` | `/admin/attendance` | Batch attendance sheet - Excel-like table, manual override, complete session |
 
 ### Coach (`/coach/...`)
 | File | Route | Purpose |
@@ -65,7 +65,7 @@ frontend/src/
 | `PlayerSessions.jsx` | `/coach/player/:playerId/sessions` | Player session history |
 | `StartSession.jsx` | `/coach/start-session` | Pick player to start session |
 | `SessionCardsView.jsx` | `/coach/start-session/:playerId` | View player's session cards |
-| `SessionDetail.jsx` | `/coach/session/:sessionId` | Active session — rate activities, submit |
+| `SessionDetail.jsx` | `/coach/session/:sessionId` | Active session - rate activities, submit |
 | `viewCompletedSessionCard.jsx` | `/coach/view-completed-session/:sessionId` | Completed session read-only |
 | `PastSessions.jsx` | `/coach/past-sessions` | All past sessions |
 
@@ -86,7 +86,7 @@ frontend/src/
 
 | File | Purpose |
 |---|---|
-| `Layout.jsx` | Page shell — wraps Sidebar + Navbar |
+| `Layout.jsx` | Page shell - wraps Sidebar + Navbar |
 | `Sidebar.jsx` | Role-aware nav links |
 | `Navbar.jsx` | Top bar |
 | `ProtectedRoute.jsx` | Role-based route guard |
@@ -109,7 +109,7 @@ frontend/src/
 
 ---
 
-## State — Zustand Store (`context/store.js`)
+## State - Zustand Store (`context/store.js`)
 
 ### Persisted (survives reload via `coachlife-store` in localStorage)
 - `currentUser`, `isAuthenticated`, `userToken`, `lastVisitedPage`, `selectedPlayer`
@@ -120,10 +120,10 @@ frontend/src/
 - `showUnauthorizedModal`, `unauthorizedMessage`, `unauthorizedErrorCount`
 
 ### Key actions
-- `login(username, password)` — SHA256 hashes PW, calls API, sets auth
-- `logout()` — clears all state + localStorage
-- `fetchPlayers()` — cached 5 min
-- `fetchCoaches()` — cached 5 min
+- `login(username, password)` - SHA256 hashes PW, calls API, sets auth
+- `logout()` - clears all state + localStorage
+- `fetchPlayers()` - cached 5 min
+- `fetchCoaches()` - cached 5 min
 - `fetchAssignedPlayersForCoach(coachId)`
 - `fetchLearningPathway()`
 - `fetchUserProfile(userId)`
@@ -132,10 +132,10 @@ frontend/src/
 
 ## Conventions
 
-- **Auth header:** `userToken` (not `Authorization: Bearer`) — avoids CORS preflight
+- **Auth header:** `userToken` (not `Authorization: Bearer`) - avoids CORS preflight
 - **Brand color:** `#060030ff`
 - **Hover:** `onMouseEnter` / `onMouseLeave` inline mutations
 - **Fetch pattern:** axios with `{ headers: { 'Content-Type': 'application/json', userToken } }`
-- **Response unwrapping:** check `data`, `data.data`, `data.players`, `data.sessions`, `data.Items`, `JSON.parse(data.body)` — shape varies per endpoint
+- **Response unwrapping:** check `data`, `data.data`, `data.players`, `data.sessions`, `data.Items`, `JSON.parse(data.body)` - shape varies per endpoint
 - **Performance:** `useMemo` for filtered lists, `React.memo` for list-item components, `useCallback` for props passed to memo'd children, `AbortController` in fetch effects
 - **AbortController + axios:** catch `CanceledError` (not `AbortError`)

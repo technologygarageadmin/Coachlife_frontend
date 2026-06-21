@@ -18,6 +18,7 @@ try:
     attendance_col = db['Attendance']
     batches_col = db['Batches']
     players_col = db['Players']
+    session_cards_col = db['SessionCards']
 except KeyError:
     _init_error = "MONGO_URI environment variable is not set"
 except Exception as e:
@@ -206,6 +207,62 @@ def infer_current_session_number(player_id):
     return None
 
 
+def apply_card_status(session_card_id, attendance_status, session_date, marked_by):
+    """Sync attendance outcome onto the linked session card.
+
+    Absent/Excused → "pending": the session was missed but can be completed later
+    as a make-up. Pending does not block next-card generation.
+    Present/Late → restore a pending card to "upcoming" so the coach can start it.
+    """
+    if not session_card_id:
+        return
+    card_oid = parse_object_id(session_card_id)
+    if not card_oid:
+        return
+
+    absent_statuses = {'Absent': 'absent', 'Excused': 'excused'}
+    if attendance_status in absent_statuses:
+        # Mark the card as pending (missed but recoverable). Only update open cards -
+        # never overwrite a completed (graded) card.
+        session_cards_col.update_one(
+            {"_id": card_oid, "status": {"$in": ["upcoming", "in_progress", "in progress"]}},
+            {"$set": {
+                "status": "pending",
+                "attendanceStatus": absent_statuses[attendance_status],
+                "attendanceDate": session_date,
+            },
+             "$unset": {"closedReason": "", "closedDate": "", "closedBy": ""}},
+        )
+        return
+
+    # Present/Late: restore a wrongly-pending card, but only if no newer card exists.
+    if attendance_status in ('Present', 'Late'):
+        card = session_cards_col.find_one({"_id": card_oid}, {"status": 1, "playerId": 1, "session": 1})
+        if not card or card.get("status") != "pending":
+            return
+        newer = session_cards_col.find_one({
+            "playerId": card.get("playerId"),
+            "session": {"$gt": card.get("session", 0)},
+        }, {"_id": 1})
+        if newer:
+            return
+        session_cards_col.update_one(
+            {"_id": card_oid},
+            {"$set": {
+                "status": "upcoming",
+                "attendanceStatus": attendance_status.lower(),
+            },
+             "$unset": {"attendanceDate": ""}},
+        )
+
+
+def parse_object_id(value):
+    try:
+        return ObjectId(str(value).strip())
+    except Exception:
+        return None
+
+
 def lambda_handler(event, context):
     if event.get("httpMethod") == "OPTIONS":
         return resp(200, {"message": "CORS OK"})
@@ -276,13 +333,14 @@ def lambda_handler(event, context):
 
     # Single record upsert
     player_id = str(body.get('playerId') or '').strip()
-    batch_id = str(body.get('batchId') or '').strip()   # optional — empty when auto-marked from session
+    batch_id = str(body.get('batchId') or '').strip()   # optional - empty when auto-marked from session
     batch_name = str(body.get('batchName') or '')
     session_date = str(body.get('sessionDate') or today_ist_str()).strip()
     session_number = normalize_session_number(body.get('sessionNumber'))
     attendance_status = normalize_status(body.get('attendanceStatus', ''), allow_empty=True)
     notes = str(body.get('notes') or '')
     source = str(body.get('source') or 'manual')
+    session_card_id = str(body.get('sessionCardId') or '').strip()
 
     if not player_id:
         return resp(400, {"message": "playerId is required"})
@@ -337,6 +395,7 @@ def lambda_handler(event, context):
                 "sessionNumber": session_number,
                 "sessionDate": session_date,
                 "attendanceStatus": attendance_status,
+                "sessionCardId": session_card_id,
                 "notes": notes,
                 "source": source,
                 "markedAt": now_ist(),
@@ -344,6 +403,7 @@ def lambda_handler(event, context):
             }},
             upsert=True,
         )
+        apply_card_status(session_card_id, attendance_status, session_date, marked_by)
         return resp(200, {"message": "Attendance marked", "updated": 1, "sessionDate": session_date})
     except Exception as e:
         return resp(500, {"message": "Internal server error", "error": str(e), "trace": traceback.format_exc()})

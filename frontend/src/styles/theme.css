@@ -1,0 +1,398 @@
+/**
+ * CoachLife Theme System - Indigo + Coral palette
+ * Primary: #6366F1 indigo  /  Secondary: #8B5CF6 violet
+ * Accents: coral #FB7185, amber #F59E0B, emerald #10B981
+ * Light surfaces: pure white  /  Dark surfaces: deep navy
+ */
+
+/* ===== LIGHT (default) ===== */
+:root,
+:root[data-theme='light'] {
+  /* Brand */
+  --cl-primary:         #6366F1;
+  --cl-primary-strong:  #4F46E5;
+  --cl-secondary:       #8B5CF6;
+  --cl-secondary-strong:#7C3AED;
+  --cl-gradient:        linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --cl-gradient-vivid:  linear-gradient(135deg, #6366F1 0%, #8B5CF6 55%, #FB7185 110%);
+  --cl-gradient-soft:   linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+
+  /* Semantic */
+  --cl-coral:           #FB7185;
+  --cl-yellow:          #F59E0B;
+  --cl-violet:          #A78BFA;
+  --cl-emerald:         #10B981;
+  --cl-danger:          #EF4444;
+  --cl-danger-strong:   #DC2626;
+  --cl-warning:         #F59E0B;
+  --cl-success:         #10B981;
+  --cl-info:            #6366F1;
+
+  /* Surfaces - pure white */
+  --cl-bg:              #F8FAFC;
+  --cl-surface:         #FFFFFF;
+  --cl-surface-2:       #F8FAFC;
+  --cl-surface-3:       #F1F5F9;
+  --cl-elevated:        #FFFFFF;
+
+  /* Text */
+  --cl-text:            #0F172A;
+  --cl-text-2:          #475569;
+  --cl-text-3:          #94A3B8;
+  --cl-text-on-brand:   #FFFFFF;
+
+  /* Structure */
+  --cl-border:          #E2E8F0;
+  --cl-border-strong:   #CBD5E1;
+  --cl-shadow-sm:       0 1px 3px rgba(15, 23, 42, 0.06);
+  --cl-shadow:          0 4px 16px rgba(15, 23, 42, 0.08);
+  --cl-shadow-lg:       0 16px 48px rgba(15, 23, 42, 0.14);
+  --cl-ring:            0 0 0 3px rgba(99, 102, 241, 0.18);
+
+  /* Tints */
+  --cl-primary-tint:    #EEF2FF;
+  --cl-secondary-tint:  #F5F3FF;
+  --cl-coral-tint:      #FFE4E6;
+  --cl-yellow-tint:     #FEF3C7;
+  --cl-violet-tint:     #EDE9FE;
+  --cl-emerald-tint:    #D1FAE5;
+  --cl-danger-tint:     #FEE2E2;
+
+  /* ---- Sidebar (light mode - clean white) ---- */
+  --cl-sb-bg:           #FFFFFF;
+  --cl-sb-border:       #E2E8F0;
+  --cl-sb-shadow:       4px 0 16px rgba(15,23,42,0.07);
+  --cl-sb-overlay:      none;
+  --cl-sb-heading:      #0F172A;
+  --cl-sb-sub:          #94A3B8;
+  --cl-sb-item:         #475569;
+  --cl-sb-item-hover-bg:#F1F5F9;
+  --cl-sb-item-hover-c: #0F172A;
+  --cl-sb-active-bg:    #EEF2FF;
+  --cl-sb-active-c:     #4F46E5;
+  --cl-sb-active-border:#6366F1;
+  --cl-sb-icon-bg:      #F1F5F9;
+  --cl-sb-icon-c:       #64748B;
+  --cl-sb-divider:      #E2E8F0;
+  --cl-sb-toggle-bg:    #F1F5F9;
+  --cl-sb-toggle-active:#6366F1;
+  --cl-sb-toggle-text:  #64748B;
+  --cl-sb-user-bg:      #F8FAFC;
+  --cl-sb-user-border:  #E2E8F0;
+  --cl-sb-user-name:    #0F172A;
+  --cl-sb-badge-bg:     #EEF2FF;
+  --cl-sb-badge-border: #C7D2FE;
+  --cl-sb-badge-c:      #4F46E5;
+  --cl-sb-logout-bg:    #FEE2E2;
+  --cl-sb-logout-border:#FECACA;
+  --cl-sb-logout-c:     #DC2626;
+
+  color-scheme: light;
+}
+
+/* ===== DARK ===== */
+:root[data-theme='dark'] {
+  /* Brand */
+  --cl-primary:         #818CF8;
+  --cl-primary-strong:  #6366F1;
+  --cl-secondary:       #A78BFA;
+  --cl-secondary-strong:#8B5CF6;
+  --cl-gradient:        linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  --cl-gradient-vivid:  linear-gradient(135deg, #6366F1 0%, #8B5CF6 55%, #FB7185 110%);
+  --cl-gradient-soft:   linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.15) 100%);
+
+  /* Semantic */
+  --cl-coral:           #FB7185;
+  --cl-yellow:          #FBBF24;
+  --cl-violet:          #C4B5FD;
+  --cl-emerald:         #34D399;
+  --cl-danger:          #F87171;
+  --cl-danger-strong:   #EF4444;
+  --cl-warning:         #FBBF24;
+  --cl-success:         #34D399;
+  --cl-info:            #818CF8;
+
+  /* Surfaces */
+  --cl-bg:              #0A1118;
+  --cl-surface:         #111827;
+  --cl-surface-2:       #1A2433;
+  --cl-surface-3:       #1F2D3A;
+  --cl-elevated:        #16202C;
+
+  /* Text */
+  --cl-text:            #E6EEF4;
+  --cl-text-2:          #A7BAC4;
+  --cl-text-3:          #64748B;
+  --cl-text-on-brand:   #FFFFFF;
+
+  /* Structure */
+  --cl-border:          #1E2D3A;
+  --cl-border-strong:   #2A3A49;
+  --cl-shadow-sm:       0 1px 3px rgba(0,0,0,0.4);
+  --cl-shadow:          0 4px 16px rgba(0,0,0,0.45);
+  --cl-shadow-lg:       0 16px 48px rgba(0,0,0,0.65);
+  --cl-ring:            0 0 0 3px rgba(129,140,248,0.25);
+
+  /* Tints */
+  --cl-primary-tint:    rgba(99,102,241,0.16);
+  --cl-secondary-tint:  rgba(139,92,246,0.16);
+  --cl-coral-tint:      rgba(251,113,133,0.16);
+  --cl-yellow-tint:     rgba(251,191,36,0.16);
+  --cl-violet-tint:     rgba(167,139,250,0.18);
+  --cl-emerald-tint:    rgba(52,211,153,0.16);
+  --cl-danger-tint:     rgba(248,113,113,0.16);
+
+  /* ---- Sidebar (dark = deep navy) ---- */
+  --cl-sb-bg:           #0B0D1F;
+  --cl-sb-border:       rgba(255,255,255,0.05);
+  --cl-sb-shadow:       4px 0 24px rgba(0,0,0,0.4);
+  --cl-sb-overlay:      radial-gradient(ellipse at 80% 10%, rgba(99,102,241,0.14) 0%, transparent 60%), radial-gradient(ellipse at 20% 90%, rgba(139,92,246,0.10) 0%, transparent 55%);
+  --cl-sb-heading:      #F1F5F9;
+  --cl-sb-sub:          rgba(255,255,255,0.35);
+  --cl-sb-item:         rgba(255,255,255,0.55);
+  --cl-sb-item-hover-bg:rgba(255,255,255,0.06);
+  --cl-sb-item-hover-c: rgba(255,255,255,0.9);
+  --cl-sb-active-bg:    rgba(99,102,241,0.15);
+  --cl-sb-active-c:     #FFFFFF;
+  --cl-sb-active-border:#818CF8;
+  --cl-sb-icon-bg:      rgba(255,255,255,0.06);
+  --cl-sb-icon-c:       rgba(255,255,255,0.45);
+  --cl-sb-divider:      rgba(255,255,255,0.06);
+  --cl-sb-toggle-bg:    rgba(255,255,255,0.06);
+  --cl-sb-toggle-active:rgba(99,102,241,0.85);
+  --cl-sb-toggle-text:  rgba(255,255,255,0.4);
+  --cl-sb-user-bg:      rgba(255,255,255,0.05);
+  --cl-sb-user-border:  rgba(255,255,255,0.08);
+  --cl-sb-user-name:    #F1F5F9;
+  --cl-sb-badge-bg:     rgba(99,102,241,0.2);
+  --cl-sb-badge-border: rgba(99,102,241,0.35);
+  --cl-sb-badge-c:      #A5B4FC;
+  --cl-sb-logout-bg:    rgba(248,113,113,0.08);
+  --cl-sb-logout-border:rgba(248,113,113,0.2);
+  --cl-sb-logout-c:     rgba(252,165,165,0.9);
+
+  color-scheme: dark;
+}
+
+/* ===== Legacy token bridge (used by global.css classes) ===== */
+:root {
+  --primary:         var(--cl-primary);
+  --secondary:       var(--cl-secondary);
+  --body-bg:         var(--cl-bg);
+  --text:            var(--cl-text);
+  --text-secondary:  var(--cl-text-2);
+  --white:           var(--cl-surface);
+  --light:           var(--cl-surface-2);
+  --gradient-primary:var(--cl-gradient);
+}
+
+/* ===== Smooth theme transitions ===== */
+body,
+.content-area,
+.page-content,
+.navbar-main,
+.card,
+.modal,
+table {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* ===== App shell ===== */
+body {
+  background-color: var(--cl-bg) !important;
+  color: var(--cl-text) !important;
+}
+.content-area,
+.page-content {
+  background: var(--cl-bg) !important;
+  color: var(--cl-text);
+}
+.main-container {
+  background: var(--cl-bg);
+}
+
+/* ===== Cards ===== */
+.card {
+  background: var(--cl-surface);
+  color: var(--cl-text);
+  border: 1px solid var(--cl-border);
+  border-radius: 16px;
+  box-shadow: var(--cl-shadow-sm);
+}
+.card-title  { color: var(--cl-text)   !important; }
+.card-subtitle { color: var(--cl-text-2) !important; }
+
+/* ===== Form controls ===== */
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+textarea,
+select {
+  background: var(--cl-surface) !important;
+  color: var(--cl-text) !important;
+  border-color: var(--cl-border) !important;
+}
+input::placeholder,
+textarea::placeholder { color: var(--cl-text-3); }
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--cl-primary) !important;
+  box-shadow: var(--cl-ring) !important;
+}
+
+/* ===== Scrollbars ===== */
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--cl-border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cl-text-3); }
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(99, 102, 241, 0.25);
+  color: var(--cl-text);
+}
+
+/* ================================================================
+   DARK MODE - Inline-style overrides
+   CSS attribute selectors match the serialized style attribute
+   (browsers normalize hex → rgb, both variants included)
+   !important wins over inline styles in the cascade.
+================================================================ */
+
+/* ---- White / near-white card backgrounds ---- */
+[data-theme='dark'] .page-content [style*="background: rgb(255, 255, 255)"],
+[data-theme='dark'] .page-content [style*="background:rgb(255, 255, 255)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(255, 255, 255)"],
+[data-theme='dark'] .page-content [style*="background: white"],
+[data-theme='dark'] .page-content [style*="background:white"],
+[data-theme='dark'] .page-content [style*="background: #FFFFFF"],
+[data-theme='dark'] .page-content [style*="background: #ffffff"],
+[data-theme='dark'] .page-content [style*="background: #fff"],
+[data-theme='dark'] .page-content [style*="background: #FFF"],
+[data-theme='dark'] .page-content [style*="background-color: #fff"],
+[data-theme='dark'] .page-content [style*="background-color: #FFFFFF"],
+[data-theme='dark'] .page-content [style*="background-color: white"] {
+  background: var(--cl-surface) !important;
+}
+
+/* ---- Light-gray page / row backgrounds ---- */
+[data-theme='dark'] .page-content [style*="background: rgb(248, 250, 252)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(248, 250, 252)"],
+[data-theme='dark'] .page-content [style*="background: #F8FAFC"],
+[data-theme='dark'] .page-content [style*="background: #f8fafc"],
+[data-theme='dark'] .page-content [style*="background: rgb(241, 245, 249)"],
+[data-theme='dark'] .page-content [style*="background: #F1F5F9"],
+[data-theme='dark'] .page-content [style*="background: #f1f5f9"],
+[data-theme='dark'] .page-content [style*="background: rgb(249, 250, 251)"],
+[data-theme='dark'] .page-content [style*="background: #f9fafb"],
+[data-theme='dark'] .page-content [style*="background: rgb(250, 251, 252)"],
+[data-theme='dark'] .page-content [style*="background: #FAFBFC"],
+[data-theme='dark'] .page-content [style*="background: rgb(240, 244, 248)"],
+[data-theme='dark'] .page-content [style*="background: #F0F4F8"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(241, 245, 249)"],
+[data-theme='dark'] .page-content [style*="background-color: #F8FAFC"],
+[data-theme='dark'] .page-content [style*="background-color: #F1F5F9"] {
+  background: var(--cl-surface-2) !important;
+}
+
+/* ---- EEF2FF / light-indigo tints (used in banners, info rows) ---- */
+[data-theme='dark'] .page-content [style*="background: rgb(238, 242, 255)"],
+[data-theme='dark'] .page-content [style*="background: #EEF2FF"],
+[data-theme='dark'] .page-content [style*="background: rgb(224, 231, 255)"],
+[data-theme='dark'] .page-content [style*="background: #E0E7FF"],
+[data-theme='dark'] .page-content [style*="background: rgb(245, 243, 255)"],
+[data-theme='dark'] .page-content [style*="background: #F5F3FF"] {
+  background: var(--cl-surface-3) !important;
+}
+
+/* ---- Dark text → brand light ---- */
+[data-theme='dark'] .page-content [style*="color: rgb(15, 23, 42)"],
+[data-theme='dark'] .page-content [style*="color: #0F172A"],
+[data-theme='dark'] .page-content [style*="color: #0f172a"],
+[data-theme='dark'] .page-content [style*="color: rgb(30, 41, 59)"],
+[data-theme='dark'] .page-content [style*="color: #1E293B"],
+[data-theme='dark'] .page-content [style*="color: #1e293b"],
+[data-theme='dark'] .page-content [style*="color: rgb(17, 24, 39)"],
+[data-theme='dark'] .page-content [style*="color: #111827"],
+[data-theme='dark'] .page-content [style*="color: rgb(31, 41, 55)"],
+[data-theme='dark'] .page-content [style*="color: #1f2937"],
+[data-theme='dark'] .page-content [style*="color: rgb(55, 65, 81)"],
+[data-theme='dark'] .page-content [style*="color: #374151"] {
+  color: var(--cl-text) !important;
+}
+
+/* ---- Secondary / muted text ---- */
+[data-theme='dark'] .page-content [style*="color: rgb(71, 85, 105)"],
+[data-theme='dark'] .page-content [style*="color: #475569"],
+[data-theme='dark'] .page-content [style*="color: rgb(100, 116, 139)"],
+[data-theme='dark'] .page-content [style*="color: #64748B"],
+[data-theme='dark'] .page-content [style*="color: #64748b"] {
+  color: var(--cl-text-2) !important;
+}
+
+[data-theme='dark'] .page-content [style*="color: rgb(148, 163, 184)"],
+[data-theme='dark'] .page-content [style*="color: #94A3B8"],
+[data-theme='dark'] .page-content [style*="color: #94a3b8"] {
+  color: var(--cl-text-3) !important;
+}
+
+/* ---- Light border → dark border ---- */
+[data-theme='dark'] .page-content [style*="rgb(226, 232, 240)"] {
+  border-color: var(--cl-border) !important;
+}
+[data-theme='dark'] .page-content [style*="rgb(203, 213, 225)"] {
+  border-color: var(--cl-border-strong) !important;
+}
+
+/* ---- Modals (use CSS classes, not inline styles) ---- */
+[data-theme='dark'] .modal {
+  background: var(--cl-surface) !important;
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text) !important;
+}
+[data-theme='dark'] .modal-header {
+  background: var(--cl-surface-2) !important;
+  border-bottom-color: var(--cl-border) !important;
+  color: var(--cl-text) !important;
+}
+[data-theme='dark'] .modal-title {
+  color: var(--cl-text) !important;
+}
+[data-theme='dark'] .modal-close {
+  color: var(--cl-text-2) !important;
+}
+[data-theme='dark'] .modal-close:hover {
+  background: var(--cl-surface-3) !important;
+  color: var(--cl-text) !important;
+}
+[data-theme='dark'] .modal-content {
+  background: var(--cl-surface) !important;
+  color: var(--cl-text-2) !important;
+}
+[data-theme='dark'] .modal-footer {
+  border-top-color: var(--cl-border) !important;
+  background: var(--cl-surface) !important;
+}
+
+/* ---- Tables ---- */
+[data-theme='dark'] .page-content th,
+[data-theme='dark'] .page-content td {
+  border-color: var(--cl-border) !important;
+  color: var(--cl-text);
+}
+[data-theme='dark'] .page-content thead th {
+  background: var(--cl-surface-2) !important;
+  color: var(--cl-text-2) !important;
+}
+[data-theme='dark'] .page-content tbody tr:hover td {
+  background: var(--cl-surface-3) !important;
+}
+
+/* ---- Input placeholders in dark ---- */
+[data-theme='dark'] input::placeholder,
+[data-theme='dark'] textarea::placeholder {
+  color: var(--cl-text-3) !important;
+}
+
+/* ---- Ensure modal backdrops work ---- */
+[data-theme='dark'] .modal-overlay {
+  background: rgba(0, 0, 0, 0.75) !important;
+}

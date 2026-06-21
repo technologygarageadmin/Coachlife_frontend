@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { ChevronLeft, Clock, Users, MapPin, Clock4 , BookOpen, ArrowRight, BookMarked, Wrench, Briefcase, Code, ChevronDown, MoveUpRight, MessageSquare, Info, Layers } from 'lucide-react';
@@ -10,6 +11,8 @@ const SessionDetail = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userToken, currentUser } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
 
   const getToken = () => {
     const fresh = useStore.getState().userToken;
@@ -85,8 +88,21 @@ const SessionDetail = () => {
           
           if (location.state?.player) {
             setPlayerData(location.state.player);
+          } else if (location.state?.batchPlayerCards && location.state?.activePlayerId) {
+            // Switched in from the batch chips - derive the player from the chip data
+            const chip = location.state.batchPlayerCards.find(
+              p => p.playerId === location.state.activePlayerId
+            );
+            if (chip) {
+              setPlayerData({
+                _id: chip.playerId,
+                playerId: chip.playerId,
+                playerName: chip.name,
+                name: chip.name
+              });
+            }
           }
-          
+
           setLoading(false);
           return;
         }
@@ -132,7 +148,7 @@ const SessionDetail = () => {
           SessionType: card.SessionType || card.typeOfSessioncard,
           LearningPathway: card.LearningPathway,
           session: card.session,
-          status: card.status || 'Draft',
+          status: card.status || 'upcoming',
           createdAt: card.createdAt,
           completedAt: card.completedAt,
           activities: sortedActivities,
@@ -144,11 +160,19 @@ const SessionDetail = () => {
           playerId: card.playerId
         });
 
+        // The session-card endpoint doesn't return playerName - when we arrived via
+        // the batch chips, take the name from the chip data so the sidebar doesn't
+        // show "Unknown Player".
+        const batchChip = location.state?.batchPlayerCards?.find(
+          p => p.playerId === (location.state?.activePlayerId || card.playerId)
+        );
+        const resolvedName = card.playerName || batchChip?.name || '';
+
         setPlayerData({
-          _id: card.playerId,
-          playerId: card.playerId,
-          playerName: card.playerName || '',
-          name: card.playerName || ''
+          _id: card.playerId || batchChip?.playerId,
+          playerId: card.playerId || batchChip?.playerId,
+          playerName: resolvedName,
+          name: resolvedName
         });
 
       } catch (err) {
@@ -475,6 +499,7 @@ const SessionDetail = () => {
         sessionNumber: resolvedSessionNumber,
         sessionDate,
         attendanceStatus: source === 'session_complete' ? 'Present' : (attendanceStatusOverride || 'Present'),
+        sessionCardId: sessionData?._id || sessionData?.cardId || sessionId || '',
         override: true,
         source,
       }),
@@ -502,7 +527,7 @@ const SessionDetail = () => {
     }
   };
 
-  // Core completion logic — called directly once WhatsApp feedback is confirmed
+  // Core completion logic - called directly once WhatsApp feedback is confirmed
   const doCompleteSession = async () => {
     if (isSubmitting) return;
 
@@ -552,11 +577,15 @@ const SessionDetail = () => {
         : sessionFeedback.rating;
 
       const cardId = sessionData._id || sessionData.cardId || sessionId;
+      // Overall rating/comment can live in either sessionFeedback (form state) or
+      // sessionData.feedback (auto-saved) - read whichever the coach actually set.
+      const overallRating = sessionFeedback.rating || sessionData.feedback?.rating || avgActivityRating || 0;
+      const overallComment = sessionFeedback.coachComment || sessionData.feedback?.coachComment || '';
       const requestBody = {
         card_id: cardId,
         activities_feedback: activitiesFeedback,
-        rating: sessionFeedback.rating || avgActivityRating || 0,
-        feedback: sessionFeedback.coachComment || ''
+        rating: overallRating,
+        feedback: overallComment
       };
 
       const apiUrl = 'https://65km9yygae.execute-api.ap-south-1.amazonaws.com/default/CL_Complete_Session';
@@ -577,11 +606,14 @@ const SessionDetail = () => {
         localStorage.removeItem(`session_draft_${sessionData._id}`);
       }
 
-      // Auto-mark attendance as Present after session completion
-      try {
-        await markAttendancePresent({ source: 'session_complete' });
-      } catch (attendanceErr) {
-        console.error('Auto attendance mark failed:', attendanceErr);
+      // Auto-mark attendance as Present after completion - but don't clobber an
+      // explicit mark the coach already made in this view (e.g. Late/Excused).
+      if (!attendanceStatus) {
+        try {
+          await markAttendancePresent({ source: 'session_complete' });
+        } catch (attendanceErr) {
+          console.error('Auto attendance mark failed:', attendanceErr);
+        }
       }
 
       setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' });
@@ -603,7 +635,7 @@ const SessionDetail = () => {
     }
   };
 
-  // Complete session — intercepts to auto-generate WhatsApp feedback if not yet done
+  // Complete session - intercepts to auto-generate WhatsApp feedback if not yet done
   const handleCompleteSession = async () => {
     if (whatsFeedbackMessage) {
       await doCompleteSession();
@@ -651,8 +683,11 @@ const SessionDetail = () => {
       setWhatsFeedbackMessage(msg);
       setWhatsappPromptModal({ isOpen: true, isGenerating: false, message: msg });
     } catch (error) {
+      // The WhatsApp message is a nicety - never let its failure block the coach
+      // from finishing the session (points + attendance depend on completion).
       setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' });
-      setToast({ isVisible: true, message: `Error generating WhatsApp feedback: ${error.message}`, type: 'error' });
+      setToast({ isVisible: true, message: `Couldn't generate WhatsApp message (${error.message}). Completing session anyway…`, type: 'info' });
+      await doCompleteSession();
     }
   };
 
@@ -783,7 +818,7 @@ const SessionDetail = () => {
         <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
           {/* Header Skeleton */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(6, 0, 48, 0.4) 0%, rgba(0, 0, 0, 0.4) 100%)',
+            background: 'var(--cl-gradient-soft)',
             padding: '40px 32px',
             borderRadius: '12px',
             border: '1px solid rgba(226, 232, 240, 0.3)',
@@ -900,7 +935,7 @@ const SessionDetail = () => {
             onClick={() => navigate(-1)}
             style={{
               padding: '10px 20px',
-              background: '#060030ff',
+              background: 'var(--cl-gradient)',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
@@ -940,12 +975,12 @@ const SessionDetail = () => {
         )}
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
 
-        {/* ── Batch chips header — visible when coming from Start Batch -- */}
+        {/* ── Batch chips header - visible when coming from Start Batch -- */}
         {location.state?.batch && location.state?.batchPlayerCards ? (
           <div style={{
-            background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+            background: 'var(--cl-gradient-vivid)',
             borderRadius: '16px', padding: '22px 28px', color: 'white',
-            marginBottom: '28px', boxShadow: '0 4px 16px rgba(6,0,48,0.25)'
+            marginBottom: '28px', boxShadow: '0 8px 32px rgba(99,102,241,0.25)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px', flexWrap: 'wrap' }}>
               <button
@@ -989,7 +1024,7 @@ const SessionDetail = () => {
                       display: 'flex', alignItems: 'center', gap: '8px',
                       padding: '8px 16px 8px 8px', borderRadius: '24px', border: 'none',
                       background: isActive ? 'white' : hasCard ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.06)',
-                      color: isActive ? '#060030ff' : hasCard ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.38)',
+                      color: isActive ? 'var(--cl-primary)' : hasCard ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.38)',
                       fontWeight: isActive ? '700' : '500', fontSize: '14px',
                       cursor: isActive || !hasCard ? 'default' : 'pointer',
                       transition: 'all 0.2s ease',
@@ -1001,7 +1036,7 @@ const SessionDetail = () => {
                   >
                     <div style={{
                       width: '26px', height: '26px', borderRadius: '50%', flexShrink: 0,
-                      background: isActive ? '#060030ff' : 'rgba(255,255,255,0.2)',
+                      background: isActive ? 'var(--cl-primary)' : 'rgba(255,255,255,0.2)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '11px', fontWeight: '800', color: isActive ? 'white' : 'inherit'
                     }}>
@@ -1020,12 +1055,14 @@ const SessionDetail = () => {
             <button
               onClick={() => navigate(-1)}
               style={{
-                background: '#F8FAFC', border: '1.5px solid #E2E8F0', borderRadius: '10px',
-                padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                gap: '8px', fontSize: '14px', fontWeight: '600', color: '#111827', transition: 'all 0.2s ease'
+                background: dark ? 'var(--cl-surface)' : '#F8FAFC',
+                border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`,
+                borderRadius: '10px', padding: '10px 14px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '8px',
+                fontSize: '14px', fontWeight: '600', color: dark ? 'var(--cl-text)' : '#111827', transition: 'all 0.2s ease'
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#EFF6FF'; e.currentTarget.style.borderColor = '#060030ff'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--cl-primary-tint)'; e.currentTarget.style.borderColor = 'var(--cl-primary)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--cl-surface-2)'; e.currentTarget.style.borderColor = 'var(--cl-border)'; }}
             >
               <ChevronLeft size={18} />
               Back
@@ -1046,12 +1083,12 @@ const SessionDetail = () => {
               <div>
                 {/* Session Header */}
                 <div style={{
-                  background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                  background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
                   borderRadius: '16px',
                   padding: '32px',
                   color: 'white',
                   marginBottom: '32px',
-                  boxShadow: '0 4px 12px rgba(37, 44, 53, 0.2)'
+                  boxShadow: '0 8px 32px rgba(6,0,48,0.3)'
                 }}>
                   <div style={{
                     display: 'flex',
@@ -1103,16 +1140,16 @@ const SessionDetail = () => {
                 }}>
                   {sessionData.LearningPathway && (
                     <div style={{
-                      background: '#FFFFFF',
+                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                       borderRadius: '12px',
-                      border: '1px solid #E5E7EB',
+                      border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                       padding: '16px 20px',
                       display: 'flex',
                       alignItems: 'flex-start',
                       gap: '12px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                     }}>
-                      <BookOpen size={24} color="#060030ff" style={{ marginTop: '4px' }} />
+                      <BookOpen size={24} color="var(--cl-primary)" style={{ marginTop: '4px' }} />
                       <div>
                         <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
                           Learning Pathway
@@ -1125,7 +1162,7 @@ const SessionDetail = () => {
                   )}
                   {sessionData.totalPoints && (
                     <div style={{
-                      background: '#FFFFFF',
+                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                       borderRadius: '12px',
                       border: '1px solid #E5E7EB',
                       padding: '16px 20px',
@@ -1134,7 +1171,7 @@ const SessionDetail = () => {
                       gap: '12px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                     }}>
-                      <Clock size={24} color="#060030ff" style={{ marginTop: '4px' }} />
+                      <Clock size={24} color="var(--cl-primary)" style={{ marginTop: '4px' }} />
                       <div>
                         <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
                           Total Points
@@ -1146,7 +1183,7 @@ const SessionDetail = () => {
                     </div>
                   )}
                   <div style={{
-                    background: '#FFFFFF',
+                    background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                     borderRadius: '12px',
                     border: '1px solid #E5E7EB',
                     padding: '16px 20px',
@@ -1155,7 +1192,7 @@ const SessionDetail = () => {
                     gap: '12px',
                     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                   }}>
-                    <BookOpen size={24} color="#060030ff" style={{ marginTop: '4px' }} />
+                    <BookOpen size={24} color="var(--cl-primary)" style={{ marginTop: '4px' }} />
                     <div>
                       <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
                         Activities
@@ -1169,19 +1206,19 @@ const SessionDetail = () => {
 
                 {/* Activities Section */}
                 <div style={{
-                  background: '#FFFFFF',
+                  background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                   borderRadius: '12px',
-                  border: '1px solid #E5E7EB',
+                  border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                   overflow: 'hidden',
                   marginBottom: '32px',
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                 }}>
                   <div style={{
-                    background: '#F9FAFB',
-                    borderBottom: '1px solid #E5E7EB',
+                    background: dark ? 'rgba(255,255,255,0.03)' : '#F9FAFB',
+                    borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                     padding: '16px 20px'
                   }}>
-                    <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                    <h2 style={{ fontSize: '16px', fontWeight: '600', color: dark ? 'var(--cl-text)' : '#111827', margin: 0 }}>
                       Activities
                     </h2>
                   </div>
@@ -1252,7 +1289,7 @@ const SessionDetail = () => {
                             <div style={{
                               width: '40px',
                               height: '40px',
-                              background: '#060030ff',
+                              background: 'var(--cl-gradient)',
                               borderRadius: '50%',
                               display: 'flex',
                               alignItems: 'center',
@@ -1271,7 +1308,7 @@ const SessionDetail = () => {
                                 </h3>
                                 {activity.feedback && (activity.feedback.rating || activity.feedback.coachComment) && (
                                   <div style={{
-                                    background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                                    background: 'var(--cl-gradient)',
                                     color: 'white',
                                     borderRadius: '6px',
                                     padding: '4px 10px',
@@ -1280,7 +1317,7 @@ const SessionDetail = () => {
                                     justifyContent: 'center',
                                     fontSize: '11px',
                                     fontWeight: '600',
-                                    boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)',
+                                    boxShadow: '0 2px 6px rgba(99,102,241,0.25)',
                                     title: 'Feedback marked',
                                     whiteSpace: 'nowrap',
                                     flexShrink: 0
@@ -1341,7 +1378,7 @@ const SessionDetail = () => {
                             {/* Objectives */}
                             {activity.objectives && activity.objectives.length > 0 && (
                               <div style={{
-                                background: '#FFFFFF',
+                                background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                                 borderRadius: '12px',
                                 padding: '16px',
                                 border: '1px solid #E5E7EB',
@@ -1365,7 +1402,7 @@ const SessionDetail = () => {
                                     gap: '8px',
                                     alignItems: 'flex-start'
                                   }}>
-                                    <span style={{ color: '#060030ff' }}>•</span>
+                                    <span style={{ color: 'var(--cl-primary)' }}>•</span>
                                     <span>{obj}</span>
                                   </div>
                                 ))}
@@ -1375,7 +1412,7 @@ const SessionDetail = () => {
                             {/* Resources */}
                             {activity.resources && activity.resources.length > 0 && (
                               <div style={{
-                                background: '#FFFFFF',
+                                background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                                 borderRadius: '12px',
                                 padding: '16px',
                                 border: '1px solid #E5E7EB',
@@ -1399,7 +1436,7 @@ const SessionDetail = () => {
                                     gap: '8px',
                                     alignItems: 'flex-start'
                                   }}>
-                                    <span style={{ color: '#060030ff' }}>📦</span>
+                                    <span style={{ color: 'var(--cl-primary)' }}>📦</span>
                                     <span>{res}</span>
                                   </div>
                                 ))}
@@ -1409,7 +1446,7 @@ const SessionDetail = () => {
                             {/* Expected Outcome */}
                             {activity.expectedOutcome && (
                               <div style={{
-                                background: '#FFFFFF',
+                                background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                                 borderRadius: '12px',
                                 padding: '16px',
                                 border: '1px solid #E5E7EB',
@@ -1441,7 +1478,7 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: '#FFFFFF',
+                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                               borderRadius: '12px',
                               padding: '16px',
                               border: '1px solid #E5E7EB',
@@ -1501,7 +1538,7 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: '#FFFFFF',
+                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                               borderRadius: '12px',
                               padding: '16px',
                               border: '1px solid #E5E7EB',
@@ -1583,7 +1620,7 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: '#FFFFFF',
+                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                               borderRadius: '12px',
                               padding: '16px',
                               border: '1px solid #E5E7EB',
@@ -1644,7 +1681,7 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: '#FFFFFF',
+                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                               borderRadius: '12px',
                               padding: '16px',
                               border: '1px solid #E5E7EB',
@@ -1880,7 +1917,7 @@ const SessionDetail = () => {
                           <div style={{
                             marginLeft: '56px',
                             marginTop: '16px',
-                            background: '#FFFFFF',
+                            background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                             borderRadius: '12px',
                             padding: '16px',
                             border: '1px solid #E5E7EB',
@@ -1916,7 +1953,7 @@ const SessionDetail = () => {
                                     });
                                   }}
                                   style={{
-                                    background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                                    background: 'var(--cl-gradient)',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '6px',
@@ -1926,8 +1963,8 @@ const SessionDetail = () => {
                                     cursor: 'pointer',
                                     transition: 'all 0.2s ease'
                                   }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #000000ff 0%, #060030ff 100%)'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)'}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cl-gradient-vivid)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--cl-gradient)'}
                                 >
                                   {activity.feedback ? 'Edit' : 'Add Feedback'}
                                 </button>
@@ -2007,7 +2044,7 @@ const SessionDetail = () => {
                                     }}
                                     style={{
                                       flex: 1,
-                                      background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                                      background: 'var(--cl-gradient)',
                                       color: 'white',
                                       border: 'none',
                                       borderRadius: '6px',
@@ -2017,8 +2054,8 @@ const SessionDetail = () => {
                                       cursor: 'pointer',
                                       transition: 'all 0.2s ease'
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #000000ff 0%, #060030ff 100%)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)'}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cl-gradient-vivid)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'var(--cl-gradient)'}
                                   >
                                     Save Feedback
                                   </button>
@@ -2139,7 +2176,7 @@ const SessionDetail = () => {
                 }}>
                   {sessionData.completedAt && (
                     <div style={{
-                      background: '#FFFFFF',
+                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                       borderRadius: '12px',
                       border: '1px solid #E5E7EB',
                       padding: '16px 20px',
@@ -2162,7 +2199,7 @@ const SessionDetail = () => {
 
                   {sessionData.regeneratedCount !== undefined && (
                     <div style={{
-                      background: '#FFFFFF',
+                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                       borderRadius: '12px',
                       border: '1px solid #E5E7EB',
                       padding: '16px 20px',
@@ -2179,7 +2216,7 @@ const SessionDetail = () => {
 
                   {sessionData.lastRegeneratedAt && (
                     <div style={{
-                      background: '#FFFFFF',
+                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                       borderRadius: '12px',
                       border: '1px solid #E5E7EB',
                       padding: '16px 20px',
@@ -2201,7 +2238,7 @@ const SessionDetail = () => {
 
                   {sessionData.createdByCoach && (
                     <div style={{
-                      background: '#FFFFFF',
+                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                       borderRadius: '12px',
                       border: '1px solid #E5E7EB',
                       padding: '16px 20px',
@@ -2220,19 +2257,19 @@ const SessionDetail = () => {
                 {/* Session Takeaways Section */}
                 {sessionData.sessionTakeaways && sessionData.sessionTakeaways.length > 0 && (
                   <div style={{
-                    background: '#FFFFFF',
+                    background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                     borderRadius: '12px',
-                    border: '1px solid #E5E7EB',
+                    border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                     overflow: 'hidden',
                     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
                     marginBottom: '24px'
                   }}>
                     <div style={{
-                      background: '#F9FAFB',
-                      borderBottom: '1px solid #E5E7EB',
+                      background: dark ? 'rgba(255,255,255,0.03)' : '#F9FAFB',
+                      borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                       padding: '16px 20px'
                     }}>
-                      <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <h2 style={{ fontSize: '16px', fontWeight: '600', color: dark ? 'var(--cl-text)' : '#111827', margin: 0 }}>
                         Key Takeaways
                       </h2>
                     </div>
@@ -2250,7 +2287,7 @@ const SessionDetail = () => {
                           <div style={{
                             width: '6px',
                             height: '6px',
-                            background: '#060030ff',
+                            background: 'var(--cl-primary)',
                             borderRadius: '50%',
                             marginTop: '8px',
                             flexShrink: 0
@@ -2266,26 +2303,26 @@ const SessionDetail = () => {
 
                 {/* Overall Feedback Section */}
                 <div style={{
-                  background: '#FFFFFF',
+                  background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                   borderRadius: '12px',
-                  border: '1px solid #E5E7EB',
+                  border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                   overflow: 'hidden',
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
                   marginTop: '24px'
                 }}>
                   <div style={{
-                    background: '#F9FAFB',
-                    borderBottom: '1px solid #E5E7EB',
+                    background: dark ? 'rgba(255,255,255,0.03)' : '#F9FAFB',
+                    borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                     padding: '16px 20px',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <h2 style={{ fontSize: '16px', fontWeight: '600', color: dark ? 'var(--cl-text)' : '#111827', margin: 0 }}>
                         Overall Session Feedback
                       </h2>
-                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', background: '#FFFFFF', borderRadius: '8px', padding: '6px 12px', border: '1px solid #E5E7EB' }}>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', background: dark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', borderRadius: '8px', padding: '6px 12px', border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}` }}>
                         {[...Array(5)].map((_, i) => (
                           <div
                             key={i}
@@ -2297,7 +2334,7 @@ const SessionDetail = () => {
                             ★
                           </div>
                         ))}
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: '#000000', marginLeft: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: dark ? 'var(--cl-text)' : '#000000', marginLeft: '8px' }}>
                           {sessionData.feedback?.rating || 0}/5
                         </span>
                       </div>
@@ -2314,7 +2351,7 @@ const SessionDetail = () => {
                           });
                         }}
                         style={{
-                          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                          background: 'var(--cl-gradient)',
                           color: 'white',
                           border: 'none',
                           borderRadius: '6px',
@@ -2324,8 +2361,8 @@ const SessionDetail = () => {
                           cursor: 'pointer',
                           transition: 'all 0.2s ease'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #000000ff 0%, #060030ff 100%)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)'}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cl-gradient-vivid)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'var(--cl-gradient)'}
                       >
                         {sessionData.feedback ? 'Edit' : 'Add Feedback'}
                       </button>
@@ -2347,7 +2384,7 @@ const SessionDetail = () => {
                                   width: '36px',
                                   height: '36px',
                                   border: 'none',
-                                  background: '#F9FAFB',
+                                  background: dark ? 'rgba(255,255,255,0.03)' : '#F9FAFB',
                                   borderRadius: '6px',
                                   cursor: 'pointer',
                                   fontSize: '24px',
@@ -2404,7 +2441,7 @@ const SessionDetail = () => {
                             }}
                             style={{
                               flex: 1,
-                              background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                              background: 'var(--cl-gradient)',
                               color: 'white',
                               border: 'none',
                               borderRadius: '6px',
@@ -2414,8 +2451,8 @@ const SessionDetail = () => {
                               cursor: 'pointer',
                               transition: 'all 0.2s ease'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #000000ff 0%, #060030ff 100%)'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)'}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--cl-gradient-vivid)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--cl-gradient)'}
                           >
                             Save Session Feedback
                           </button>
@@ -2493,24 +2530,24 @@ const SessionDetail = () => {
               {/* Player Details Sidebar */}
               <div>
                 <div style={{
-                  background: '#FFFFFF',
+                  background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                   borderRadius: '12px',
-                  border: '1px solid #E5E7EB',
+                  border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                   padding: '20px',
-                  color: '#111827',
+                  color: dark ? 'var(--cl-text)' : '#111827',
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
                   position: 'sticky',
                   top: '20px'
                 }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 16px 0', color: '#111827' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 16px 0', color: dark ? 'var(--cl-text-3)' : '#111827' }}>
                     SESSION DETAILS
                   </h3>
 
                   {/* Player Avatar/Name */}
                   <div style={{
-                    background: '#F9FAFB',
+                    background: dark ? 'rgba(255,255,255,0.03)' : '#F9FAFB',
                     borderRadius: '12px',
-                    border: '1px solid #E5E7EB',
+                    border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                     padding: '16px',
                     marginBottom: '16px',
                     textAlign: 'center'
@@ -2518,7 +2555,7 @@ const SessionDetail = () => {
                     <div style={{
                       width: '60px',
                       height: '60px',
-                      background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
+                      background: 'var(--cl-gradient)',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
@@ -2526,24 +2563,24 @@ const SessionDetail = () => {
                       margin: '0 auto 12px',
                       fontSize: '24px',
                       fontWeight: 'bold',
-                      color: '#FFFFFF'
+                      color: 'white'
                     }}>
                       {(playerData?.name || playerData?.playerName || 'P')?.charAt(0)}
                     </div>
-                    <h4 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: '#111827' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: dark ? 'var(--cl-text)' : '#111827' }}>
                       {playerData?.name || playerData?.playerName || 'Unknown Player'}
                     </h4>
-                    <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>
+                    <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>
                       {playerData?.email || 'N/A'}
                     </p>
                   </div>
 
 
                   <div style={{ marginBottom: '16px' }}>
-                    <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                    <p style={{ fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
                       Coach
                     </p>
-                    <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#111827' }}>
+                    <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: dark ? 'var(--cl-text)' : '#111827' }}>
                       {currentUser?.name || 'N/A'}
                     </p>
                   </div>
@@ -2604,23 +2641,23 @@ const SessionDetail = () => {
                   })()}
 
                   <div style={{ marginBottom: '16px' }}>
-                    <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                    <p style={{ fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
                       Total Points
                     </p>
-                    <p style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: '#111827' }}>
+                    <p style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: dark ? 'var(--cl-text)' : '#111827' }}>
                       {playerData?.totalPoints || 0}
                     </p>
                   </div>
 
                   {/* Progress Bar */}
                   <div style={{
-                    background: '#F9FAFB',
+                    background: dark ? 'rgba(255,255,255,0.03)' : '#F9FAFB',
                     borderRadius: '12px',
-                    border: '1px solid #E5E7EB',
+                    border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
                     padding: '12px',
                     marginBottom: '16px'
                   }}>
-                    <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                    <p style={{ fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
                       Progress (Activities with Feedback)
                     </p>
                     <div style={{
@@ -2634,7 +2671,7 @@ const SessionDetail = () => {
                       <div style={{
                         width: `${calculateProgress()}%`,
                         height: '100%',
-                        background: 'linear-gradient(135deg, rgb(94, 94, 94) 0%, #000000ff 100%)'
+                        background: 'var(--cl-gradient)'
                       }} />
                     </div>
                     <p style={{ fontSize: '11px', color: '#6B7280', margin: 0, textAlign: 'right' }}>
@@ -2775,7 +2812,7 @@ const SessionDetail = () => {
                       disabled={isSubmitting}
                       style={{
                         padding: '12px 24px',
-                        background: isSubmitting ? '#94A3B8' : 'linear-gradient(135deg, #060030ff, #000000)',
+                        background: isSubmitting ? 'var(--cl-text-3)' : 'var(--cl-gradient)',
                         color: 'white',
                         border: 'none',
                         width: '100%',
@@ -2860,7 +2897,7 @@ const SessionDetail = () => {
             {/* What's Feedback Section */}
             {whatsFeedbackMessage && (
               <div id="whats-feedback-section" style={{
-                background: '#FFFFFF',
+                background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                 borderRadius: '12px',
                 border: '1px solid #E5E7EB',
                 overflow: 'hidden',
@@ -3003,7 +3040,7 @@ const SessionDetail = () => {
               </div>
             )}
 
-            {/* WhatsApp Prompt Modal — auto-fires before session completion */}
+            {/* WhatsApp Prompt Modal - auto-fires before session completion */}
             {whatsappPromptModal.isOpen && (
               <div style={{
                 position: 'fixed',
@@ -3133,7 +3170,7 @@ const SessionDetail = () => {
                           style={{
                             flex: 1,
                             padding: '11px 0',
-                            background: isSubmitting ? '#94A3B8' : 'linear-gradient(135deg, #060030ff, #000000)',
+                            background: isSubmitting ? 'var(--cl-text-3)' : 'var(--cl-gradient)',
                             color: 'white',
                             border: 'none',
                             borderRadius: '8px',

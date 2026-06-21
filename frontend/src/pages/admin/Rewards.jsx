@@ -1,60 +1,198 @@
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
-import { Badge } from '../../components/Badge';
-import { Button } from '../../components/Button';
-import { SkeletonContainer } from '../../components/SkeletonLoader';
-import { Gift, Edit2, Trash2, Package, Search, ChevronDown, Plus, X, Loader } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { Gift, Edit2, Trash2, Package, Search, Plus, X, Loader, CheckCircle, TrendingUp, Star } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo, createElement } from 'react';
 import { Toast } from '../../components/Toast';
 
 const API_ENDPOINTS = {
-  VIEW: 'https://vzcyj52ypb.execute-api.ap-south-1.amazonaws.com/default/CL_View_Reward',
-  ADD: 'https://rk37pftip6.execute-api.ap-south-1.amazonaws.com/default/CL_Add_Reward',
+  VIEW:   'https://vzcyj52ypb.execute-api.ap-south-1.amazonaws.com/default/CL_View_Reward',
+  ADD:    'https://rk37pftip6.execute-api.ap-south-1.amazonaws.com/default/CL_Add_Reward',
   UPDATE: 'https://5rb7nhg1rg.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Reward',
-  DELETE: 'https://dxliwg58k2.execute-api.ap-south-1.amazonaws.com/default/CL_Delete_Reward'
+  DELETE: 'https://dxliwg58k2.execute-api.ap-south-1.amazonaws.com/default/CL_Delete_Reward',
 };
 
+/* ── shared helpers ── */
+const inputBase = {
+  width:'100%', padding:'10px 13px', border:'1.5px solid #E2E8F0',
+  borderRadius:'9px', fontSize:'13.5px', fontWeight:'500',
+  background:'#FAFBFC', color:'#1E293B', boxSizing:'border-box',
+  outline:'none', fontFamily:'inherit',
+  transition:'border-color .18s, box-shadow .18s, background .18s',
+};
+const iFocus = e => { e.target.style.borderColor='#6366F1'; e.target.style.background='#fff'; e.target.style.boxShadow='0 0 0 3px rgba(99,102,241,.12)'; };
+const iBlur  = e => { e.target.style.borderColor='#E2E8F0'; e.target.style.background='#FAFBFC'; e.target.style.boxShadow='none'; };
+
+const FormField = ({ label, required, children }) => (
+  <div>
+    <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#64748B', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'.5px' }}>
+      {label}{required && <span style={{ color:'#EF4444', marginLeft:'3px' }}>*</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[name.charCodeAt(0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width:w, height:h, borderRadius:r, background:'#EEF2F7', animation:'rwdPulse 1.6s ease-in-out infinite', flexShrink:0 }} />
+);
+
+const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        background:'#fff', borderRadius:'16px', padding:'18px 20px',
+        border:`1.5px solid ${hov ? accent+'50' : '#F1F5F9'}`,
+        boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
+        display:'flex', alignItems:'center', gap:'14px',
+        transition:'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
+      }}
+    >
+      <div style={{ width:'48px', height:'48px', borderRadius:'13px', flexShrink:0, background:`${accent}18`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {createElement(SummaryIcon, { size: 22, color: accent })}
+      </div>
+      <div>
+        <p style={{ fontSize:'10.5px', fontWeight:'700', color:'#94A3B8', margin:0, textTransform:'uppercase', letterSpacing:'.6px' }}>{label}</p>
+        <p style={{ fontSize:'23px', fontWeight:'800', color:'#0F172A', margin:'3px 0 0', letterSpacing:'-1px' }}>{value}</p>
+      </div>
+    </div>
+  );
+};
+
+/* ── reward card (module-level, memo-friendly) ── */
+const RewardCard = ({ reward, onEdit, onDelete }) => {
+  const [hov, setHov] = useState(false);
+  const [accent, light] = pal(reward.rewardName || '');
+  return (
+    <div
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{
+        background:'#fff', borderRadius:'16px', overflow:'hidden',
+        border:`1.5px solid ${hov ? accent+'40' : '#F1F5F9'}`,
+        boxShadow: hov ? `0 12px 32px ${accent}18` : '0 2px 8px rgba(0,0,0,.05)',
+        display:'flex', flexDirection:'column',
+        transition:'all .22s cubic-bezier(.34,1.56,.64,1)',
+        transform: hov ? 'translateY(-5px)' : 'none',
+        animation:'rwdFadeUp .3s ease',
+      }}
+    >
+      {/* color band */}
+      <div style={{ height:'5px', background:`linear-gradient(90deg, ${accent}, ${light})` }} />
+
+      <div style={{ padding:'20px', flex:1, display:'flex', flexDirection:'column' }}>
+        {/* top row */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+            <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:`${accent}15`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Gift size={17} color={accent} />
+            </div>
+            <h3 style={{ fontSize:'15px', fontWeight:'800', color:'#0F172A', margin:0, lineHeight:'1.3' }}>{reward.rewardName}</h3>
+          </div>
+          <span style={{
+            padding:'4px 10px', borderRadius:'999px', fontSize:'10.5px', fontWeight:'700',
+            background: reward.isActive ? '#DCFCE7' : '#FEE2E2',
+            color: reward.isActive ? '#15803D' : '#B91C1C',
+            whiteSpace:'nowrap', flexShrink:0,
+          }}>
+            {reward.isActive ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+
+        {/* description */}
+        <p style={{
+          fontSize:'13px', color:'#64748B', margin:'0 0 14px', lineHeight:'1.55', flex:1,
+          display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden',
+        }}>
+          {reward.rewardDescription}
+        </p>
+
+        {/* points badge */}
+        <div style={{
+          display:'flex', alignItems:'center', gap:'8px',
+          padding:'10px 13px', background:`${accent}0d`,
+          border:`1.5px solid ${accent}25`, borderRadius:'10px', marginBottom:'14px',
+        }}>
+          <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:`${accent}22`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Star size={13} color={accent} />
+          </div>
+          <div>
+            <p style={{ fontSize:'10px', fontWeight:'700', color:'#94A3B8', margin:0, textTransform:'uppercase', letterSpacing:'.5px' }}>Points Required</p>
+            <p style={{ fontSize:'16px', fontWeight:'800', color: accent, margin:0 }}>{reward.points}</p>
+          </div>
+        </div>
+
+        {/* actions */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+          <button
+            onClick={() => onEdit(reward)}
+            style={{
+              padding:'9px', borderRadius:'9px', fontWeight:'700', fontSize:'13px',
+              background:'linear-gradient(135deg,#6366F1,#8B5CF6)', color:'#fff',
+              border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px',
+              transition:'all .18s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow='0 4px 12px rgba(99,102,241,.35)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none'; }}
+          >
+            <Edit2 size={13} /> Edit
+          </button>
+          <button
+            onClick={() => onDelete(reward)}
+            style={{
+              padding:'9px', borderRadius:'9px', fontWeight:'700', fontSize:'13px',
+              background:'linear-gradient(135deg,#EF4444,#DC2626)', color:'#fff',
+              border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px',
+              transition:'all .18s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform='translateY(-1px)'; e.currentTarget.style.boxShadow='0 4px 12px rgba(239,68,68,.35)'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none'; }}
+          >
+            <Trash2 size={13} /> Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════
+   MAIN COMPONENT
+════════════════════════════════════════════════ */
 const Rewards = () => {
   const { userToken } = useStore();
-  const [rewards, setRewards] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [rewards, setRewards]               = useState([]);
+  const [searchTerm, setSearchTerm]         = useState('');
+  const [statusFilter, setStatusFilter]     = useState('all');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedReward, setSelectedReward] = useState(null);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [editingReward, setEditingReward] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState(null);
+  const [addModalOpen, setAddModalOpen]     = useState(false);
+  const [editingReward, setEditingReward]   = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [toast, setToast]                   = useState(null);
   const hasFetchedRef = useRef(false);
-  const [formData, setFormData] = useState({
-    rewardName: '',
-    rewardDescription: '',
-    points: '',
-    isActive: true
-  });
+  const [formData, setFormData] = useState({ rewardName:'', rewardDescription:'', points:'', isActive:true });
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch rewards from API - only on initial load
   useEffect(() => {
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
     fetchRewards();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line
 
   const fetchRewards = async () => {
     try {
       setLoading(true);
-      const response = await fetch(API_ENDPOINTS.VIEW, {
-        headers: { 'userToken': userToken }
-      });
+      const response = await fetch(API_ENDPOINTS.VIEW, { headers:{ 'userToken':userToken } });
       const data = await response.json();
-      
-      if (data.data) {
-        setRewards(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching rewards:', error);
+      if (data.data) setRewards(data.data);
+    } catch {
       showToast('Failed to load rewards', 'error');
       setRewards([]);
     } finally {
@@ -67,1081 +205,336 @@ const Rewards = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleDeleteClick = (reward) => {
-    setSelectedReward(reward);
-    setDeleteModalOpen(true);
-  };
-
   const handleDeleteReward = async () => {
     try {
       setSubmitting(true);
       const rewardId = selectedReward.id || selectedReward._id || selectedReward.rewardId;
       const response = await fetch(API_ENDPOINTS.DELETE, {
-        method: 'DELETE',
-        headers: { 'userToken': userToken },
-        body: JSON.stringify({ rewardId: rewardId })
+        method:'DELETE', headers:{ 'userToken':userToken }, body:JSON.stringify({ rewardId }),
       });
-
-      const result = await response.json();
-
       if (response.ok) {
-        showToast('Reward deleted successfully', 'success');
+        showToast('Reward deleted successfully');
         setDeleteModalOpen(false);
         fetchRewards();
       } else {
-        console.error('Delete error:', result);
         showToast('Failed to delete reward', 'error');
       }
-    } catch (error) {
-      console.error('Error deleting reward:', error);
+    } catch {
       showToast('Error deleting reward', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleAddReward = async (e) => {
+  const handleSaveReward = async e => {
     e.preventDefault();
-    
     if (!formData.rewardName || !formData.rewardDescription || !formData.points) {
-      showToast('Please fill all fields', 'error');
-      return;
+      showToast('Please fill all fields', 'error'); return;
     }
-
     try {
       setSubmitting(true);
-      const payload = {
-        rewardName: formData.rewardName,
-        rewardDescription: formData.rewardDescription,
-        points: parseInt(formData.points),
-        isActive: formData.isActive
-      };
-
-      const requestBody = editingReward ? { ...payload, rewardId: editingReward._id || editingReward.rewardId } : payload;
-      
-
+      const payload = { rewardName:formData.rewardName, rewardDescription:formData.rewardDescription, points:parseInt(formData.points), isActive:formData.isActive };
+      const body = editingReward ? { ...payload, rewardId: editingReward._id || editingReward.rewardId } : payload;
       const response = await fetch(editingReward ? API_ENDPOINTS.UPDATE : API_ENDPOINTS.ADD, {
         method: editingReward ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json', 'userToken': userToken },
-        body: JSON.stringify(requestBody)
+        headers:{ 'Content-Type':'application/json', 'userToken':userToken },
+        body: JSON.stringify(body),
       });
-
       if (response.ok) {
-        showToast(editingReward ? 'Reward updated successfully' : 'Reward added successfully', 'success');
-        setAddModalOpen(false);
-        setEditingReward(null);
-        setFormData({ rewardName: '', rewardDescription: '', points: '', isActive: true });
-        fetchRewards();
+        showToast(editingReward ? 'Reward updated successfully' : 'Reward added successfully');
+        handleCloseModal(); fetchRewards();
       } else {
         showToast(editingReward ? 'Failed to update reward' : 'Failed to add reward', 'error');
       }
-    } catch (error) {
-      console.error('Error saving reward:', error);
+    } catch {
       showToast('Error saving reward', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleEditClick = (reward) => {
+  const handleEditClick = reward => {
     setEditingReward(reward);
-    setFormData({
-      rewardName: reward.rewardName,
-      rewardDescription: reward.rewardDescription,
-      points: reward.points.toString(),
-      isActive: reward.isActive
-    });
+    setFormData({ rewardName:reward.rewardName, rewardDescription:reward.rewardDescription, points:reward.points.toString(), isActive:reward.isActive });
     setAddModalOpen(true);
   };
 
   const handleCloseModal = () => {
-    setAddModalOpen(false);
-    setEditingReward(null);
-    setFormData({ rewardName: '', rewardDescription: '', points: '', isActive: true });
+    setAddModalOpen(false); setEditingReward(null);
+    setFormData({ rewardName:'', rewardDescription:'', points:'', isActive:true });
   };
 
-  const totalPoints = rewards.reduce((sum, r) => sum + (r.points || 0), 0);
-  const avgPointsRequired = rewards.length > 0 ? Math.round(totalPoints / rewards.length) : 0;
-  const activeRewards = rewards.filter(r => r.isActive).length;
+  const stats = useMemo(() => ({
+    total:   rewards.length,
+    active:  rewards.filter(r => r.isActive).length,
+    inactive: rewards.filter(r => !r.isActive).length,
+    avg:     rewards.length > 0 ? Math.round(rewards.reduce((s,r) => s+(r.points||0), 0) / rewards.length) : 0,
+  }), [rewards]);
 
-  const filteredRewards = rewards.filter(reward => {
-    const matchesSearch = reward.rewardName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         reward.rewardDescription.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
+  const filteredRewards = useMemo(() => rewards.filter(r => {
+    const matchSearch = r.rewardName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        r.rewardDescription.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = statusFilter === 'all' || (statusFilter === 'active' ? r.isActive : !r.isActive);
+    return matchSearch && matchStatus;
+  }), [rewards, searchTerm, statusFilter]);
 
+  /* ════════════════════ RENDER ════════════════════ */
   return (
     <Layout>
       {toast && <Toast message={toast.message} type={toast.type} />}
-      
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
-        {/* Header with Stats */}
-        {loading ? (
-          <SkeletonContainer>
-            <div style={{
-              background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-              backdropFilter: 'blur(20px)',
-              color: 'white',
-              padding: '40px 32px',
-              marginBottom: '32px',
-              borderRadius: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              boxShadow: '0 8px 32px rgba(37, 44, 53, 0.15)',
-              minHeight: '240px'
-            }}>
-              <style>{`
-                @keyframes pulse {
-                  0%, 100% { opacity: 1; }
-                  50% { opacity: 0.5; }
-                }
-              `}</style>
-              <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      height: '32px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      marginBottom: '12px',
-                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                      width: '280px'
-                    }} />
-                    <div style={{
-                      height: '14px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '6px',
-                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.1s',
-                      width: '340px'
-                    }} />
-                  </div>
-                  <div style={{
-                    height: '36px',
-                    width: '140px',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '8px',
-                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.15s',
-                    flexShrink: 0
-                  }} />
-                </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} style={{
-                      height: '80px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '6px',
-                      animation: `pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite ${i * 0.1}s`,
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </SkeletonContainer>
-        ) : (
+      <style>{`
+        @keyframes rwdPulse  { 0%,100%{opacity:.5} 50%{opacity:1} }
+        @keyframes rwdFadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes fadeOverlay { from{opacity:0} to{opacity:1} }
+        @keyframes slideModal { from{opacity:0;transform:translateY(18px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+      `}</style>
+
+      <div style={{ maxWidth:'1400px', margin:'0 auto', padding:'24px 28px', animation:'rwdFadeUp .3s ease' }}>
+
+        {/* ── Header banner ── */}
         <div style={{
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: '40px 32px',
-          marginBottom: '32px',
-          borderRadius: '12px',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          boxShadow: '0 8px 32px rgba(37, 44, 53, 0.15)'
+          background:'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius:'20px', padding:'28px 32px', marginBottom:'24px',
+          display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
+          boxShadow:'0 12px 40px rgba(6,0,48,.3)', flexWrap:'wrap',
         }}>
-          <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-            <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h1 style={{ fontSize: '32px', fontWeight: '700', margin: '0 0 4px 0' }}>Reward Management</h1>
-                <p style={{ fontSize: '14px', opacity: 0.9, margin: 0 }}>Manage {rewards.length} reward{rewards.length !== 1 ? 's' : ''} and incentive catalog</p>
-              </div>
-              <button
-                onClick={() => {
-                  setEditingReward(null);
-                  setFormData({ rewardName: '', rewardDescription: '', points: '', isActive: true });
-                  setAddModalOpen(true);
-                }}
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '10px 20px',
-                    borderRadius: '8px',
-                    fontWeight: '600',
-                    background: 'rgba(255, 255, 255, 0.15)',
-                    color: 'white',
-                    border: '2px solid rgba(255, 255, 255, 1)',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s',
-                    backdropFilter: 'blur(10px)',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-                  }}
-              >
-                <Plus size={18} /> Add Reward
-              </button>
+          <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
+            <div style={{ width:'52px', height:'52px', borderRadius:'14px', background:'rgba(255,255,255,.12)', border:'1.5px solid rgba(255,255,255,.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Gift size={24} color="#fff" />
             </div>
-
-            {/* Stats Row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Rewards</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{rewards.length}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Rewards</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{activeRewards}</p>
-              </div>
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                <p style={{ fontSize: '11px', opacity: 0.8, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Avg Points Required</p>
-                <p style={{ fontSize: '24px', fontWeight: '700', margin: '6px 0 0 0' }}>{avgPointsRequired}</p>
-              </div>
+            <div>
+              <h1 style={{ fontSize:'24px', fontWeight:'800', color:'#fff', margin:'0 0 3px', letterSpacing:'-.5px' }}>Reward Management</h1>
+              <p style={{ fontSize:'13px', color:'rgba(255,255,255,.6)', margin:0, fontWeight:'500' }}>
+                {loading ? 'Loading…' : `${stats.total} reward${stats.total !== 1 ? 's' : ''} · ${stats.active} active`}
+              </p>
             </div>
           </div>
+          <button
+            onClick={() => { setEditingReward(null); setFormData({ rewardName:'', rewardDescription:'', points:'', isActive:true }); setAddModalOpen(true); }}
+            style={{
+              display:'flex', alignItems:'center', gap:'8px', padding:'12px 22px', borderRadius:'12px',
+              background:'rgba(255,255,255,.15)', backdropFilter:'blur(8px)',
+              border:'1.5px solid rgba(255,255,255,.3)',
+              color:'#fff', fontWeight:'700', fontSize:'13.5px', cursor:'pointer', transition:'all .2s ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,.25)'; e.currentTarget.style.transform='translateY(-1px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,.15)'; e.currentTarget.style.transform='none'; }}
+          >
+            <Plus size={17} /> Add Reward
+          </button>
         </div>
+
+        {/* ── Summary cards ── */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }}>
+          {loading ? [1,2,3,4].map(i => (
+            <div key={i} style={{ background:'#fff', borderRadius:'16px', padding:'18px 20px', border:'1px solid #F1F5F9', display:'flex', gap:'14px', alignItems:'center' }}>
+              <Sk w="48px" h="48px" r={13} />
+              <div style={{ flex:1 }}><Sk w="60%" h="10px" /><div style={{marginTop:8}}><Sk w="42%" h="22px" /></div></div>
+            </div>
+          )) : <>
+            <SummaryCard label="Total Rewards" value={stats.total}    icon={Gift}        accent="#6366F1" />
+            <SummaryCard label="Active"         value={stats.active}  icon={CheckCircle} accent="#10B981" />
+            <SummaryCard label="Inactive"       value={stats.inactive} icon={Package}    accent="#F59E0B" />
+            <SummaryCard label="Avg Points"     value={stats.avg}     icon={TrendingUp}  accent="#EC4899" />
+          </>}
+        </div>
+
+        {/* ── Filter bar ── */}
+        <div style={{
+          display:'flex', alignItems:'center', gap:'10px', marginBottom:'24px',
+          background:'#fff', padding:'12px 16px', borderRadius:'14px',
+          border:'1px solid #F1F5F9', boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
+        }}>
+          <div style={{
+            display:'flex', alignItems:'center', gap:'8px', flex:'1', minWidth:'200px',
+            border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'8px 12px', background:'#FAFBFC',
+          }}
+          onFocusCapture={e => { e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(99,102,241,.1)'; }}
+          onBlurCapture={e => { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.boxShadow='none'; }}>
+            <Search size={15} color="#94A3B8" />
+            <input
+              type="text" placeholder="Search rewards…" value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color:'#1E293B', flex:1, fontFamily:'inherit' }}
+            />
+            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color:'#94A3B8', padding:0, display:'flex' }}><X size={14} /></button>}
+          </div>
+
+          <div style={{ display:'flex', gap:'6px' }}>
+            {[['all','All'], ['active','Active'], ['inactive','Inactive']].map(([v,l]) => (
+              <button key={v} onClick={() => setStatusFilter(v)} style={{
+                padding:'7px 14px', borderRadius:'999px', fontSize:'12px', fontWeight:'700',
+                border: statusFilter === v ? '1.5px solid #6366F1' : '1.5px solid #E2E8F0',
+                background: statusFilter === v ? '#6366F1' : '#F8FAFC',
+                color: statusFilter === v ? '#fff' : '#64748B', cursor:'pointer', transition:'all .18s ease',
+              }}>{l}</button>
+            ))}
+          </div>
+
+          <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', marginLeft:'auto', whiteSpace:'nowrap' }}>
+            <span style={{ color:'#6366F1' }}>{filteredRewards.length}</span> / {rewards.length}
+          </span>
+        </div>
+
+        {/* ── Grid ── */}
+        {loading ? (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))', gap:'18px' }}>
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} style={{ background:'#fff', borderRadius:'16px', overflow:'hidden', border:'1px solid #F1F5F9' }}>
+                <div style={{ height:'5px', background:'#EEF2F7', animation:'rwdPulse 1.6s ease-in-out infinite' }} />
+                <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'12px' }}>
+                  <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
+                    <Sk w="38px" h="38px" r={10} /><Sk w="55%" h="16px" />
+                  </div>
+                  <Sk w="100%" h="13px" /><Sk w="80%" h="13px" />
+                  <Sk w="100%" h="44px" r={10} />
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
+                    <Sk w="100%" h="36px" r={9} /><Sk w="100%" h="36px" r={9} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredRewards.length > 0 ? (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))', gap:'18px' }}>
+            {filteredRewards.map((reward, i) => (
+              <RewardCard
+                key={reward._id || reward.rewardId || i}
+                reward={reward}
+                onEdit={handleEditClick}
+                onDelete={r => { setSelectedReward(r); setDeleteModalOpen(true); }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div style={{ textAlign:'center', padding:'80px 24px', background:'#fff', borderRadius:'16px', border:'2px dashed #E2E8F0' }}>
+            <div style={{ width:'80px', height:'80px', borderRadius:'22px', background:'#EEF2FF', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
+              <Package size={36} color="#6366F1" />
+            </div>
+            <p style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>No rewards found</p>
+            <p style={{ fontSize:'13.5px', color:'#94A3B8', margin:0 }}>
+              {searchTerm || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Add your first reward to get started'}
+            </p>
+          </div>
         )}
 
-        <div style={{ padding: '0 32px' }}>
-          {/* Search */}
+        {/* ── Add / Edit modal ── */}
+        {addModalOpen && (
           <div style={{
-            display: 'flex',
-            gap: '16px',
-            marginBottom: '32px',
-            backgroundColor: 'white',
-            padding: '10px 14px',
-            borderRadius: '8px',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-            flexWrap: 'wrap',
-            alignItems: 'center'
-          }}>
-            <div style={{ flex: 1, minWidth: '250px', position: 'relative' }}>
-              <Search size={18} style={{
-                position: 'absolute',
-                left: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: '#060030ff'
-              }} />
-              <input
-                type="text"
-                placeholder="Search rewards by name or description..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 10px 10px 40px',
-                  border: '2px solid #E2E8F0',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                  backgroundColor: 'white'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#060030ff';
-                  e.target.style.boxShadow = '0 0 0 3px rgba(82, 102, 129, 0.1)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#E2E8F0';
-                  e.target.style.boxShadow = 'none';
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Rewards Grid or Loading */}
-          {loading ? (
-            <SkeletonContainer>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                gap: '24px',
-                marginBottom: '32px'
-              }}>
-                {[1, 2, 3, 4, 5, 6].map((idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      backgroundColor: 'white',
-                      borderRadius: '14px',
-                      padding: '24px',
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-                      border: '1px solid #f0f0f0',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '16px'
-                    }}
-                  >
-                    {/* Title Skeleton */}
-                    <div style={{
-                      height: '22px',
-                      background: 'linear-gradient(90deg, #f0f0f0 25%, #f9f9f9 50%, #f0f0f0 75%)',
-                      backgroundSize: '200% 100%',
-                      borderRadius: '6px',
-                      animation: 'shimmer 2s infinite',
-                      animationDelay: `${idx * 0.1}s`
-                    }} />
-
-                    {/* Description Skeleton */}
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px'
-                    }}>
-                      <div style={{
-                        height: '16px',
-                        background: 'linear-gradient(90deg, #f5f5f5 25%, #fafafa 50%, #f5f5f5 75%)',
-                        backgroundSize: '200% 100%',
-                        borderRadius: '4px',
-                        animation: 'shimmer 2s infinite',
-                        animationDelay: `${idx * 0.1 + 0.05}s`
-                      }} />
-                      <div style={{
-                        height: '16px',
-                        background: 'linear-gradient(90deg, #f5f5f5 25%, #fafafa 50%, #f5f5f5 75%)',
-                        backgroundSize: '200% 100%',
-                        borderRadius: '4px',
-                        width: '85%',
-                        animation: 'shimmer 2s infinite',
-                        animationDelay: `${idx * 0.1 + 0.1}s`
-                      }} />
-                    </div>
-
-                    {/* Points Badge Skeleton */}
-                    <div style={{
-                      height: '28px',
-                      background: 'linear-gradient(90deg, #f0f0f0 25%, #f9f9f9 50%, #f0f0f0 75%)',
-                      backgroundSize: '200% 100%',
-                      borderRadius: '20px',
-                      width: '100px',
-                      animation: 'shimmer 2s infinite',
-                      animationDelay: `${idx * 0.1 + 0.15}s`
-                    }} />
-
-                    {/* Status Badge Skeleton */}
-                    <div style={{
-                      height: '20px',
-                      background: 'linear-gradient(90deg, #f0f0f0 25%, #f9f9f9 50%, #f0f0f0 75%)',
-                      backgroundSize: '200% 100%',
-                      borderRadius: '4px',
-                      width: '70px',
-                      animation: 'shimmer 2s infinite',
-                      animationDelay: `${idx * 0.1 + 0.2}s`
-                    }} />
-
-                    {/* Action Buttons Skeleton */}
-                    <div style={{
-                      display: 'flex',
-                      gap: '10px',
-                      marginTop: '12px'
-                    }}>
-                      <div style={{
-                        flex: 1,
-                        height: '36px',
-                        background: 'linear-gradient(90deg, #f5f5f5 25%, #fafafa 50%, #f5f5f5 75%)',
-                        backgroundSize: '200% 100%',
-                        borderRadius: '8px',
-                        animation: 'shimmer 2s infinite',
-                        animationDelay: `${idx * 0.1 + 0.25}s`
-                      }} />
-                      <div style={{
-                        flex: 1,
-                        height: '36px',
-                        background: 'linear-gradient(90deg, #f5f5f5 25%, #fafafa 50%, #f5f5f5 75%)',
-                        backgroundSize: '200% 100%',
-                        borderRadius: '8px',
-                        animation: 'shimmer 2s infinite',
-                        animationDelay: `${idx * 0.1 + 0.3}s`
-                      }} />
-                    </div>
+            position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex',
+            alignItems:'center', justifyContent:'center', zIndex:1000, backdropFilter:'blur(4px)',
+            animation:'fadeOverlay .2s ease',
+          }} onClick={e => { if (e.target === e.currentTarget) handleCloseModal(); }}>
+            <div style={{
+              background:'#fff', borderRadius:'20px', padding:'28px 28px 24px', maxWidth:'500px', width:'92%',
+              boxShadow:'0 30px 60px rgba(0,0,0,.22)', animation:'slideModal .3s cubic-bezier(.34,1.56,.64,1)',
+            }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'22px' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+                  <div style={{ width:'40px', height:'40px', borderRadius:'11px', background:'linear-gradient(135deg,#6366F1,#8B5CF6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <Gift size={18} color="#fff" />
                   </div>
-                ))}
+                  <h3 style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:0 }}>
+                    {editingReward ? 'Edit Reward' : 'Add New Reward'}
+                  </h3>
+                </div>
+                <button onClick={handleCloseModal} style={{ width:'32px', height:'32px', borderRadius:'8px', border:'none', background:'#F8FAFC', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .18s ease' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#EEF2F7'} onMouseLeave={e => e.currentTarget.style.background='#F8FAFC'}>
+                  <X size={16} color="#64748B" />
+                </button>
               </div>
-              <style>{`
-                @keyframes shimmer {
-                  0% { backgroundPosition: 200% 0; }
-                  100% { backgroundPosition: -200% 0; }
-                }
-              `}</style>
-            </SkeletonContainer>
-          ) : (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '24px',
-              marginBottom: '32px'
-            }}>
-              {filteredRewards.length > 0 ? (
-                filteredRewards.map((reward, index) => (
-                  <div
-                    key={reward._id || reward.rewardId || `reward-${index}`}
-                    style={{
-                      backgroundColor: 'white',
-                      borderRadius: '14px',
-                      padding: '24px',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                      border: '1px solid #f0f0f0',
-                      transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      overflow: 'hidden'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = '0 16px 32px rgba(0, 0, 0, 0.12)';
-                      e.currentTarget.style.transform = 'translateY(-8px)';
-                      e.currentTarget.style.borderColor = '#E5E7EB';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.borderColor = '#f0f0f0';
-                    }}
-                  >
-                    {/* Background accent */}
-                    <div style={{
-                      position: 'absolute',
-                      top: 0,
-                      right: 0,
-                      width: '110px',
-                      height: '110px',
-                      background: 'linear-gradient(135deg, rgb(177, 177, 177) 0%, transparent 100%)',
-                      borderRadius: '0 0 0 100%',
-                      pointerEvents: 'none'
-                    }} />
 
-                    <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
-                      <div style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        marginBottom: '12px'
-                      }}>
-                        <h3 style={{
-                          fontSize: '17px',
-                          fontWeight: '700',
-                          color: '#111827',
-                          margin: 0,
-                          flex: 1,
-                          paddingRight: '12px'
-                        }}>
-                          {reward.rewardName}
-                        </h3>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '5px 10px',
-                          backgroundColor: reward.isActive ? '#dbfeec' : '#FEE2E2',
-                          color: reward.isActive ? '#03a12b' : '#ca0000',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0
-                        }}>
-                          {reward.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-
-                      <p style={{
-                        fontSize: '13px',
-                        color: '#6B7280',
-                        marginBottom: '16px',
-                        margin: '0 0 16px 0',
-                        lineHeight: '1.5',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
-                      }}>
-                        {reward.rewardDescription}
-                      </p>
-
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '12px 14px',
-                        background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-                        borderRadius: '8px',
-                        marginBottom: '18px',
-                        transition: 'all 0.3s ease'
-                      }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'scale(1.02)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'scale(1)';
-                        }}
-                      >
-                        <div style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '8px',
-                          background: 'rgba(217, 119, 6, 0.1)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          <Gift size={16} color="#D97706" />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: '11px', color: '#92400E', margin: '0 0 2px 0', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Points Required</p>
-                          <p style={{ fontSize: '16px', fontWeight: '800', color: '#B45309', margin: 0 }}>{reward.points}</p>
-                        </div>
-                      </div>
-
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: '10px'
-                      }}>
-                        <button
-                          onClick={() => handleEditClick(reward)}
-                          style={{
-                            padding: '10px 14px',
-                            background: 'linear-gradient(135deg, #060030ff 0%, #1a0050ff 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            transition: 'all 0.3s ease',
-                            position: 'relative',
-                            overflow: 'hidden'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #1a0050ff 0%, #060030ff 100%)';
-                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(6, 0, 48, 0.3)';
-                            e.currentTarget.style.transform = 'translateY(-2px)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #1a0050ff 100%)';
-                            e.currentTarget.style.boxShadow = 'none';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                          }}
-                        >
-                          <Edit2 size={14} /> Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(reward)}
-                          style={{
-                            padding: '10px 14px',
-                            background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            transition: 'all 0.3s ease',
-                            position: 'relative',
-                            overflow: 'hidden'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)';
-                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.3)';
-                            e.currentTarget.style.transform = 'translateY(-2px)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)';
-                            e.currentTarget.style.boxShadow = 'none';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                          }}
-                        >
-                          <Trash2 size={14} /> Delete
-                        </button>
-                      </div>
+              <form onSubmit={handleSaveReward}>
+                <div style={{ display:'flex', flexDirection:'column', gap:'16px', marginBottom:'22px' }}>
+                  <FormField label="Reward Name" required>
+                    <input type="text" value={formData.rewardName} onChange={e => setFormData({...formData, rewardName:e.target.value})}
+                      placeholder="e.g., OpenAI Subscription" style={inputBase} onFocus={iFocus} onBlur={iBlur} />
+                  </FormField>
+                  <FormField label="Description" required>
+                    <textarea value={formData.rewardDescription} onChange={e => setFormData({...formData, rewardDescription:e.target.value})}
+                      placeholder="Describe the reward…"
+                      style={{ ...inputBase, minHeight:'90px', resize:'vertical' }} onFocus={iFocus} onBlur={iBlur} />
+                  </FormField>
+                  <FormField label="Points Required" required>
+                    <input type="number" value={formData.points} onChange={e => setFormData({...formData, points:e.target.value})}
+                      placeholder="e.g., 1000" style={inputBase} onFocus={iFocus} onBlur={iBlur} />
+                  </FormField>
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#F8FAFC', borderRadius:'10px', border:'1.5px solid #E2E8F0', cursor:'pointer' }}
+                    onClick={() => setFormData({...formData, isActive:!formData.isActive})}>
+                    <div style={{ width:'20px', height:'20px', borderRadius:'5px', border:`2px solid ${formData.isActive ? '#6366F1' : '#CBD5E1'}`, background: formData.isActive ? '#6366F1' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .18s ease', flexShrink:0 }}>
+                      {formData.isActive && <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4.5 7.5L10 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                     </div>
+                    <span style={{ fontSize:'13.5px', fontWeight:'700', color:'#1E293B' }}>Mark as active</span>
                   </div>
-                ))
-              ) : (
-                <div style={{
-                  gridColumn: '1 / -1',
-                  textAlign: 'center',
-                  padding: '64px 32px',
-                  backgroundColor: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)',
-                  borderRadius: '14px',
-                  border: '2px dashed #E5E7EB'
-                }}>
-                  <div style={{
-                    width: '80px',
-                    height: '80px',
-                    margin: '0 auto 20px',
-                    borderRadius: '16px',
-                    background: 'linear-gradient(135deg, rgba(6, 0, 48, 0.05) 0%, rgba(6, 0, 48, 0.02) 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    <Package size={40} style={{ color: '#D1D5DB' }} />
-                  </div>
-                  <p style={{ fontSize: '18px', fontWeight: '700', color: '#374151', margin: '0 0 8px 0' }}>No rewards found</p>
-                  <p style={{ fontSize: '14px', color: '#6B7280', margin: '0' }}>Create your first reward or adjust your search filters</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Add/Edit Reward Modal */}
-          {addModalOpen && (
-            <div style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-              backdropFilter: 'blur(4px)',
-              animation: 'fadeIn 0.3s ease-out'
-            }}>
-              <div style={{
-                backgroundColor: 'white',
-                borderRadius: '16px',
-                padding: '32px',
-                maxWidth: '520px',
-                width: '90%',
-                boxShadow: '0 25px 50px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05)',
-                animation: 'slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #060030ff 0%, #1a0050ff 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      <Gift size={20} color="white" />
-                    </div>
-                    <h3 style={{
-                      fontSize: '20px',
-                      fontWeight: '700',
-                      color: '#111827',
-                      margin: 0
-                    }}>
-                      {editingReward ? 'Edit Reward' : 'Add New Reward'}
-                    </h3>
-                  </div>
-                  <button
-                    onClick={handleCloseModal}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '8px',
-                      borderRadius: '8px',
-                      transition: 'all 0.2s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#F3F4F6';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    <X size={24} color="#6B7280" />
-                  </button>
                 </div>
 
-                <form onSubmit={handleAddReward}>
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      color: '#111827',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      Reward Name
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.rewardName}
-                      onChange={(e) => setFormData({ ...formData, rewardName: e.target.value })}
-                      placeholder="e.g., OPENAI_SUBSCRIPTION"
-                      style={{
-                        width: '100%',
-                        padding: '12px 14px',
-                        border: '2px solid #E5E7EB',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        outline: 'none',
-                        transition: 'all 0.3s ease',
-                        boxSizing: 'border-box',
-                        backgroundColor: '#FAFBFC'
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#060030ff';
-                        e.target.style.backgroundColor = '#ffffff';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.backgroundColor = '#FAFBFC';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      color: '#111827',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      Description
-                    </label>
-                    <textarea
-                      value={formData.rewardDescription}
-                      onChange={(e) => setFormData({ ...formData, rewardDescription: e.target.value })}
-                      placeholder="e.g., Earn a free openai subscription"
-                      style={{
-                        width: '100%',
-                        padding: '12px 14px',
-                        border: '2px solid #E5E7EB',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        outline: 'none',
-                        transition: 'all 0.3s ease',
-                        boxSizing: 'border-box',
-                        minHeight: '100px',
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                        backgroundColor: '#FAFBFC'
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#060030ff';
-                        e.target.style.backgroundColor = '#ffffff';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.backgroundColor = '#FAFBFC';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      color: '#111827',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      Points Required
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.points}
-                      onChange={(e) => setFormData({ ...formData, points: e.target.value })}
-                      placeholder="e.g., 1000"
-                      style={{
-                        width: '100%',
-                        padding: '12px 14px',
-                        border: '2px solid #E5E7EB',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        outline: 'none',
-                        transition: 'all 0.3s ease',
-                        boxSizing: 'border-box',
-                        backgroundColor: '#FAFBFC'
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#060030ff';
-                        e.target.style.backgroundColor = '#ffffff';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#E5E7EB';
-                        e.target.style.backgroundColor = '#FAFBFC';
-                        e.target.style.boxShadow = 'none';
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ marginBottom: '28px', padding: '12px 14px', backgroundColor: '#F3F4F6', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <input
-                      type="checkbox"
-                      checked={formData.isActive}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      id="isActive"
-                      style={{
-                        cursor: 'pointer',
-                        width: '18px',
-                        height: '18px'
-                      }}
-                    />
-                    <label htmlFor="isActive" style={{
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#111827',
-                      cursor: 'pointer',
-                      margin: 0
-                    }}>
-                      Mark as active
-                    </label>
-                  </div>
-
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '12px'
-                  }}>
-                    <button
-                      type="button"
-                      onClick={handleCloseModal}
-                      style={{
-                        padding: '12px 16px',
-                        border: '2px solid #E5E7EB',
-                        backgroundColor: 'white',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        color: '#111827',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = '#ffffff';
-                        e.currentTarget.style.backgroundColor = '#000000';
-                        e.currentTarget.style.borderColor = '#000000';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = '#111827';
-                        e.currentTarget.style.backgroundColor = 'white';
-                        e.currentTarget.style.borderColor = '#E5E7EB';
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      style={{
-                        padding: '12px 16px',
-                        background: submitting ? 'linear-gradient(135deg, #9CA3AF 0%, #6B7280 100%)' : 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-                        color: '#FFFFFF',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        cursor: submitting ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.3s ease',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!submitting) {
-                          e.currentTarget.style.background = '#ffffff';
-                          e.currentTarget.style.color = '#060030ff';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(6, 0, 48, 0.2)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!submitting) {
-                          e.currentTarget.style.background = 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)';
-                          e.currentTarget.style.color = '#ffffff';
-                          e.currentTarget.style.boxShadow = 'none';
-                        }
-                      }}
-                    >
-                      {submitting && <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-                      {editingReward ? 'Update' : 'Add'} Reward
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* Delete Confirmation Modal */}
-          {deleteModalOpen && selectedReward && (
-            <div style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 1000,
-              backdropFilter: 'blur(4px)',
-              animation: 'fadeIn 0.3s ease-out'
-            }}>
-              <div style={{
-                backgroundColor: 'white',
-                borderRadius: '16px',
-                padding: '32px',
-                maxWidth: '420px',
-                width: '90%',
-                boxShadow: '0 25px 50px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05)',
-                animation: 'slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
-              }}>
-                <div style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '12px',
-                  background: '#FEE2E2',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 20px'
-                }}>
-                  <Trash2 size={32} color="#DC2626" />
-                </div>
-                <h3 style={{
-                  fontSize: '18px',
-                  fontWeight: '700',
-                  color: '#111827',
-                  textAlign: 'center',
-                  margin: '0 0 8px 0'
-                }}>
-                  Delete Reward?
-                </h3>
-                <p style={{
-                  fontSize: '14px',
-                  color: '#6B7280',
-                  textAlign: 'center',
-                  margin: '0 0 28px 0',
-                  lineHeight: '1.6'
-                }}>
-                  Are you sure you want to delete <strong style={{ color: '#111827' }}>"{selectedReward.rewardName}"</strong>? This action cannot be undone.
-                </p>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '12px'
-                }}>
-                  <button
-                    onClick={() => setDeleteModalOpen(false)}
-                    disabled={submitting}
-                    style={{
-                      padding: '12px 16px',
-                      border: '2px solid #E5E7EB',
-                      backgroundColor: 'white',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#111827',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#060030ff';
-                      e.currentTarget.style.backgroundColor = '#F3F4F6';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#E5E7EB';
-                      e.currentTarget.style.backgroundColor = 'white';
-                    }}
-                  >
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                  <button type="button" onClick={handleCloseModal} style={{
+                    padding:'11px', border:'1.5px solid #E2E8F0', background:'#F8FAFC', borderRadius:'10px',
+                    fontSize:'14px', fontWeight:'700', color:'#64748B', cursor:'pointer', transition:'all .18s ease',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background='#EEF2F7'; e.currentTarget.style.borderColor='#CBD5E1'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor='#E2E8F0'; }}>
                     Cancel
                   </button>
-                  <button
-                    onClick={handleDeleteReward}
-                    disabled={submitting}
-                    style={{
-                      padding: '12px 16px',
-                      background: submitting ? '#FCA5A5' : 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      cursor: submitting ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.3s ease',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!submitting) {
-                        e.currentTarget.style.background = '#DC2626';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(220, 38, 38, 0.3)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!submitting) {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }
-                    }}
-                  >
-                    {submitting && <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-                    Delete
+                  <button type="submit" disabled={submitting} style={{
+                    padding:'11px', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'700',
+                    background: submitting ? '#C7D2FE' : 'linear-gradient(135deg,#6366F1,#8B5CF6)', color:'#fff',
+                    cursor: submitting ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
+                    transition:'all .18s ease',
+                  }}>
+                    {submitting && <Loader size={14} style={{ animation:'spin 1s linear infinite' }} />}
+                    {editingReward ? 'Update' : 'Add'} Reward
                   </button>
                 </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ── Delete modal ── */}
+        {deleteModalOpen && selectedReward && (
+          <div style={{
+            position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex',
+            alignItems:'center', justifyContent:'center', zIndex:1000, backdropFilter:'blur(4px)',
+            animation:'fadeOverlay .2s ease',
+          }} onClick={e => { if (e.target === e.currentTarget && !submitting) setDeleteModalOpen(false); }}>
+            <div style={{
+              background:'#fff', borderRadius:'20px', padding:'32px 28px', maxWidth:'400px', width:'92%',
+              boxShadow:'0 30px 60px rgba(0,0,0,.22)', textAlign:'center', animation:'slideModal .3s cubic-bezier(.34,1.56,.64,1)',
+            }}>
+              <div style={{ width:'64px', height:'64px', borderRadius:'16px', background:'#FEE2E2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 18px' }}>
+                <Trash2 size={28} color="#DC2626" />
+              </div>
+              <h3 style={{ fontSize:'20px', fontWeight:'800', color:'#0F172A', margin:'0 0 10px' }}>Delete Reward?</h3>
+              <p style={{ fontSize:'14px', color:'#64748B', margin:'0 0 26px', lineHeight:'1.6' }}>
+                Are you sure you want to delete <strong style={{ color:'#0F172A' }}>"{selectedReward.rewardName}"</strong>? This cannot be undone.
+              </p>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                <button onClick={() => setDeleteModalOpen(false)} disabled={submitting} style={{
+                  padding:'12px', border:'1.5px solid #E2E8F0', background:'#F8FAFC', borderRadius:'10px',
+                  fontSize:'14px', fontWeight:'700', color:'#64748B', cursor:'pointer', transition:'all .18s ease',
+                }}>
+                  Cancel
+                </button>
+                <button onClick={handleDeleteReward} disabled={submitting} style={{
+                  padding:'12px', border:'none', borderRadius:'10px', fontSize:'14px', fontWeight:'700',
+                  background: submitting ? '#FCA5A5' : 'linear-gradient(135deg,#EF4444,#DC2626)', color:'#fff',
+                  cursor: submitting ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
+                  transition:'all .18s ease',
+                }}>
+                  {submitting && <Loader size={14} style={{ animation:'spin 1s linear infinite' }} />}
+                  Delete
+                </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-      <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </Layout>
   );
 };
 
 export default Rewards;
-
-

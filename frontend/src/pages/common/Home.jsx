@@ -1,1478 +1,539 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { LogIn, Users, BarChart3, Target, Trophy, Zap, ArrowRight, Award, BookOpen, TrendingUp, Sparkles, Play } from 'lucide-react';
-import { Button } from '../../components/Button';
+import {
+  LogIn, Users, Trophy, Zap, Award, BookOpen, BarChart3,
+  ClipboardList, Star, MessageSquare, ArrowRight, Sparkles,
+  ChevronRight, Activity, Play
+} from 'lucide-react';
 import { useStore } from '../../context/store';
+import logo from '../../assets/favicon-white.png';
 
 export function Home() {
   const navigate = useNavigate();
   const { isAuthenticated, lastVisitedPage, currentUser } = useStore();
 
   useEffect(() => {
-    // If user is authenticated and there's a last visited page, redirect to it
-    // But avoid redirecting to invalid pages like "/404"
     if (isAuthenticated && lastVisitedPage && lastVisitedPage !== '/' && lastVisitedPage !== '/404' && lastVisitedPage !== '/login' && lastVisitedPage !== '/register') {
       navigate(lastVisitedPage, { replace: true });
     } else if (isAuthenticated && currentUser?.role) {
-      // If authenticated but no valid last visited page, redirect to their dashboard
       const role = Array.isArray(currentUser.role) ? currentUser.role[0] : currentUser.role;
-      if (role) {
-        navigate(`/${role}`, { replace: true });
-      }
+      if (role) navigate(`/${role}`, { replace: true });
     }
   }, [isAuthenticated, lastVisitedPage, currentUser, navigate]);
 
-  // If user is authenticated, show loading while redirecting
   if (isAuthenticated) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><p>Redirecting...</p></div>;
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0C0E1A' }}>
+        <div style={{ width: '36px', height: '36px', border: '3px solid rgba(139,92,246,0.25)', borderTopColor: '#8B5CF6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    );
   }
 
-  const features = [
+  const tools = [
     {
-      icon: Users,
-      title: 'Player Management',
-      description: 'Comprehensive player tracking and development',
-      color: '#0EA5E9'
+      icon: ClipboardList,
+      label: 'Session Cards',
+      desc: 'Open a player\'s session card, work through each activity, rate performance, and submit - all in a few taps.',
+      color: '#8B5CF6',
+      glow: 'rgba(139,92,246,0.12)',
+      border: 'rgba(139,92,246,0.25)',
     },
     {
-      icon: Target,
-      title: 'Learning Pathways',
-      description: 'Structured training programs by skill level',
-      color: '#8B5CF6'
+      icon: Users,
+      label: 'My Players',
+      desc: 'See all your assigned players at a glance - their learning pathway, progress, and point balance.',
+      color: '#10B981',
+      glow: 'rgba(16,185,129,0.12)',
+      border: 'rgba(16,185,129,0.25)',
+    },
+    {
+      icon: Star,
+      label: 'Activity Feedback',
+      desc: 'Rate each activity 1–5 stars and leave per-activity comments so every session is documented.',
+      color: '#F59E0B',
+      glow: 'rgba(245,158,11,0.12)',
+      border: 'rgba(245,158,11,0.25)',
     },
     {
       icon: Trophy,
-      title: 'Reward System',
-      description: 'Gamified achievements and point tracking',
-      color: '#EC4899'
-    },
-    {
-      icon: Zap,
-      title: 'Session Management',
-      description: 'Create, track, and analyze training sessions',
-      color: '#F59E0B'
-    },
-    {
-      icon: TrendingUp,
-      title: 'Analytics',
-      description: 'Real-time performance insights and metrics',
-      color: '#10B981'
+      label: 'Points & Rewards',
+      desc: 'Players earn points for completed activities. Watch their balance grow and see the leaderboard update live.',
+      color: '#EC4899',
+      glow: 'rgba(236,72,153,0.12)',
+      border: 'rgba(236,72,153,0.25)',
     },
     {
       icon: BookOpen,
-      title: 'Content Library',
-      description: 'Extensive resources for continuous learning',
-      color: '#EF4444'
-    }
+      label: 'Learning Pathways',
+      desc: 'Structured curricula - Foundation through Advanced - ensure every session builds on the last.',
+      color: '#06B6D4',
+      glow: 'rgba(6,182,212,0.12)',
+      border: 'rgba(6,182,212,0.25)',
+    },
+    {
+      icon: BarChart3,
+      label: 'Progress Tracking',
+      desc: 'View session history, completed cards, and overall stats for every player in your care.',
+      color: '#6366F1',
+      glow: 'rgba(99,102,241,0.12)',
+      border: 'rgba(99,102,241,0.25)',
+    },
+  ];
+
+  const flow = [
+    { step: '1', title: 'Sign in', desc: 'Log into your coach account', icon: LogIn, color: '#8B5CF6' },
+    { step: '2', title: 'Open Session Card', desc: 'Pick a player and open their session', icon: ClipboardList, color: '#10B981' },
+    { step: '3', title: 'Work Activities', desc: 'Guide through each activity and rate it', icon: Star, color: '#F59E0B' },
+    { step: '4', title: 'Submit & Done', desc: 'Points awarded, progress updated instantly', icon: Zap, color: '#EC4899' },
   ];
 
   return (
-    <main style={{ background: '#ffffff' }}>
+    <main style={{ background: '#0C0E1A', minHeight: '100vh', overflowX: 'hidden', color: 'white', fontFamily: 'inherit' }}>
       <style>{`
-        * {
-          box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulseGlow { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+        @keyframes orbFloat { 0%,100%{transform:translate(0,0);} 50%{transform:translate(-12px, -18px);} }
+        @keyframes orbFloat2 { 0%,100%{transform:translate(0,0);} 50%{transform:translate(14px, 12px);} }
 
-        body {
-          margin: 0;
-          padding: 0;
-          background: #ffffff;
+        .tg-nav {
+          position: sticky; top: 0; z-index: 100;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 0 clamp(18px, 5vw, 64px); height: 80px;
+          background: rgba(12,14,26,0.92);
+          backdrop-filter: blur(20px) saturate(1.4);
+          border-bottom: 1px solid rgba(255,255,255,0.07);
         }
-
-        /* ===== HERO SECTION ===== */
-        .hero {
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-          color: white;
-          padding: 120px 20px 80px;
-          text-align: center;
-          position: relative;
-          overflow: hidden;
+        .tg-logo { display: flex; align-items: center; gap: 13px; cursor: pointer; }
+        .tg-logo-badge {
+          width: 44px; height: 44px; border-radius: 12px;
+          background: linear-gradient(135deg, #8B5CF6, #6366F1);
+          display: flex; align-items: center; justify-content: center;
+          box-shadow: 0 4px 16px rgba(139,92,246,0.45);
         }
-
-        .hero::before {
-          content: '';
-          position: absolute;
-          top: -50%;
-          right: -10%;
-          width: 400px;
-          height: 400px;
-          background: radial-gradient(circle, rgba(79, 70, 229, 0.15) 0%, transparent 70%);
-          border-radius: 50%;
+        .tg-logo-name { font-size: 17px; font-weight: 800; color: #F1F5F9; letter-spacing: -0.4px; }
+        .tg-logo-sub { font-size: 11px; color: rgba(255,255,255,0.35); font-weight: 500; margin-top: 1px; }
+        .tg-signin-btn {
+          display: flex; align-items: center; gap: 8px;
+          padding: 11px 24px; border-radius: 10px; border: none;
+          background: linear-gradient(135deg, #8B5CF6, #6366F1);
+          color: white; font-size: 14px; font-weight: 700; cursor: pointer;
+          box-shadow: 0 4px 16px rgba(139,92,246,0.4);
+          transition: all 0.2s ease; font-family: inherit;
         }
+        .tg-signin-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(139,92,246,0.55); }
 
-        .hero::after {
-          content: '';
-          position: absolute;
-          bottom: -40%;
-          left: -5%;
-          width: 350px;
-          height: 350px;
-          background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-          border-radius: 50%;
-        }
-
-        .hero-content {
-          max-width: 750px;
-          margin: 0 auto;
-          position: relative;
-          z-index: 1;
-        }
-
-        .hero-eyebrow {
-          font-size: 13px;
-          text-transform: uppercase;
-          letter-spacing: 1.5px;
-          color: #93c5fd;
-          margin-bottom: 20px;
-          font-weight: 700;
-        }
-
-        .hero-title {
-          font-size: 52px;
-          font-weight: 800;
-          line-height: 1.2;
-          margin: 0 0 20px;
-        }
-
-        .hero-highlight {
-          background: linear-gradient(120deg, #60a5fa, #34d399);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .hero-description {
-          font-size: 18px;
-          line-height: 1.6;
-          opacity: 0.9;
-          margin-bottom: 40px;
-          max-width: 600px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .hero-buttons {
-          display: flex;
-          gap: 16px;
-          justify-content: center;
-          flex-wrap: wrap;
-          margin-bottom: 0;
-        }
-
-        .btn-large {
-          padding: 16px 40px;
-          font-size: 15px;
-          font-weight: 700;
-          border-radius: 10px;
-          border: none;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .btn-primary-lg {
-          background: linear-gradient(120deg, #3b82f6, #2563eb);
-          color: white;
-          box-shadow: 0 12px 30px rgba(59, 130, 246, 0.3);
-        }
-
-        .btn-primary-lg:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 16px 40px rgba(59, 130, 246, 0.4);
-        }
-
-        .btn-secondary-lg {
-          background: rgba(255, 255, 255, 0.12);
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          color: white;
-        }
-
-        .btn-secondary-lg:hover {
-          background: rgba(255, 255, 255, 0.18);
-          border-color: rgba(255, 255, 255, 0.5);
-          transform: translateY(-2px);
-        }
-
-        /* ===== STATS SECTION ===== */
-        .stats-section {
-          padding: 80px 20px;
-          background: #f8fafc;
-          border-top: 1px solid #e2e8f0;
-          border-bottom: 1px solid #e2e8f0;
-        }
-
-        .stats-container {
-          max-width: 1200px;
-          margin: 0 auto;
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 40px;
-        }
-
-        .stat-box {
+        /* HERO */
+        .tg-hero {
+          position: relative; overflow: hidden;
+          padding: clamp(72px,10vh,120px) clamp(18px,5vw,64px) clamp(80px,10vh,120px);
           text-align: center;
         }
-
-        .stat-number {
-          font-size: 44px;
-          font-weight: 900;
-          background: linear-gradient(120deg, #3b82f6, #2563eb);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          margin: 0;
-        }
-
-        .stat-label {
-          font-size: 14px;
-          color: #64748b;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin: 8px 0 0 0;
-        }
-
-        /* ===== FEATURES SECTION ===== */
-        .features-section {
-          padding: 100px 20px;
-          background: #ffffff;
-        }
-
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-
-        .section-header {
-          text-align: center;
-          margin-bottom: 60px;
-        }
-
-        .section-title {
-          font-size: 42px;
-          font-weight: 900;
-          color: #0f172a;
-        }
-
-        .section-subtitle {
-          font-size: 16px;
-          color: #64748b;
-          max-width: 500px;
-          margin: 0 auto;
-        }
-
-        .features-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 32px;
-        }
-
-        .feature-item {
-          background: white;
-          padding: 36px 28px;
-          border-radius: 14px;
-          border: 1px solid #e2e8f0;
-          transition: all 0.3s ease;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .feature-item::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, #3b82f6, #2563eb);
-          transform: scaleX(0);
-          transition: transform 0.3s ease;
-          transform-origin: left;
-        }
-
-        .feature-item:hover::before {
-          transform: scaleX(1);
-        }
-
-        .feature-item:hover {
-          border-color: #e0e7ff;
-          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.08);
-          transform: translateY(-4px);
-        }
-
-        .feature-icon {
-          width: 54px;
-          height: 54px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 20px;
-          font-size: 26px;
-        }
-
-        .feature-item h3 {
-          font-size: 18px;
-          font-weight: 800;
-          color: #0f172a;
-          margin: 0 0 12px 0;
-        }
-
-        .feature-item p {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.6;
-          margin: 0;
-        }
-
-        /* ===== TESTIMONIALS ===== */
-        .testimonials-section {
-          padding: 100px 20px;
-          background: #f8fafc;
-        }
-
-        .testimonials-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 28px;
-        }
-
-        .testimonial {
-          background: white;
-          padding: 32px;
-          border-radius: 14px;
-          border: 1px solid #e2e8f0;
-          transition: all 0.3s ease;
-        }
-
-        .testimonial:hover {
-          box-shadow: 0 16px 32px rgba(0, 0, 0, 0.08);
-          border-color: #e0e7ff;
-        }
-
-        .stars {
-          font-size: 16px;
-          margin-bottom: 16px;
-        }
-
-        .testimonial-text {
-          font-size: 15px;
-          color: #334155;
-          line-height: 1.7;
-          font-weight: 500;
-          margin-bottom: 20px;
-          font-style: italic;
-        }
-
-        .author {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .author-avatar {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          background: linear-gradient(120deg, #3b82f6, #2563eb);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-weight: 700;
-          font-size: 18px;
-        }
-
-        .author-name {
-          font-size: 14px;
-          font-weight: 700;
-          color: #0f172a;
-          margin: 0;
-        }
-
-        .author-role {
-          font-size: 12px;
-          color: #64748b;
-          margin: 4px 0 0 0;
-        }
-
-        /* ===== CREDENTIALS SECTION ===== */
-        .credentials-section {
-          padding: 100px 20px;
-          background: #ffffff;
-        }
-
-        .credentials-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-          gap: 32px;
-          max-width: 900px;
-          margin: 0 auto;
-        }
-
-        .credential-box {
-          background: white;
-          padding: 40px;
-          border-radius: 16px;
-          border: 2px solid #e2e8f0;
-          text-align: center;
-          transition: all 0.3s ease;
-        }
-
-        .credential-box:hover {
-          border-color: #3b82f6;
-          box-shadow: 0 20px 40px rgba(59, 130, 246, 0.12);
-          transform: translateY(-4px);
-        }
-
-        .cred-icon {
-          width: 80px;
-          height: 80px;
-          background: linear-gradient(135deg, #3b82f6, #2563eb);
-          border-radius: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          margin: 0 auto 24px;
-          font-size: 36px;
-        }
-
-        .credential-box h3 {
-          font-size: 22px;
-          font-weight: 800;
-          color: #0f172a;
-          margin: 0 0 24px 0;
-        }
-
-        .cred-info {
-          background: #f8fafc;
-          padding: 20px;
-          border-radius: 12px;
-          border: 1px solid #e2e8f0;
-          margin-bottom: 24px;
-        }
-
-        .cred-row {
-          font-size: 13px;
-          margin: 10px 0;
-          color: #334155;
-          font-family: 'Courier New', monospace;
-          font-weight: 500;
-        }
-
-        .cred-row strong {
-          color: #0f172a;
-          font-weight: 700;
-        }
-
-        .cred-description {
-          font-size: 14px;
-          color: #64748b;
-          line-height: 1.6;
-          margin-bottom: 24px;
-        }
-
-        .credential-button {
-          width: 100%;
-          padding: 14px;
-          background: linear-gradient(120deg, #3b82f6, #2563eb);
-          color: white;
-          border: none;
-          border-radius: 10px;
-          font-size: 14px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-        }
-
-        .credential-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 28px rgba(59, 130, 246, 0.3);
-        }
-
-        /* ===== CTA SECTION ===== */
-        .cta-section {
-          padding: 80px 20px;
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-          color: white;
-          text-align: center;
-        }
-
-        .cta-inner {
-          max-width: 600px;
-          margin: 0 auto;
-        }
-
-        .cta-section h2 {
-          font-size: 38px;
-          font-weight: 900;
-          margin: 0 0 20px 0;
-        }
-
-        .cta-section p {
-          font-size: 16px;
-          opacity: 0.9;
-          margin: 0;
-          line-height: 1.6;
-        }
-
-        /* ===== FOOTER ===== */
-        .footer {
-          background: #0f172a;
-          color: white;
-          text-align: center;
-          padding: 32px 20px;
-          font-size: 13px;
-          opacity: 0.8;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        /* ===== RESPONSIVE ===== */
-        @media (max-width: 768px) {
-          .hero {
-            padding: 80px 20px 60px;
-          }
-
-          .hero-title {
-            font-size: 36px;
-          }
-
-          .hero-description {
-            font-size: 16px;
-          }
-
-          .hero-buttons {
-            flex-direction: column;
-          }
-
-          .btn-large {
-            width: 100%;
-            max-width: 320px;
-            margin: 0 auto;
-          }
-
-          .section-title {
-            font-size: 32px;
-          }
-
-          .stat-number {
-            font-size: 36px;
-          }
-
-          .features-grid,
-          .testimonials-grid,
-          .credentials-grid {
-            gap: 24px;
-          }
-
-          .cta-section h2 {
-            font-size: 28px;
-          }
-        }
-      `}</style>
-      <style>{`
-        * {
-          box-sizing: border-box;
-        }
-
-        .home-container {
-          min-height: 100vh;
-          background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
-          overflow-x: hidden;
-          width: 100%;
-          max-width: 100vw;
-        }
-
-        /* Header Hero Section */
-        .home-header {
-          background: linear-gradient(135deg, #060030ff 0%, #000000ff 100%);
-          color: white;
-          padding: 50px 60px;
-          text-align: center;
-          position: relative;
-          overflow: hidden;
-          min-height: auto;
-          width: 100%;
-          box-sizing: border-box;
-        }
-
-        .hero-background {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          opacity: 0.1;
-          background-image: 
-            radial-gradient(circle at 20% 50%, rgba(255,255,255,0.5) 0%, transparent 50%),
-            radial-gradient(circle at 80% 80%, rgba(255,255,255,0.5) 0%, transparent 50%);
-          pointer-events: none;
-        }
-
-        .home-header-content {
-          max-width: 700px;
-          margin: 0 auto;
-          position: relative;
-          z-index: 1;
-        }
-
-        .home-logo {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          animation: fadeInDown 0.8s ease-out;
-        }
-
-        .home-logo h1 {
-          font-size: 38px;
-          font-weight: 800;
-          color: white;
-          margin: 0;
-          letter-spacing: -0.5px;
-          background: linear-gradient(135deg, #ffffff 0%, #e5e7eb 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
-
-        .logo-icon {
-          filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
-          animation: pulse 2s ease-in-out infinite;
-        }
-
-        .home-tagline {
-          font-size: 18px;
-          font-weight: 500;
-          margin-bottom: 16px;
-          opacity: 0.95;
-          animation: fadeInUp 0.8s ease-out 0.2s both;
-        }
-
-        .hero-subtitle {
-          font-size: 13px;
-          opacity: 0.85;
-          margin-bottom: 20px;
-          animation: fadeInUp 0.8s ease-out 0.3s both;
-        }
-
-        .cta-buttons {
-          display: flex;
-          gap: 12px;
-          justify-content: center;
-          flex-wrap: wrap;
-          animation: fadeInUp 0.8s ease-out 0.4s both;
-        }
-
-        .home-cta-button {
-          padding: 11px 24px !important;
-          font-size: 13px !important;
-          border-radius: 8px !important;
-          background: white !important;
-          color: #252c35 !important;
-          font-weight: 700 !important;
-          border: none !important;
-          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .home-cta-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-        }
-
-        .secondary-button {
-          background: rgba(255, 255, 255, 0.15) !important;
-          border: 2px solid rgba(255, 255, 255, 0.3) !important;
-          color: white !important;
-        }
-
-        .secondary-button:hover {
-          background: rgba(255, 255, 255, 0.25) !important;
-          border-color: rgba(255, 255, 255, 0.5) !important;
-        }
-
-        /* Stats Section */
-        .stats-section {
-          padding: 20px 20px;
-          background: white;
-          border-bottom: 1px solid #e5e7eb;
-          animation: fadeIn 0.8s ease-out 0.6s both;
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-          gap: 12px;
-          max-width: 900px;
-          margin: 0 auto;
-        }
-
-        .stat-card {
-          text-align: center;
-          padding: 12px;
-          border-radius: 10px;
-          background: linear-gradient(135deg, #f8f9fa 0%, #f3f4f6 100%);
-          border: 1px solid #e5e7eb;
-          transition: all 0.3s ease;
-        }
-
-        .stat-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-          border-color: #252c35;
-        }
-
-        .stat-number {
-          font-size: 26px;
-          font-weight: 800;
-          background: linear-gradient(135deg, #060030ff 0%, #252c35 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          margin: 0;
-        }
-
-        .stat-icon {
-          width: 38px;
-          height: 38px;
-          background: linear-gradient(135deg, #060030ff20, #25263520);
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 6px;
-          font-size: 18px;
-        }
-
-        .stat-label {
-          font-size: 11px;
-          color: #6b7280;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-          margin: 6px 0 0 0;
-        }
-
-        /* Features Section */
-        .home-features {
-          padding: 30px 20px;
-          max-width: 1200px;
-          margin: 0 auto;
-          width: 100%;
-          box-sizing: border-box;
-        }
-
-        .section-title {
-          font-size: 28px;
-          font-weight: 800;
-          text-align: center;
-          color: #1f2937;
-          animation: fadeInUp 0.8s ease-out;
-        }
-
-        .section-subtitle {
-          text-align: center;
-          color: #6b7280;
-          font-size: 15px;
-          margin-bottom: 48px;
-          animation: fadeInUp 0.8s ease-out 0.1s both;
-        }
-
-        .features-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 24px;
-        }
-
-        .feature-card {
-          background: white;
-          padding: 28px;
-          border-radius: 12px;
-          text-align: left;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-          border: 1px solid #e5e7eb;
-          transition: all 0.3s ease;
-          animation: fadeInUp 0.6s ease-out;
-        }
-
-        .feature-card:hover {
-          transform: translateY(-8px);
-          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
-          border-color: transparent;
-        }
-
-        .feature-icon {
-          width: 44px;
-          height: 44px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          margin-bottom: 16px;
-          font-size: 28px;
-        }
-
-        .feature-card h3 {
-          font-size: 18px;
-          font-weight: 700;
-          margin-bottom: 10px;
-          color: #1f2937;
-        }
-
-        .feature-card p {
-          font-size: 14px;
-          color: #6b7280;
-          line-height: 1.6;
-          margin: 0;
-        }
-
-        /* Testimonials Section */
-        .testimonials-section {
-          display: none;
-          padding: 0;
-          background: transparent;
-        }
-
-        .testimonials-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 24px;
-          max-width: 1200px;
-          margin: 0 auto;
-        }
-
-        .testimonial-card {
-          background: white;
-          padding: 28px;
-          border-radius: 12px;
-          border: 1px solid #e5e7eb;
-          transition: all 0.3s ease;
-          animation: fadeInUp 0.6s ease-out;
-        }
-
-        .testimonial-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-        }
-
-        .testimonial-text {
-          font-size: 14px;
-          color: #4b5563;
-          line-height: 1.7;
-          margin-bottom: 16px;
-          font-style: italic;
-        }
-
-        .testimonial-author {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .author-avatar {
-          font-size: 32px;
-        }
-
-        .author-info h4 {
-          margin: 0;
-          font-size: 14px;
-          font-weight: 700;
-          color: #1f2937;
-        }
-
-        .author-info p {
-          margin: 4px 0 0 0;
-          font-size: 12px;
-          color: #6b7280;
-        }
-
-        /* Login Credentials Section */
-        .home-credentials {
-          display: none;
-          padding: 0;
-          background: transparent;
-        }
-
-        .credentials-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 24px;
-          max-width: 1000px;
-          margin: 0 auto;
-        }
-
-        .credential-card {
-          background: white;
-          padding: 32px;
-          border-radius: 14px;
-          border: 2px solid #e5e7eb;
-          text-align: center;
-          transition: all 0.3s ease;
-          animation: fadeInUp 0.6s ease-out;
-        }
-
-        .credential-card:hover {
-          border-color: #252c35;
-          box-shadow: 0 12px 32px rgba(37, 44, 53, 0.15);
-          transform: translateY(-4px);
-        }
-
-        .credential-icon {
-          width: 70px;
-          height: 70px;
-          background: linear-gradient(135deg, #060030ff 0%, #000000ff 100%);
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          margin: 0 auto 20px;
-          font-size: 36px;
-        }
-
-        .credential-card h3 {
-          font-size: 22px;
-          font-weight: 800;
-          margin-bottom: 12px;
-          color: #1f2937;
-        }
-
-        .credential-info {
-          background: linear-gradient(135deg, #f8f9fa 0%, #f3f4f6 100%);
-          padding: 16px;
-          border-radius: 8px;
-          margin-bottom: 16px;
-          border: 1px solid #e5e7eb;
-        }
-
-        .credential-info p {
-          font-size: 13px;
-          margin: 8px 0;
-          color: #374151;
-          font-family: 'Courier New', monospace;
-          word-break: break-all;
-        }
-
-        .credential-info strong {
-          color: #252c35;
-          font-weight: 700;
-        }
-
-        .credential-description {
-          font-size: 14px;
-          color: #6b7280;
-          margin-bottom: 20px;
-          line-height: 1.6;
-        }
-
-        .credential-button {
-          width: 100%;
-          padding: 12px 16px !important;
-          font-size: 14px !important;
-          font-weight: 700 !important;
-          border-radius: 8px !important;
-          background: linear-gradient(135deg, #060030ff 0%, #000000ff 100%) !important;
-          color: white !important;
-          border: none !important;
-          transition: all 0.3s ease;
-        }
-
-        .credential-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(37, 44, 53, 0.25);
-        }
-
-        /* CTA Section */
-        .cta-section {
-          display: none;
-          padding: 0;
-          background: transparent;
-          color: white;
-          text-align: center;
-        }
-
-        .cta-content {
-          max-width: 600px;
-          margin: 0 auto;
-        }
-
-        .cta-content h2 {
-          font-size: 32px;
-          font-weight: 800;
-          margin-bottom: 16px;
-        }
-
-        .cta-content p {
-          font-size: 16px;
-          opacity: 0.95;
-          margin-bottom: 24px;
-        }
-
-        /* Footer */
-        .home-footer {
-          background: #000000;
-          color: white;
-          text-align: center;
-          padding: 24px 20px;
-          font-size: 13px;
-          opacity: 0.9;
-          width: 100%;
-          box-sizing: border-box;
-        }
-
-        /* Animations */
-        @keyframes fadeInDown {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.7;
-          }
-        }
-
-        /* Benefits List */
-        .benefits-list {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 16px;
-          margin-top: 32px;
-        }
-
-        .benefit-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .benefit-item svg {
-          flex-shrink: 0;
-          color: #4AE5A0;
-        }
-
-        .benefit-item span {
-          font-size: 13px;
-          font-weight: 500;
-        }
-
-        /* Tablet Landscape */
-        @media (max-width: 1024px) {
-          .home-header {
-            padding: 40px 30px;
-          }
-
-          .home-logo h1 {
-            font-size: 34px;
-          }
-
-          .section-title {
-            font-size: 26px;
-          }
-
-          .features-grid {
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-          }
-
-          .stats-grid {
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-          }
-
-          .feature-card {
-            padding: 20px;
-          }
-        }
-
-        /* Tablet Portrait */
-        @media (max-width: 768px) {
-          .home-header {
-            padding: 35px 20px 30px;
-          }
-
-          .home-logo h1 {
-            font-size: 32px;
-          }
-
-          .home-tagline {
-            font-size: 16px;
-            margin-bottom: 12px;
-          }
-
-          .hero-subtitle {
-            font-size: 12px;
-            margin-bottom: 16px;
-          }
-
-          .section-title {
-            font-size: 24px;
-            margin-bottom: 6px;
-          }
-
-          .section-subtitle {
-            font-size: 13px;
-            margin-bottom: 20px;
-          }
-
-          .cta-buttons {
-            gap: 8px;
-          }
-
-          .home-cta-button {
-            padding: 10px 20px !important;
-            font-size: 12px !important;
-          }
-
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            max-width: 100%;
-          }
-
-          .stat-card {
-            padding: 10px;
-          }
-
-          .stat-number {
-            font-size: 22px;
-          }
-
-          .stat-icon {
-            width: 34px;
-            height: 34px;
-            margin: 0 auto 4px;
-            font-size: 16px;
-          }
-
-          .stat-label {
-            font-size: 10px;
-            margin: 4px 0 0 0;
-          }
-
-          .home-features {
-            padding: 25px 15px;
-          }
-
-          .features-grid {
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 12px;
-          }
-
-          .feature-card {
-            padding: 14px;
-          }
-
-          .feature-icon {
-            width: 40px;
-            height: 40px;
-            margin-bottom: 8px;
-            font-size: 18px;
-          }
-
-          .feature-card h3 {
-            font-size: 14px;
-            margin-bottom: 6px;
-          }
-
-          .feature-card p {
-            font-size: 12px;
-            line-height: 1.4;
-          }
-
-          .home-footer {
-            padding: 16px 15px;
-            font-size: 10px;
-          }
-
-          .credential-card {
-            padding: 24px;
-          }
-        }
-
-        /* Small Mobile */
-        @media (max-width: 480px) {
-          .home-header {
-            padding: 30px 16px 25px;
-          }
-
-          .home-logo h1 {
-            font-size: 28px;
-            letter-spacing: -0.3px;
-          }
-
-          .home-tagline {
-            font-size: 14px;
-            margin-bottom: 8px;
-          }
-
-          .hero-subtitle {
-            font-size: 11px;
-            margin-bottom: 14px;
-            line-height: 1.4;
-          }
-
-          .cta-buttons {
-            gap: 6px;
-          }
-
-          .home-cta-button {
-            padding: 9px 16px !important;
-            font-size: 11px !important;
-          }
-
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-          }
-
-          .stat-card {
-            padding: 8px;
-            border-radius: 8px;
-          }
-
-          .stat-number {
-            font-size: 20px;
-          }
-
-          .stat-icon {
-            width: 32px;
-            height: 32px;
-            margin: 0 auto 4px;
-            border-radius: 5px;
-            font-size: 14px;
-          }
-
-          .stat-label {
-            font-size: 9px;
-            margin: 4px 0 0 0;
-            letter-spacing: 0.2px;
-          }
-
-          .section-title {
-            font-size: 22px;
-            margin-bottom: 4px;
-          }
-
-          .section-subtitle {
-            font-size: 12px;
-            margin-bottom: 16px;
-          }
-
-          .home-features {
-            padding: 20px 12px;
-            max-width: 100%;
-          }
-
-          .features-grid {
-            grid-template-columns: 1fr;
-            gap: 10px;
-          }
-
-          .feature-card {
-            padding: 12px;
-            border-radius: 9px;
-          }
-
-          .feature-icon {
-            width: 38px;
-            height: 38px;
-            margin-bottom: 8px;
-            font-size: 16px;
-            border-radius: 6px;
-          }
-
-          .feature-card h3 {
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 4px;
-          }
-
-          .feature-card p {
-            font-size: 11px;
-            line-height: 1.4;
-          }
-
-          .home-footer {
-            padding: 12px 12px;
-            font-size: 9px;
-          }
-
-          .home-header-content {
-            max-width: 100%;
-          }
-
-          .stat-card:hover {
-            transform: translateY(-1px);
-          }
-
-          .feature-card:hover {
-            transform: translateY(-2px);
-          }
-        }
-
-        /* Extra Small Mobile */
-        @media (max-width: 360px) {
-          .home-header {
-            padding: 25px 12px 20px;
-          }
-
-          .home-logo h1 {
-            font-size: 26px;
-          }
-
-          .home-tagline {
-            font-size: 13px;
-            margin-bottom: 6px;
-          }
-
-          .hero-subtitle {
-            font-size: 10px;
-            margin-bottom: 12px;
-          }
-
-          .home-cta-button {
-            padding: 8px 14px !important;
-            font-size: 10px !important;
-          }
-
-          .stats-grid {
-            gap: 6px;
-          }
-
-          .stat-card {
-            padding: 6px;
-          }
-
-          .stat-number {
-            font-size: 18px;
-          }
-
-          .stat-label {
-            font-size: 8px;
-          }
-
-          .section-title {
-            font-size: 20px;
-          }
-
-          .section-subtitle {
-            font-size: 11px;
-            margin-bottom: 12px;
-          }
-
-          .home-features {
-            padding: 16px 10px;
-          }
-
-          .feature-card {
-            padding: 10px;
-          }
-
-          .feature-icon {
-            width: 36px;
-            height: 36px;
-            font-size: 14px;
-          }
-
-          .feature-card h3 {
-            font-size: 12px;
-          }
-
-          .feature-card p {
-            font-size: 10px;
-          }
+        .tg-orb-1 {
+          position: absolute; width: 560px; height: 560px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(139,92,246,0.13) 0%, transparent 70%);
+          top: -120px; right: -60px; pointer-events: none;
+          animation: orbFloat 12s ease-in-out infinite;
+        }
+        .tg-orb-2 {
+          position: absolute; width: 420px; height: 420px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(16,185,129,0.09) 0%, transparent 70%);
+          bottom: -80px; left: -40px; pointer-events: none;
+          animation: orbFloat2 15s ease-in-out infinite;
+        }
+        .tg-orb-3 {
+          position: absolute; width: 280px; height: 280px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%);
+          top: 35%; left: 8%; pointer-events: none;
+          animation: orbFloat 18s ease-in-out infinite reverse;
+        }
+        .tg-hero-content { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; }
+        .tg-org-chip {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 6px 16px; border-radius: 100px;
+          background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.22);
+          font-size: 12px; font-weight: 700; color: #C4B5FD;
+          text-transform: uppercase; letter-spacing: 1.2px;
+          margin-bottom: 30px; animation: fadeUp 0.6s ease both;
+        }
+        .tg-org-dot { width: 7px; height: 7px; border-radius: 50%; background: #8B5CF6; animation: pulseGlow 2s ease-in-out infinite; }
+        .tg-hero-title {
+          font-size: clamp(38px, 6vw, 72px); font-weight: 900;
+          line-height: 1.08; letter-spacing: -2px;
+          margin: 0 0 22px; color: #F8FAFC;
+          animation: fadeUp 0.6s 0.1s ease both;
+        }
+        .tg-title-em {
+          background: linear-gradient(135deg, #A78BFA 0%, #818CF8 40%, #34D399 100%);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .tg-hero-sub {
+          font-size: clamp(15px, 2vw, 18px); color: rgba(255,255,255,0.42);
+          line-height: 1.7; max-width: 540px; margin: 0 auto 44px;
+          font-weight: 400; animation: fadeUp 0.6s 0.2s ease both;
+        }
+        .tg-hero-btn {
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 15px 36px; border-radius: 14px; border: none;
+          background: linear-gradient(135deg, #8B5CF6 0%, #6366F1 100%);
+          color: white; font-size: 16px; font-weight: 800; cursor: pointer;
+          box-shadow: 0 8px 28px rgba(139,92,246,0.4), 0 2px 8px rgba(0,0,0,0.3);
+          transition: all 0.25s ease; font-family: inherit;
+          animation: fadeUp 0.6s 0.3s ease both; letter-spacing: -0.2px;
+        }
+        .tg-hero-btn:hover { transform: translateY(-3px); box-shadow: 0 14px 38px rgba(139,92,246,0.55); }
+        .tg-lb-link {
+          display: inline-flex; align-items: center; gap: 6px;
+          margin-top: 18px; font-size: 13px; font-weight: 600;
+          color: rgba(255,255,255,0.28); cursor: pointer;
+          transition: color 0.2s ease; border: none; background: none;
+          font-family: inherit; animation: fadeUp 0.6s 0.35s ease both;
+        }
+        .tg-lb-link:hover { color: rgba(255,255,255,0.6); }
+
+        /* DIVIDER */
+        .tg-divider {
+          height: 1px; margin: 0;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06) 30%, rgba(255,255,255,0.06) 70%, transparent);
+        }
+
+        /* SECTIONS */
+        .tg-section { padding: clamp(56px,7vh,96px) clamp(18px,5vw,64px); }
+        .tg-container { max-width: 1160px; margin: 0 auto; }
+        .tg-label {
+          display: inline-flex; align-items: center; gap: 8px;
+          font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 1.2px; color: rgba(255,255,255,0.28);
+          margin-bottom: 14px;
+        }
+        .tg-label-line { width: 20px; height: 1px; background: rgba(255,255,255,0.18); }
+        .tg-section-title {
+          font-size: clamp(24px,3.5vw,38px); font-weight: 800;
+          color: #F1F5F9; margin: 0 0 12px; letter-spacing: -0.8px; line-height: 1.2;
+        }
+        .tg-section-sub {
+          font-size: clamp(13.5px,1.6vw,15.5px); color: rgba(255,255,255,0.36);
+          line-height: 1.7; font-weight: 400; max-width: 520px; margin-bottom: 44px;
+        }
+
+        /* TOOLS */
+        .tg-tools-grid {
+          display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+        }
+        .tg-tool-card {
+          padding: 26px; border-radius: 18px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.07);
+          transition: all 0.25s ease; position: relative; overflow: hidden;
+        }
+        .tg-tool-icon {
+          width: 46px; height: 46px; border-radius: 13px;
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 18px; transition: transform 0.25s ease;
+        }
+        .tg-tool-card:hover .tg-tool-icon { transform: scale(1.08) rotate(-5deg); }
+        .tg-tool-card h3 { font-size: 15px; font-weight: 800; color: #F1F5F9; margin: 0 0 9px; }
+        .tg-tool-card p { font-size: 13px; color: rgba(255,255,255,0.36); line-height: 1.65; margin: 0; }
+
+        /* FLOW */
+        .tg-flow-bg { background: rgba(255,255,255,0.015); }
+        .tg-flow-grid {
+          display: grid; grid-template-columns: repeat(4,1fr); gap: 2px;
+          background: rgba(255,255,255,0.04); border-radius: 20px;
+          overflow: hidden; border: 1px solid rgba(255,255,255,0.06);
+        }
+        .tg-flow-cell {
+          padding: 28px 22px; background: #0C0E1A;
+          position: relative; transition: background 0.2s ease;
+        }
+        .tg-flow-cell:not(:last-child)::after {
+          content: ''; position: absolute; right: -1px; top: 28px; bottom: 28px;
+          width: 1px; background: rgba(255,255,255,0.05);
+        }
+        .tg-flow-cell:hover { background: rgba(255,255,255,0.02); }
+        .tg-flow-num { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; color: rgba(255,255,255,0.16); margin-bottom: 16px; }
+        .tg-flow-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+        .tg-flow-title { font-size: 14px; font-weight: 800; color: #E2E8F0; margin: 0 0 8px; }
+        .tg-flow-desc { font-size: 12.5px; color: rgba(255,255,255,0.3); line-height: 1.6; margin: 0; }
+
+        /* CTA */
+        .tg-cta-card {
+          position: relative; overflow: hidden; border-radius: 24px;
+          padding: clamp(48px,7vh,80px) clamp(24px,5vw,80px);
+          background: linear-gradient(135deg, #180D33 0%, #0F0824 50%, #0B1630 100%);
+          border: 1px solid rgba(139,92,246,0.18); text-align: center;
+        }
+        .tg-cta-o1 {
+          position: absolute; width: 400px; height: 400px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 70%);
+          top: -100px; right: -80px; pointer-events: none;
+        }
+        .tg-cta-o2 {
+          position: absolute; width: 320px; height: 320px; border-radius: 50%;
+          background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
+          bottom: -80px; left: -60px; pointer-events: none;
+        }
+        .tg-cta-title {
+          font-size: clamp(26px,4vw,46px); font-weight: 900; color: #F8FAFC;
+          margin: 0 0 14px; letter-spacing: -1px;
+          position: relative; z-index: 1; line-height: 1.15;
+        }
+        .tg-cta-sub {
+          font-size: clamp(14px,1.7vw,16px); color: rgba(255,255,255,0.38);
+          margin: 0 auto 36px; max-width: 440px; line-height: 1.7;
+          position: relative; z-index: 1;
+        }
+        .tg-cta-btn {
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 15px 38px; border-radius: 14px; border: none;
+          background: linear-gradient(135deg, #8B5CF6, #6366F1);
+          color: white; font-size: 16px; font-weight: 800; cursor: pointer;
+          box-shadow: 0 8px 28px rgba(139,92,246,0.45);
+          transition: all 0.25s ease; font-family: inherit;
+          position: relative; z-index: 1;
+        }
+        .tg-cta-btn:hover { transform: translateY(-3px); box-shadow: 0 14px 38px rgba(139,92,246,0.6); }
+
+        /* FOOTER */
+        .tg-footer {
+          padding: 24px clamp(18px,5vw,64px);
+          border-top: 1px solid rgba(255,255,255,0.05);
+          display: flex; align-items: center; justify-content: space-between;
+          flex-wrap: wrap; gap: 12px;
+        }
+        .tg-footer-badge {
+          width: 28px; height: 28px; border-radius: 7px;
+          background: linear-gradient(135deg,#8B5CF6,#6366F1);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .tg-footer-link {
+          color: rgba(255,255,255,0.28); cursor: pointer; border: none;
+          background: none; font-size: 12px; font-family: inherit;
+          font-weight: 600; transition: color 0.18s;
+        }
+        .tg-footer-link:hover { color: rgba(255,255,255,0.6); }
+
+        /* RESPONSIVE */
+        @media (max-width: 900px) {
+          .tg-tools-grid { grid-template-columns: repeat(2,1fr); }
+          .tg-flow-grid { grid-template-columns: repeat(2,1fr); }
+          .tg-flow-cell:nth-child(2)::after, .tg-flow-cell:nth-child(4)::after { display: none; }
+        }
+        @media (max-width: 580px) {
+          .tg-tools-grid { grid-template-columns: 1fr; }
+          .tg-flow-grid { grid-template-columns: 1fr; }
+          .tg-flow-cell::after { display: none !important; }
+          .tg-footer { flex-direction: column; text-align: center; }
         }
       `}</style>
 
-      {/* Header Hero */}
-      <header className="home-header">
-        <div className="hero-background"></div>
-        <div className="home-header-content">
-          <div className="home-logo">
-            <h1>Technology Garage</h1>
+      {/* NAV */}
+      <nav className="tg-nav">
+        <div className="tg-logo" onClick={() => navigate('/')}>
+          <div className="tg-logo-badge">
+            <img src={logo} alt="CoachLife" style={{ width: '38px', height: '38px' }} />
           </div>
-          <p className="home-tagline">Coach Life</p>
-          <p className="hero-subtitle">Empower your coaching with real-time analytics, interactive learning, and gamified rewards</p>
-          <div className="cta-buttons">
-            <Button 
-              onClick={() => navigate('/login')}
-              className="home-cta-button"
-            >
-              <LogIn size={18} /> Get Started
-            </Button>
-            
+          <div>
+            <div className="tg-logo-name">CoachLife</div>
+            <div className="tg-logo-sub">Technology Garage</div>
           </div>
         </div>
-      </header>
+        <button className="tg-signin-btn" onClick={() => navigate('/login')}>
+          <LogIn size={14} /> Sign In
+        </button>
+      </nav>
 
-     
-
-      {/* Features Section */}
-      <section className="home-features">
-        <h2 className="section-title">Features</h2>
-        <p className="section-subtitle">Everything you need in one platform</p>
-        <div className="features-grid">
-          {features.map((feature, idx) => {
-            const Icon = feature.icon;
-            return (
-              <div key={idx} className="feature-card">
-                <div className="feature-icon" style={{ background: `linear-gradient(135deg, ${feature.color} 0%, ${feature.color}cc 100%)` }}>
-                  <Icon size={28} />
-                </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </div>
-            );
-          })}
+      {/* HERO */}
+      <section className="tg-hero">
+        <div className="tg-orb-1" />
+        <div className="tg-orb-2" />
+        <div className="tg-orb-3" />
+        <div className="tg-hero-content">
+          <div className="tg-org-chip">
+            <div className="tg-org-dot" />
+            Technology Garage · Internal Coach Portal
+          </div>
+          <h1 className="tg-hero-title">
+            Your workspace for<br />
+            <span className="tg-title-em">every great session</span>
+          </h1>
+          <p className="tg-hero-sub">
+            CoachLife is Powered by Technology Garage. Coaches can track players, give feedback, and celebrate growth - every single day.
+          </p>
+          <button className="tg-hero-btn" onClick={() => navigate('/login')}>
+            <LogIn size={18} /> Sign In to CoachLife
+          </button>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="home-footer">
-        <p>&copy; 2026 CoachLife | Technology Garage | All rights reserved.</p>
+      <div className="tg-divider" />
+
+      {/* TOOLS */}
+      <section className="tg-section">
+        <div className="tg-container">
+          <div className="tg-label">
+            <div className="tg-label-line" /> What's inside <div className="tg-label-line" />
+          </div>
+          <h2 className="tg-section-title">Your coaching toolkit</h2>
+          <p className="tg-section-sub">
+            Everything you need to run a great session and track every player's journey - built for how coaches at Technology Garage actually work.
+          </p>
+          <div className="tg-tools-grid">
+            {tools.map((t, i) => {
+              const Icon = t.icon;
+              return (
+                <div key={i} className="tg-tool-card"
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = t.border;
+                    e.currentTarget.style.background = t.glow;
+                    e.currentTarget.style.boxShadow = `0 12px 32px ${t.glow}`;
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                    e.currentTarget.style.boxShadow = 'none';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  <div className="tg-tool-icon" style={{ background: t.glow }}>
+                    <Icon size={21} color={t.color} />
+                  </div>
+                  <h3>{t.label}</h3>
+                  <p>{t.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <div className="tg-divider" />
+
+      {/* HOW A SESSION WORKS */}
+      <section className="tg-section tg-flow-bg">
+        <div className="tg-container">
+          <div className="tg-label">
+            <div className="tg-label-line" /> How a session works <div className="tg-label-line" />
+          </div>
+          <h2 className="tg-section-title">From sign-in to submitted<br />in 4 simple steps</h2>
+          <p className="tg-section-sub" style={{ marginBottom: '36px' }}>
+            CoachLife is designed to be fast so you can stay focused on teaching, not the tool.
+          </p>
+
+          <div className="tg-flow-grid">
+            {flow.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <div key={i} className="tg-flow-cell">
+                  <div className="tg-flow-num">Step {f.step}</div>
+                  <div className="tg-flow-icon" style={{ background: `${f.color}18` }}>
+                    <Icon size={20} color={f.color} />
+                  </div>
+                  <p className="tg-flow-title">{f.title}</p>
+                  <p className="tg-flow-desc">{f.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Session card mockup */}
+          <div style={{
+            marginTop: '24px', borderRadius: '16px', overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(255,255,255,0.02)'
+          }}>
+            <div style={{
+              padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexWrap: 'wrap', gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', boxShadow: '0 0 6px #10B981' }} />
+                <span style={{ fontSize: '12.5px', fontWeight: '700', color: 'rgba(255,255,255,0.5)' }}>
+                  Session Card - Anika · AI Foundation · Session 7
+                </span>
+              </div>
+              <span style={{
+                padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
+                background: 'rgba(16,185,129,0.1)', color: '#34D399',
+                border: '1px solid rgba(16,185,129,0.2)'
+              }}>In Progress</span>
+            </div>
+            {[
+              { name: 'Intro to Machine Learning', rated: true, rating: 4, pts: 20 },
+              { name: 'Build a Simple Classifier', active: true, pts: 30 },
+              { name: 'Test & Evaluate the Model', pts: 25 },
+            ].map((act, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '13px 20px', flexWrap: 'wrap', gap: '8px',
+                borderBottom: i < 2 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                background: act.active ? 'rgba(139,92,246,0.07)' : 'transparent',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
+                  <div style={{
+                    width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0,
+                    background: act.rated ? '#10B981' : act.active ? '#8B5CF6' : 'rgba(255,255,255,0.12)'
+                  }} />
+                  <span style={{
+                    fontSize: '13px', fontWeight: '600',
+                    color: act.rated ? 'rgba(255,255,255,0.38)' : act.active ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.25)'
+                  }}>
+                    {act.name}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '2px' }}>
+                    {[1,2,3,4,5].map(s => (
+                      <Star key={s} size={12}
+                        fill={act.rated && s <= act.rating ? '#F59E0B' : 'none'}
+                        color={act.rated && s <= act.rating ? '#F59E0B' : 'rgba(255,255,255,0.1)'} />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: 'rgba(255,255,255,0.18)' }}>+{act.pts}pts</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="tg-divider" />
+
+      {/* CTA */}
+      <section className="tg-section">
+        <div className="tg-container">
+          <div className="tg-cta-card">
+            <div className="tg-cta-o1" />
+            <div className="tg-cta-o2" />
+            <h2 className="tg-cta-title">Ready to start your session?</h2>
+            <p className="tg-cta-sub">
+              Sign in to your Technology Garage coach account and pick up right where you left off.
+            </p>
+            <button className="tg-cta-btn" onClick={() => navigate('/login')}>
+              <LogIn size={18} /> Sign In Now
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="tg-footer">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="tg-footer-badge">
+            <img src={logo} alt="CoachLife" style={{ width: '30px', height: '30px' }} />
+          </div>
+          <span style={{ fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.4)' }}>
+            CoachLife · Technology Garage
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button className="tg-footer-link" onClick={() => navigate('/leaderboard')}>Leaderboard</button>
+          <button className="tg-footer-link" onClick={() => navigate('/login')}>Sign In</button>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.18)' }}>© 2026 Technology Garage</span>
+        </div>
       </footer>
     </main>
   );

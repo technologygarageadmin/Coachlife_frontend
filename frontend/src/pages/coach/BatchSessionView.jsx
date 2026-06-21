@@ -3,11 +3,22 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
-import { ChevronLeft, Layers, Loader, Info, Users, CalendarCheck, Save, CheckCircle } from 'lucide-react';
+import { ChevronLeft, Layers, Loader, Info, Users, CalendarCheck, Save, CheckCircle, CreditCard } from 'lucide-react';
 
-const VIEW_SESSIONCARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
+const VIEW_SESSIONCARD_URL   = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 const CL_GET_ATTENDANCE_URL  = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 const CL_MARK_ATTENDANCE_URL = 'https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance';
+
+const PALETTES = [
+  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
+  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
+  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+
+const Sk = ({ w, h, r = 8 }) => (
+  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
+);
 
 const STATUS_OPTIONS = ['Present', 'Absent', 'Late', 'Excused'];
 const STATUS_CONFIG = {
@@ -34,7 +45,7 @@ const BatchSessionView = () => {
 
   const [batchPlayers, setBatchPlayers] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
-  // { [playerId]: { activeCardId: string|null, loading: bool, checked: bool } }
+  // { [playerId]: { activeCardId: string|null, loading: bool, checked: bool, isPending: bool } }
   const [cardStatus, setCardStatus] = useState({});
 
   // ── attendance state
@@ -170,17 +181,24 @@ const BatchSessionView = () => {
                 const data = await res.json();
                 const card = data.sessionCard || data.data || data;
                 const cardId = card?._id || card?.sessionCardId || lastId;
-                const isCompleted = (card?.status || '').toLowerCase() === 'completed';
+                const rawStatus = (card?.status || '').toLowerCase().replace(' ', '_');
+                const isCompleted = rawStatus === 'completed';
+                const isPending = rawStatus === 'pending';
                 setCardStatus(prev => ({
                   ...prev,
-                  [playerId]: { activeCardId: isCompleted ? null : cardId, loading: false, checked: true }
+                  [playerId]: {
+                    activeCardId: (isCompleted || isPending) ? null : cardId,
+                    loading: false,
+                    checked: true,
+                    isPending,
+                  }
                 }));
               } else {
-                setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true } }));
+                setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
               }
             } catch (e) {
               console.error('Card status fetch failed', playerId, e);
-              setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true } }));
+              setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
             }
           }));
         } else {
@@ -198,68 +216,98 @@ const BatchSessionView = () => {
 
   return (
     <Layout>
+      <style>{`
+        @keyframes skPulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+        @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+      `}</style>
       {toastMsg && (
         <Toast message={toastMsg} type={toastType} duration={3000} onClose={() => setToastMsg('')} />
       )}
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:.8} }
-        @keyframes spin  { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-      `}</style>
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
 
-        {/* Gradient header */}
+        {/* Standard banner header */}
         <div style={{
-          background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-          borderRadius: '16px', padding: '28px 32px', color: 'white',
-          marginBottom: '28px', boxShadow: '0 4px 16px rgba(6,0,48,0.25)'
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
         }}>
-          {/* Back + batch name */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button
               onClick={() => navigate('/coach/start-session')}
               style={{
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
                 borderRadius: '8px', background: 'rgba(255,255,255,0.12)',
                 border: '1px solid rgba(255,255,255,0.2)', color: 'white',
-                fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s'
+                fontSize: '13px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; }}
             >
               <ChevronLeft size={14} /> Back
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Layers size={22} style={{ opacity: 0.75 }} />
-              <div>
-                <h1 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>{batch.batchName}</h1>
-                <p style={{ fontSize: '13px', opacity: 0.75, margin: 0 }}>
-                  {batchPlayers.length} player{batchPlayers.length === 1 ? '' : 's'} · click a name to start their session
-                </p>
-              </div>
+            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Layers size={24} color="#fff" />
+            </div>
+            <div>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>
+                Batch Session
+              </h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
+                {batch.batchName} &middot; {batchPlayers.length} player{batchPlayers.length === 1 ? '' : 's'} &middot; click a name to start their session
+              </p>
             </div>
           </div>
+          <button
+            onClick={() => navigate('/admin/session-card', {
+              state: {
+                batchId: batch.batchId,
+                batchName: batch.batchName,
+                batchPlayers: batchPlayers.map(p => ({ playerId: p.playerId, name: p.name })),
+              }
+            })}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 18px',
+              borderRadius: '10px', background: 'rgba(255,255,255,0.15)',
+              border: '1px solid rgba(255,255,255,0.3)', color: 'white',
+              fontSize: '13px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s',
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.25)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
+          >
+            <CreditCard size={15} /> Generate Cards for Batch
+          </button>
+        </div>
 
-          {/* Player chips */}
+        {/* Player chips row */}
+        <div style={{
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '16px', padding: '20px 24px', marginBottom: '24px',
+          boxShadow: '0 4px 16px rgba(6,0,48,.2)'
+        }}>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {initialLoading
               ? [1, 2, 3].map(i => (
                   <div key={i} style={{
                     height: '42px', width: '130px', background: 'rgba(255,255,255,0.1)',
-                    borderRadius: '24px', animation: 'pulse 2s infinite'
+                    borderRadius: '24px', animation: 'skPulse 1.6s ease-in-out infinite'
                   }} />
                 ))
               : batchPlayers.map(player => {
-                  const status = cardStatus[player.playerId];
-                  const isLoadingCard = status?.loading ?? true;
-                  const hasNew = Boolean(status?.activeCardId);
-                  const checked = status?.checked;
+                  const cs = cardStatus[player.playerId];
+                  const isLoadingCard = cs?.loading ?? true;
+                  const hasNew = Boolean(cs?.activeCardId);
+                  const checked = cs?.checked;
+                  const isPending = Boolean(cs?.isPending);
+                  const [avatarColor] = pal(player.name || '');
 
                   return (
                     <button
                       key={player.playerId}
                       onClick={() => {
-                        if (!status?.activeCardId) return;
-                        navigate(`/coach/session/${status.activeCardId}`, {
+                        if (!cs?.activeCardId) return;
+                        navigate(`/coach/session/${cs.activeCardId}`, {
                           state: {
                             batch,
                             batchPlayerCards: batchPlayers.map(p => ({
@@ -274,29 +322,45 @@ const BatchSessionView = () => {
                       style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         padding: '9px 18px 9px 10px', borderRadius: '24px', border: 'none',
-                        background: hasNew ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)',
-                        color: hasNew ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)',
+                        background: isPending
+                          ? 'rgba(251,191,36,0.18)'
+                          : hasNew ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)',
+                        color: isPending
+                          ? 'rgba(255,255,255,0.85)'
+                          : hasNew ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)',
                         fontWeight: '600', fontSize: '14px',
                         cursor: hasNew ? 'pointer' : 'default',
                         transition: 'all 0.2s ease',
-                        boxShadow: hasNew ? '0 2px 10px rgba(0,0,0,0.2)' : 'none'
+                        boxShadow: hasNew ? '0 2px 10px rgba(0,0,0,0.2)' : 'none',
+                        outline: isPending ? '1px solid rgba(251,191,36,0.45)' : 'none',
                       }}
                       onMouseEnter={(e) => { if (hasNew) e.currentTarget.style.background = 'rgba(255,255,255,0.26)'; }}
-                      onMouseLeave={(e) => { if (hasNew) e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; }}
+                      onMouseLeave={(e) => {
+                        if (hasNew) e.currentTarget.style.background = isPending ? 'rgba(251,191,36,0.18)' : 'rgba(255,255,255,0.16)';
+                      }}
                     >
                       <div style={{
                         width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                        background: hasNew ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.1)',
+                        background: isPending
+                          ? 'rgba(251,191,36,0.35)'
+                          : hasNew ? avatarColor : 'rgba(255,255,255,0.1)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '11px', fontWeight: '800'
+                        fontSize: '11px', fontWeight: '800', color: '#fff'
                       }}>
                         {player.name.charAt(0).toUpperCase()}
                       </div>
                       {player.name}
+                      {isPending && (
+                        <span style={{
+                          fontSize: '10px', fontWeight: '700', padding: '2px 6px',
+                          borderRadius: '999px', background: 'rgba(251,191,36,0.35)',
+                          color: '#fef3c7', letterSpacing: '0.3px', flexShrink: 0
+                        }}>PENDING</span>
+                      )}
                       {isLoadingCard && (
                         <Loader size={13} style={{ animation: 'spin 1s linear infinite', opacity: 0.6, flexShrink: 0 }} />
                       )}
-                      {checked && !hasNew && (
+                      {checked && !hasNew && !isPending && (
                         <span title="No new session available" style={{ display: 'flex', alignItems: 'center' }}>
                           <Info size={13} style={{ opacity: 0.65, flexShrink: 0 }} />
                         </span>
@@ -316,16 +380,16 @@ const BatchSessionView = () => {
           {/* Card header */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            flexWrap: 'wrap', gap: '12px', padding: '18px 24px', borderBottom: '1px solid #F1F5F9',
-            background: 'linear-gradient(135deg, rgba(6,0,48,0.04), rgba(6,0,48,0.02))'
+            flexWrap: 'wrap', gap: '12px', padding: '18px 24px', borderBottom: '1px solid #E2E8F0',
+            background: '#F8FAFC'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <CalendarCheck size={18} color="#060030ff" />
-              <span style={{ fontSize: '16px', fontWeight: '700', color: '#111827' }}>Mark Attendance</span>
+              <CalendarCheck size={18} color="#6366F1" />
+              <span style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A' }}>Mark Attendance</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: '#6B7280' }}>Session Date</label>
+                <label style={{ fontSize: '11px', fontWeight: '600', color: '#475569' }}>Session Date</label>
                 <input
                   type="date"
                   value={attendanceDate}
@@ -333,9 +397,9 @@ const BatchSessionView = () => {
                   onChange={(e) => setAttendanceDate(e.target.value > today ? today : e.target.value)}
                   style={{
                     padding: '8px 12px', borderRadius: '8px', border: '1.5px solid #E2E8F0',
-                    fontSize: '13px', color: '#111827', outline: 'none', background: 'white', cursor: 'pointer'
+                    fontSize: '13px', color: '#0F172A', outline: 'none', background: '#FFFFFF', cursor: 'pointer'
                   }}
-                  onFocus={(e) => { e.target.style.borderColor = '#060030ff'; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
+                  onFocus={(e) => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(6,0,48,0.1)'; }}
                   onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
                 />
               </div>
@@ -358,7 +422,7 @@ const BatchSessionView = () => {
                 style={{
                   alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '6px',
                   padding: '9px 18px', borderRadius: '8px', border: 'none',
-                  background: 'linear-gradient(135deg, #060030ff, #000000ff)', color: 'white',
+                  background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white',
                   fontWeight: '600', fontSize: '13px',
                   cursor: (attendanceSaving || attendanceLoading || batchPlayers.length === 0) ? 'not-allowed' : 'pointer',
                   opacity: (attendanceSaving || attendanceLoading || batchPlayers.length === 0) ? 0.7 : 1
@@ -376,7 +440,7 @@ const BatchSessionView = () => {
           {initialLoading || attendanceLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '20px 24px' }}>
               {[1, 2, 3].map(i => (
-                <div key={i} style={{ height: '48px', background: '#F1F5F9', borderRadius: '10px', animation: 'pulse 2s infinite' }} />
+                <Sk key={i} w="100%" h={48} r={10} />
               ))}
             </div>
           ) : batchPlayers.length === 0 ? (
@@ -388,25 +452,26 @@ const BatchSessionView = () => {
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {batchPlayers.map((player, idx) => {
                 const status = statuses[String(player.playerId)] || '';
+                const [avatarColor] = pal(player.name || '');
                 return (
                   <div
                     key={player.playerId}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       gap: '12px', padding: '14px 24px', flexWrap: 'wrap',
-                      borderTop: idx === 0 ? 'none' : '1px solid #F1F5F9'
+                      borderTop: idx === 0 ? 'none' : '1px solid #E2E8F0'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{
                         width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0,
-                        background: 'linear-gradient(135deg, #060030ff, #252c35)', color: 'white',
+                        background: avatarColor, color: 'white',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '13px', fontWeight: '800'
                       }}>
                         {player.name.charAt(0).toUpperCase()}
                       </div>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#111827' }}>{player.name}</span>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#0F172A' }}>{player.name}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                       <span style={{
@@ -423,10 +488,10 @@ const BatchSessionView = () => {
                         onChange={(e) => setStatus(player.playerId, e.target.value)}
                         style={{
                           padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #E2E8F0',
-                          fontSize: '13px', color: '#111827', outline: 'none', background: 'white',
+                          fontSize: '13px', color: '#0F172A', outline: 'none', background: '#FFFFFF',
                           cursor: 'pointer', minWidth: '130px'
                         }}
-                        onFocus={(e) => { e.target.style.borderColor = '#060030ff'; }}
+                        onFocus={(e) => { e.target.style.borderColor = '#6366F1'; }}
                         onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; }}
                       >
                         <option value="">In Progress</option>
@@ -441,8 +506,8 @@ const BatchSessionView = () => {
         </div>
 
         {/* Hint */}
-        <p style={{ fontSize: '13px', color: '#64748B', textAlign: 'center', margin: '16px 0 0' }}>
-          Click a player name above to start their session · Dimmed players with <Info size={12} style={{ verticalAlign: 'middle', marginBottom: '2px', color: '#94A3B8' }} /> have no pending session card
+        <p style={{ fontSize: '13px', color: '#475569', textAlign: 'center', margin: '16px 0 0' }}>
+          Click a player name above to start their session &middot; Dimmed players with <Info size={12} style={{ verticalAlign: 'middle', marginBottom: '2px', color: '#94A3B8' }} /> have no pending session card
         </p>
 
       </div>

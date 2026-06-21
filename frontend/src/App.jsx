@@ -34,6 +34,7 @@ const Attendance = lazy(() => import('./pages/admin/Attendance'));
 const ManageBatches = lazy(() => import('./pages/admin/ManageBatches'));
 
 // Coach Pages - Lazy load
+const CoachDashboard = lazy(() => import('./pages/coach/CoachDashboard'));
 const MyPlayers = lazy(() => import('./pages/coach/MyPlayers'));
 const PlayerDetail = lazy(() => import('./pages/coach/PlayerDetail'));
 const PlayerSessions = lazy(() => import('./pages/coach/PlayerSessions'));
@@ -107,7 +108,7 @@ const router = createBrowserRouter([
       { path: '/admin/manage-batches', element: <ProtectedRoute requiredRole="admin"><ManageBatches /></ProtectedRoute> },
       
       // Coach Routes
-      { path: '/coach', element: <ProtectedRoute requiredRole="coach"><Dashboard /></ProtectedRoute> },
+      { path: '/coach', element: <ProtectedRoute requiredRole="coach"><CoachDashboard /></ProtectedRoute> },
       { path: '/coach/players', element: <ProtectedRoute requiredRole="coach"><MyPlayers /></ProtectedRoute> },
       { path: '/coach/player/:playerId', element: <ProtectedRoute requiredRole="coach"><PlayerDetail /></ProtectedRoute> },
       { path: '/coach/player/:playerId/sessions', element: <ProtectedRoute requiredRole="coach"><PlayerSessions /></ProtectedRoute> },
