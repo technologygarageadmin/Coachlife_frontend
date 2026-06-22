@@ -3,6 +3,7 @@ import { Layout } from '../../components/Layout';
 import { Gift, BarChart3, Search, ChevronDown, Zap, Users, Loader, X } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo, createElement } from 'react';
 import { Toast } from '../../components/Toast';
+import { useTheme } from '../../context/ThemeContext';
 
 const API_ENDPOINTS = {
   VIEW_PLAYERS:        'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players',
@@ -36,20 +37,20 @@ const PALETTES = [
   ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
   ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
 ];
-const pal = (name = '') => PALETTES[name.charCodeAt(0) % PALETTES.length];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
 
 const Sk = ({ w, h, r = 8 }) => (
   <div style={{ width:w, height:h, borderRadius:r, background:'#EEF2F7', animation:'rdmPulse 1.6s ease-in-out infinite', flexShrink:0 }} />
 );
 
-const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SummaryIcon, accent, surface, border }) => {
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'16px', padding:'18px 20px',
-        border:`1.5px solid ${hov ? accent+'50' : '#F1F5F9'}`,
+        background: surface, borderRadius:'16px', padding:'18px 20px',
+        border:`1.5px solid ${hov ? accent+'50' : border}`,
         boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
         display:'flex', alignItems:'center', gap:'14px',
         transition:'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
@@ -71,6 +72,15 @@ const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
 ════════════════════════════════════════════════ */
 const RedeemHistory = () => {
   const { userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#F1F5F9';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#475569';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
   const [players, setPlayers]                           = useState([]);
   const [rewards, setRewards]                           = useState([]);
   const [redeemHistory, setRedeemHistory]               = useState([]);
@@ -230,42 +240,42 @@ const RedeemHistory = () => {
         {/* ── Summary cards ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }}>
           {loading ? [1,2,3].map(i => (
-            <div key={i} style={{ background:'#fff', borderRadius:'16px', padding:'18px 20px', border:'1px solid #F1F5F9', display:'flex', gap:'14px', alignItems:'center' }}>
+            <div key={i} style={{ background: surface, borderRadius:'16px', padding:'18px 20px', border:`1px solid ${border}`, display:'flex', gap:'14px', alignItems:'center' }}>
               <Sk w="48px" h="48px" r={13} />
               <div style={{ flex:1 }}><Sk w="60%" h="10px" /><div style={{marginTop:8}}><Sk w="42%" h="22px" /></div></div>
             </div>
           )) : <>
-            <SummaryCard label="Total Redeems"   value={stats.total}  icon={Gift}     accent="#6366F1" />
-            <SummaryCard label="Total Pts Used"  value={stats.points} icon={BarChart3} accent="#F59E0B" />
-            <SummaryCard label="Players Engaged" value={stats.unique} icon={Users}    accent="#10B981" />
+            <SummaryCard label="Total Redeems"   value={stats.total}  icon={Gift}     accent="#6366F1" surface={surface} border={border} />
+            <SummaryCard label="Total Pts Used"  value={stats.points} icon={BarChart3} accent="#F59E0B" surface={surface} border={border} />
+            <SummaryCard label="Players Engaged" value={stats.unique} icon={Users}    accent="#10B981" surface={surface} border={border} />
           </>}
         </div>
 
         {/* ── Redeem form card ── */}
         {!loading && (
           <div style={{
-            background:'#fff', borderRadius:'20px', padding:'24px 28px', marginBottom:'24px',
-            border:'1.5px solid #F1F5F9', boxShadow:'0 4px 16px rgba(0,0,0,.06)',
+            background: surface, borderRadius:'20px', padding:'24px 28px', marginBottom:'24px',
+            border:`1.5px solid ${border}`, boxShadow:'0 4px 16px rgba(0,0,0,.06)',
           }}>
             <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'20px' }}>
               <div style={{ width:'40px', height:'40px', borderRadius:'11px', background:'linear-gradient(135deg,#F59E0B,#D97706)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <Zap size={18} color="#fff" />
               </div>
               <div>
-                <h2 style={{ fontSize:'17px', fontWeight:'800', color:'#0F172A', margin:0 }}>New Redemption</h2>
-                <p style={{ fontSize:'12px', color:'#94A3B8', fontWeight:'500', margin:0 }}>Reward players for their achievements</p>
+                <h2 style={{ fontSize:'17px', fontWeight:'800', color: textPrimary, margin:0 }}>New Redemption</h2>
+                <p style={{ fontSize:'12px', color: textMuted, fontWeight:'500', margin:0 }}>Reward players for their achievements</p>
               </div>
             </div>
 
             {/* info tiles */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:'10px', marginBottom:'18px' }}>
-              <div style={{ padding:'10px 14px', borderRadius:'10px', background:'#F8FAFC', border:'1px solid #E2E8F0' }}>
-                <p style={{ fontSize:'10px', color:'#94A3B8', fontWeight:'700', textTransform:'uppercase', letterSpacing:'.5px', margin:0 }}>Players</p>
-                <p style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'4px 0 0' }}>{players.length}</p>
+              <div style={{ padding:'10px 14px', borderRadius:'10px', background: surface2, border:`1px solid ${border}` }}>
+                <p style={{ fontSize:'10px', color: textMuted, fontWeight:'700', textTransform:'uppercase', letterSpacing:'.5px', margin:0 }}>Players</p>
+                <p style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:'4px 0 0' }}>{players.length}</p>
               </div>
-              <div style={{ padding:'10px 14px', borderRadius:'10px', background:'#F8FAFC', border:'1px solid #E2E8F0' }}>
-                <p style={{ fontSize:'10px', color:'#94A3B8', fontWeight:'700', textTransform:'uppercase', letterSpacing:'.5px', margin:0 }}>Rewards</p>
-                <p style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'4px 0 0' }}>{rewards.length}</p>
+              <div style={{ padding:'10px 14px', borderRadius:'10px', background: surface2, border:`1px solid ${border}` }}>
+                <p style={{ fontSize:'10px', color: textMuted, fontWeight:'700', textTransform:'uppercase', letterSpacing:'.5px', margin:0 }}>Rewards</p>
+                <p style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:'4px 0 0' }}>{rewards.length}</p>
               </div>
               {selectedPlayerId && (
                 <div style={{ padding:'10px 14px', borderRadius:'10px', background:'#FFFBEB', border:'1.5px solid #FDE68A' }}>
@@ -308,8 +318,8 @@ const RedeemHistory = () => {
                 type="submit" disabled={!canRedeem}
                 style={{
                   padding:'11px 22px', borderRadius:'10px', border:'none', fontWeight:'700', fontSize:'14px',
-                  background: canRedeem ? 'linear-gradient(135deg,#F59E0B,#D97706)' : '#F1F5F9',
-                  color: canRedeem ? '#fff' : '#94A3B8',
+                  background: canRedeem ? 'linear-gradient(135deg,#F59E0B,#D97706)' : surface2,
+                  color: canRedeem ? '#fff' : textMuted,
                   cursor: canRedeem ? 'pointer' : 'not-allowed',
                   display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
                   boxShadow: canRedeem ? '0 4px 14px rgba(245,158,11,.35)' : 'none',
@@ -328,22 +338,22 @@ const RedeemHistory = () => {
         {/* ── Filter bar ── */}
         <div style={{
           display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px',
-          background:'#fff', padding:'12px 16px', borderRadius:'14px',
-          border:'1px solid #F1F5F9', boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
+          background: surface, padding:'12px 16px', borderRadius:'14px',
+          border:`1px solid ${border}`, boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
         }}>
           <div style={{
             display:'flex', alignItems:'center', gap:'8px', flex:'1', minWidth:'200px',
-            border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'8px 12px', background:'#FAFBFC',
+            border:`1.5px solid ${border}`, borderRadius:'10px', padding:'8px 12px', background: surface2,
           }}
           onFocusCapture={e => { e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(99,102,241,.1)'; }}
-          onBlurCapture={e => { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.boxShadow='none'; }}>
-            <Search size={15} color="#94A3B8" />
+          onBlurCapture={e => { e.currentTarget.style.borderColor=border; e.currentTarget.style.boxShadow='none'; }}>
+            <Search size={15} color={textMuted} />
             <input
               type="text" placeholder="Search player or reward…" value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color:'#1E293B', flex:1, fontFamily:'inherit' }}
             />
-            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color:'#94A3B8', padding:0, display:'flex' }}><X size={14} /></button>}
+            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color: textMuted, padding:0, display:'flex' }}><X size={14} /></button>}
           </div>
 
           <div style={{ position:'relative' }}>
@@ -355,25 +365,25 @@ const RedeemHistory = () => {
               <option value="points-high">Highest Points</option>
               <option value="points-low">Lowest Points</option>
             </select>
-            <ChevronDown size={13} style={{ position:'absolute', right:'10px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:'#64748B' }} />
+            <ChevronDown size={13} style={{ position:'absolute', right:'10px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color: textSecondary }} />
           </div>
 
-          <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', marginLeft:'auto', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:'12px', fontWeight:'700', color: textMuted, marginLeft:'auto', whiteSpace:'nowrap' }}>
             <span style={{ color:'#6366F1' }}>{sortedHistory.length}</span> record{sortedHistory.length !== 1 ? 's' : ''}
           </span>
         </div>
 
         {/* ── History list ── */}
-        <div style={{ background:'#fff', borderRadius:'16px', border:'1px solid #F1F5F9', boxShadow:'0 2px 8px rgba(0,0,0,.05)', overflow:'hidden' }}>
-          <div style={{ padding:'16px 22px', borderBottom:'1px solid #F1F5F9', background:'#FAFBFC', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <h3 style={{ fontSize:'15px', fontWeight:'800', color:'#0F172A', margin:0 }}>Redemption Records</h3>
-            <span style={{ fontSize:'12px', color:'#94A3B8', fontWeight:'600' }}>{sortedHistory.length} entries</span>
+        <div style={{ background: surface, borderRadius:'16px', border:`1px solid ${border}`, boxShadow:'0 2px 8px rgba(0,0,0,.05)', overflow:'hidden' }}>
+          <div style={{ padding:'16px 22px', borderBottom:`1px solid ${border}`, background: surface2, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <h3 style={{ fontSize:'15px', fontWeight:'800', color: textPrimary, margin:0 }}>Redemption Records</h3>
+            <span style={{ fontSize:'12px', color: textMuted, fontWeight:'600' }}>{sortedHistory.length} entries</span>
           </div>
 
           {loading ? (
             <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'12px' }}>
               {[1,2,3,4,5].map(i => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px', borderRadius:'10px', background:'#FAFBFC' }}>
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px', borderRadius:'10px', background: surface2 }}>
                   <Sk w="40px" h="40px" r={10} />
                   <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'7px' }}>
                     <Sk w="35%" h="14px" /><Sk w="20%" h="11px" />
@@ -388,8 +398,8 @@ const RedeemHistory = () => {
               <div style={{ width:'80px', height:'80px', borderRadius:'22px', background:'#FFFBEB', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
                 <Gift size={36} color="#D97706" />
               </div>
-              <p style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>No redemptions yet</p>
-              <p style={{ fontSize:'13.5px', color:'#94A3B8', margin:0 }}>
+              <p style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>No redemptions yet</p>
+              <p style={{ fontSize:'13.5px', color: textMuted, margin:0 }}>
                 {searchTerm ? 'No results for that search' : 'Use the form above to redeem a reward for a player'}
               </p>
             </div>
@@ -403,10 +413,10 @@ const RedeemHistory = () => {
                     key={record._id || i}
                     style={{
                       display:'flex', alignItems:'center', gap:'14px', padding:'14px 22px',
-                      borderBottom: i < sortedHistory.length-1 ? '1px solid #F8FAFC' : 'none',
+                      borderBottom: i < sortedHistory.length-1 ? `1px solid ${border}` : 'none',
                       transition:'background .15s ease', flexWrap:'wrap',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background='#FAFBFC'}
+                    onMouseEnter={e => e.currentTarget.style.background=surface2}
                     onMouseLeave={e => e.currentTarget.style.background='transparent'}
                   >
                     {/* reward icon */}
@@ -416,18 +426,18 @@ const RedeemHistory = () => {
 
                     {/* reward name + desc */}
                     <div style={{ flex:'1 1 160px', minWidth:0 }}>
-                      <p style={{ margin:0, fontSize:'14px', fontWeight:'700', color:'#0F172A', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{record.rewardName}</p>
+                      <p style={{ margin:0, fontSize:'14px', fontWeight:'700', color: textPrimary, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{record.rewardName}</p>
                       {record.rewardDescription && (
-                        <p style={{ margin:'2px 0 0', fontSize:'12px', color:'#94A3B8', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{record.rewardDescription}</p>
+                        <p style={{ margin:'2px 0 0', fontSize:'12px', color: textMuted, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{record.rewardDescription}</p>
                       )}
                     </div>
 
                     {/* player badge */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px', padding:'5px 10px', borderRadius:'999px', background:'#F1F5F9', whiteSpace:'nowrap', flexShrink:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'6px', padding:'5px 10px', borderRadius:'999px', background: border, whiteSpace:'nowrap', flexShrink:0 }}>
                       <div style={{ width:'20px', height:'20px', borderRadius:'50%', background:'linear-gradient(135deg,#6366F1,#8B5CF6)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'9px', flexShrink:0 }}>
                         {playerName.charAt(0).toUpperCase()}
                       </div>
-                      <span style={{ fontSize:'12px', fontWeight:'700', color:'#475569' }}>{playerName}</span>
+                      <span style={{ fontSize:'12px', fontWeight:'700', color: textSecondary }}>{playerName}</span>
                     </div>
 
                     {/* points badge */}
@@ -437,13 +447,13 @@ const RedeemHistory = () => {
                     </div>
 
                     {/* date */}
-                    <span style={{ fontSize:'12px', color:'#94A3B8', fontWeight:'600', whiteSpace:'nowrap', flexShrink:0, minWidth:'110px', textAlign:'right' }}>
+                    <span style={{ fontSize:'12px', color: textMuted, fontWeight:'600', whiteSpace:'nowrap', flexShrink:0, minWidth:'110px', textAlign:'right' }}>
                       {new Date(record.redeemedAt).toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric' })}
                     </span>
 
                     {/* redeemed by */}
                     {record.redeemedByName && (
-                      <span style={{ fontSize:'12px', color:'#64748B', fontWeight:'600', whiteSpace:'nowrap', flexShrink:0, textAlign:'right' }}>
+                      <span style={{ fontSize:'12px', color: textSecondary, fontWeight:'600', whiteSpace:'nowrap', flexShrink:0, textAlign:'right' }}>
                         by {record.redeemedByName}
                       </span>
                     )}

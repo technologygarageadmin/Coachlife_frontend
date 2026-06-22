@@ -22,6 +22,7 @@ const AssignPlayers = lazy(() => import('./pages/admin/AssignPlayers'));
 const SessionCardManage = lazy(() => import('./pages/admin/SessionCardManage'));
 const LearningPathwayBuilder = lazy(() => import('./pages/admin/LearningPathwayBuilder'));
 const AddPathway = lazy(() => import('./pages/admin/AddPathway'));
+const ActivityEditor = lazy(() => import('./pages/admin/ActivityEditor'));
 const EditPathway = lazy(() => import('./pages/admin/EditPathway'));
 const ViewPathway = lazy(() => import('./pages/admin/ViewPathway'));
 const Rewards = lazy(() => import('./pages/admin/Rewards'));
@@ -100,6 +101,7 @@ const router = createBrowserRouter([
       { path: '/admin/custom-generate-card', element: <ProtectedRoute requiredRole="admin"><CustomCardGenerate /></ProtectedRoute> },
       { path: '/admin/learning-pathway', element: <ProtectedRoute requiredRole="admin"><LearningPathwayBuilder /></ProtectedRoute> },
       { path: '/admin/learning-pathway/add', element: <ProtectedRoute requiredRole="admin"><AddPathway /></ProtectedRoute> },
+      { path: '/admin/learning-pathway/add/activity', element: <ProtectedRoute requiredRole="admin"><ActivityEditor /></ProtectedRoute> },
       { path: '/admin/learning-pathway/:id/view', element: <ProtectedRoute requiredRole="admin"><ViewPathway /></ProtectedRoute> },
       { path: '/admin/learning-pathway/:id/edit', element: <ProtectedRoute requiredRole="admin"><EditPathway /></ProtectedRoute> },
       { path: '/admin/rewards', element: <ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute> },

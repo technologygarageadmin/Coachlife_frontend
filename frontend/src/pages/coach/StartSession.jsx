@@ -4,6 +4,7 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Users, Search, Trophy, Zap, Layers, ArrowRight, BookOpen, Star, ChevronDown, X } from 'lucide-react';
 import { SessionCardsView } from './SessionCardsView';
+import { useTheme } from '../../context/ThemeContext';
 
 const CL_GET_BATCHES_URL = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
 
@@ -36,6 +37,15 @@ const StartSession = () => {
   const { playerId } = useParams();
   const navigate = useNavigate();
   const { currentUser, fetchAssignedPlayersForCoach, userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E2E8F0';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#475569';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
   const [players, setPlayers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name');
@@ -345,9 +355,9 @@ const StartSession = () => {
             {/* Search & filter bar */}
             {!isLoading && (
               <div style={{
-                background: '#FFFFFF',
+                background: surface,
                 borderRadius: '16px',
-                border: '1.5px solid #E2E8F0',
+                border: `1.5px solid ${border}`,
                 padding: '16px 20px',
                 marginBottom: '28px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
@@ -358,7 +368,7 @@ const StartSession = () => {
               }}>
                 {/* Search */}
                 <div style={{ position: 'relative', flex: '1 1 220px', minWidth: '180px' }}>
-                  <Search size={16} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: searchFocused ? '#6366F1' : '#94A3B8', pointerEvents: 'none', transition: 'color 0.2s' }} />
+                  <Search size={16} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: searchFocused ? '#6366F1' : textMuted, pointerEvents: 'none', transition: 'color 0.2s' }} />
                   <input
                     type="text"
                     placeholder="Search players by name..."
@@ -368,15 +378,15 @@ const StartSession = () => {
                     onBlur={() => setSearchFocused(false)}
                     style={{
                       width: '100%', padding: '10px 36px 10px 38px',
-                      border: `1.5px solid ${searchFocused ? '#6366F1' : '#E2E8F0'}`,
+                      border: `1.5px solid ${searchFocused ? '#6366F1' : border}`,
                       borderRadius: '10px', fontSize: '14px', outline: 'none',
-                      background: '#F8FAFC', color: '#0F172A',
+                      background: surface2, color: textPrimary,
                       boxShadow: searchFocused ? '0 0 0 3px rgba(99,102,241,0.1)' : 'none',
                       transition: 'all 0.2s ease', boxSizing: 'border-box'
                     }}
                   />
                   {searchTerm && (
-                    <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', display: 'flex', padding: 0 }}>
+                    <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: textMuted, display: 'flex', padding: 0 }}>
                       <X size={14} />
                     </button>
                   )}
@@ -387,15 +397,15 @@ const StartSession = () => {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    style={{ appearance: 'none', padding: '10px 34px 10px 14px', borderRadius: '10px', border: '1.5px solid #E2E8F0', background: '#F8FAFC', cursor: 'pointer', fontSize: '13px', color: '#0F172A', fontWeight: '500', outline: 'none', transition: 'all 0.2s' }}
+                    style={{ appearance: 'none', padding: '10px 34px 10px 14px', borderRadius: '10px', border: `1.5px solid ${border}`, background: surface2, cursor: 'pointer', fontSize: '13px', color: textPrimary, fontWeight: '500', outline: 'none', transition: 'all 0.2s' }}
                     onFocus={(e) => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)'; }}
-                    onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                    onBlur={(e) => { e.target.style.borderColor = border; e.target.style.boxShadow = 'none'; }}
                   >
                     <option value="name">Sort: Name</option>
                     <option value="points">Sort: Points</option>
                     <option value="pathway">Sort: Pathway</option>
                   </select>
-                  <ChevronDown size={13} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: '#475569', pointerEvents: 'none' }} />
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: textSecondary, pointerEvents: 'none' }} />
                 </div>
 
                 {/* Pathway filter */}
@@ -403,17 +413,17 @@ const StartSession = () => {
                   <select
                     value={filterStage}
                     onChange={(e) => setFilterStage(e.target.value)}
-                    style={{ appearance: 'none', padding: '10px 34px 10px 14px', borderRadius: '10px', border: `1.5px solid ${filterStage !== 'all' ? '#6366F1' : '#E2E8F0'}`, background: filterStage !== 'all' ? 'rgba(99,102,241,0.1)' : '#F8FAFC', cursor: 'pointer', fontSize: '13px', color: filterStage !== 'all' ? '#6366F1' : '#0F172A', fontWeight: filterStage !== 'all' ? '600' : '500', outline: 'none', transition: 'all 0.2s' }}
+                    style={{ appearance: 'none', padding: '10px 34px 10px 14px', borderRadius: '10px', border: `1.5px solid ${filterStage !== 'all' ? '#6366F1' : border}`, background: filterStage !== 'all' ? 'rgba(99,102,241,0.1)' : surface2, cursor: 'pointer', fontSize: '13px', color: filterStage !== 'all' ? '#6366F1' : textPrimary, fontWeight: filterStage !== 'all' ? '600' : '500', outline: 'none', transition: 'all 0.2s' }}
                     onFocus={(e) => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.1)'; }}
-                    onBlur={(e) => { e.target.style.borderColor = filterStage !== 'all' ? '#6366F1' : '#E2E8F0'; e.target.style.boxShadow = 'none'; }}
+                    onBlur={(e) => { e.target.style.borderColor = filterStage !== 'all' ? '#6366F1' : border; e.target.style.boxShadow = 'none'; }}
                   >
                     <option value="all">All Pathways</option>
                     {uniquePathways.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
-                  <ChevronDown size={13} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: filterStage !== 'all' ? '#6366F1' : '#475569', pointerEvents: 'none' }} />
+                  <ChevronDown size={13} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: filterStage !== 'all' ? '#6366F1' : textSecondary, pointerEvents: 'none' }} />
                 </div>
 
-                <span style={{ fontSize: '13px', color: '#94A3B8', fontWeight: '500', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
+                <span style={{ fontSize: '13px', color: textMuted, fontWeight: '500', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
                   {filteredPlayers.length} of {players.length} players
                 </span>
               </div>
@@ -423,8 +433,8 @@ const StartSession = () => {
             {isLoading ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
                 {[1,2,3,4,5,6].map(i => (
-                  <div key={i} style={{ background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0', overflow: 'hidden', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i * 0.07}s` }}>
-                    <div style={{ height: '90px', background: '#EEF2F7' }} />
+                  <div key={i} style={{ background: surface, borderRadius: '16px', border: `1.5px solid ${border}`, overflow: 'hidden', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i * 0.07}s` }}>
+                    <div style={{ height: '90px', background: surface2 }} />
                     <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       <Sk w="80%" h={14} r={6} />
                       <Sk w="55%" h={14} r={6} />
@@ -440,9 +450,9 @@ const StartSession = () => {
                     <div
                       key={player.playerId}
                       style={{
-                        background: '#FFFFFF',
+                        background: surface,
                         borderRadius: '16px',
-                        border: '1.5px solid #E2E8F0',
+                        border: `1.5px solid ${border}`,
                         overflow: 'hidden',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                         transition: 'box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease',
@@ -457,13 +467,13 @@ const StartSession = () => {
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                        e.currentTarget.style.borderColor = '#E2E8F0';
+                        e.currentTarget.style.borderColor = border;
                         e.currentTarget.style.transform = 'translateY(0)';
                       }}
                       onClick={() => handleSelectPlayer(player)}
                     >
                       {/* Card header with avatar */}
-                      <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: '1.5px solid #E2E8F0' }}>
+                      <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: `1.5px solid ${border}` }}>
                         <div style={{
                           width: '52px', height: '52px', borderRadius: '14px', flexShrink: 0,
                           background: avatarGradient(player.name),
@@ -474,15 +484,15 @@ const StartSession = () => {
                           {(player.name || '?').charAt(0).toUpperCase()}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0F172A', margin: '0 0 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <h3 style={{ fontSize: '15px', fontWeight: '700', color: textPrimary, margin: '0 0 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {player.name}
                           </h3>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{
                               display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%',
-                              background: player.status === 'active' ? '#10B981' : '#94A3B8'
+                              background: player.status === 'active' ? '#10B981' : textMuted
                             }} />
-                            <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '500', textTransform: 'capitalize' }}>
+                            <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500', textTransform: 'capitalize' }}>
                               {player.status || 'active'}
                             </span>
                           </div>
@@ -503,19 +513,19 @@ const StartSession = () => {
 
                       {/* Stats */}
                       <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '11px 14px' }}>
+                        <div style={{ background: surface2, borderRadius: '10px', padding: '11px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
                             <Star size={11} color="#6366F1" />
-                            <span style={{ fontSize: '10px', color: '#94A3B8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Points</span>
+                            <span style={{ fontSize: '10px', color: textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Points</span>
                           </div>
                           <p style={{ fontSize: '18px', fontWeight: '800', color: '#6366F1', margin: 0, lineHeight: 1 }}>
                             {(player.totalPoints || 0).toLocaleString()}
                           </p>
                         </div>
-                        <div style={{ background: '#F8FAFC', borderRadius: '10px', padding: '11px 14px' }}>
+                        <div style={{ background: surface2, borderRadius: '10px', padding: '11px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '4px' }}>
                             <Zap size={11} color="#10B981" />
-                            <span style={{ fontSize: '10px', color: '#94A3B8', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Cards</span>
+                            <span style={{ fontSize: '10px', color: textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Cards</span>
                           </div>
                           <p style={{ fontSize: '18px', fontWeight: '800', color: '#10B981', margin: 0, lineHeight: 1 }}>
                             {player.sessionCardIds?.length || 0}
@@ -548,16 +558,16 @@ const StartSession = () => {
               </div>
             ) : (
               <div style={{
-                background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0',
+                background: surface, borderRadius: '16px', border: `1.5px solid ${border}`,
                 padding: '64px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
               }}>
-                <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-                  <Users size={32} color="#94A3B8" />
+                <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                  <Users size={32} color={textMuted} />
                 </div>
-                <p style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>
+                <p style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: '0 0 8px' }}>
                   {players.length === 0 ? 'No players assigned yet' : 'No players match your filters'}
                 </p>
-                <p style={{ fontSize: '14px', color: '#475569', margin: '0 0 24px' }}>
+                <p style={{ fontSize: '14px', color: textSecondary, margin: '0 0 24px' }}>
                   {players.length === 0 ? 'Players will appear here once assigned to you' : 'Try adjusting your search or filters'}
                 </p>
                 {(filterStage !== 'all' || searchTerm) && (
@@ -580,8 +590,8 @@ const StartSession = () => {
           batchesLoading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
               {[1,2,3].map(i => (
-                <div key={i} style={{ background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0', overflow: 'hidden', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i*0.08}s` }}>
-                  <div style={{ height: '80px', background: '#EEF2F7' }} />
+                <div key={i} style={{ background: surface, borderRadius: '16px', border: `1.5px solid ${border}`, overflow: 'hidden', animation: `skPulse 1.6s ease-in-out infinite`, animationDelay: `${i*0.08}s` }}>
+                  <div style={{ height: '80px', background: surface2 }} />
                   <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <Sk w="60%" h={14} r={6} />
                     <Sk w="40%" h={14} r={6} />
@@ -591,12 +601,12 @@ const StartSession = () => {
               ))}
             </div>
           ) : batches.length === 0 ? (
-            <div style={{ background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0', padding: '64px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-              <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-                <Layers size={32} color="#94A3B8" />
+            <div style={{ background: surface, borderRadius: '16px', border: `1.5px solid ${border}`, padding: '64px 32px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                <Layers size={32} color={textMuted} />
               </div>
-              <p style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>No batches assigned</p>
-              <p style={{ fontSize: '14px', color: '#475569', margin: 0 }}>
+              <p style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: '0 0 8px' }}>No batches assigned</p>
+              <p style={{ fontSize: '14px', color: textSecondary, margin: 0 }}>
                 Ask an admin to assign you to a batch from the Manage Batches page
               </p>
             </div>
@@ -606,12 +616,12 @@ const StartSession = () => {
                 <div
                   key={batch.batchId}
                   style={{
-                    background: '#FFFFFF', borderRadius: '16px', border: '1.5px solid #E2E8F0',
+                    background: surface, borderRadius: '16px', border: `1.5px solid ${border}`,
                     overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                     transition: 'box-shadow 0.3s ease, border-color 0.3s ease, transform 0.3s ease'
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 10px 36px rgba(99,102,241,0.22)'; e.currentTarget.style.borderColor = '#6366F1'; e.currentTarget.style.transform = 'translateY(-4px)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = border; e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
                   <div style={{ padding: '20px', background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)', color: 'white', position: 'relative', overflow: 'hidden' }}>
                     <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
@@ -631,18 +641,18 @@ const StartSession = () => {
                   <div style={{ padding: '16px 20px' }}>
                     {batch.players && batch.players.length > 0 && (
                       <div style={{ marginBottom: '14px' }}>
-                        <p style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '700', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Players</p>
+                        <p style={{ fontSize: '11px', color: textMuted, fontWeight: '700', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Players</p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {batch.players.slice(0, 4).map((p, idx) => (
                             <div key={p.playerId || idx} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <div style={{ width: '26px', height: '26px', borderRadius: '8px', background: avatarGradient(p.playerName || ''), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', color: 'white', flexShrink: 0 }}>
                                 {(p.playerName || '?').charAt(0).toUpperCase()}
                               </div>
-                              <span style={{ fontSize: '13px', color: '#0F172A', fontWeight: '500' }}>{p.playerName}</span>
+                              <span style={{ fontSize: '13px', color: textPrimary, fontWeight: '500' }}>{p.playerName}</span>
                             </div>
                           ))}
                           {batch.players.length > 4 && (
-                            <span style={{ fontSize: '12px', color: '#94A3B8', paddingLeft: '34px' }}>+{batch.players.length - 4} more</span>
+                            <span style={{ fontSize: '12px', color: textMuted, paddingLeft: '34px' }}>+{batch.players.length - 4} more</span>
                           )}
                         </div>
                       </div>

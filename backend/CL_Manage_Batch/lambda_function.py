@@ -116,6 +116,9 @@ def lambda_handler(event, context):
             doc = {
                 "batchName": batch_name,
                 "playerIds": player_ids,
+                "days": [str(d).strip() for d in body.get("days", []) if str(d).strip()],
+                "startTime": body.get("startTime") or None,
+                "endTime": body.get("endTime") or None,
                 "createdAt": now_ist(),
                 "createdBy": {"id": user["_id"], "name": user.get("name", "")},
             }
@@ -136,6 +139,12 @@ def lambda_handler(event, context):
                 update["batchName"] = body["batchName"].strip()
             if "playerIds" in body:
                 update["playerIds"] = unique_strings(body["playerIds"])
+            if "days" in body:
+                update["days"] = [str(d).strip() for d in body["days"] if str(d).strip()]
+            if "startTime" in body:
+                update["startTime"] = body["startTime"] or None
+            if "endTime" in body:
+                update["endTime"] = body["endTime"] or None
             update["updatedAt"] = now_ist()
             update["updatedBy"] = {"id": user["_id"], "name": user.get("name", "")}
             result = batches_col.update_one({"_id": batch_oid}, {"$set": update})

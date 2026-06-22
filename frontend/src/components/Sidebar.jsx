@@ -38,7 +38,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const [activeMode, setActiveMode] = useState(() => {
     if (location.pathname.startsWith('/coach')) return 'coach';
     if (location.pathname.startsWith('/admin')) return 'admin';
-    return localStorage.getItem('coachlife_active_mode') || 'admin';
+    return localStorage.getItem('coachlife_active_mode') || (currentUser?.role === 'coach' ? 'coach' : 'admin');
   });
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { User, Mail, Award, TrendingUp, FileText, BookOpen, ArrowLeft, ChevronRight, Calendar, Zap, Loader, Clock, CheckCircle } from 'lucide-react';
 
@@ -15,11 +16,11 @@ const Sk = ({ w, h, r = 8 }) => (
   <div style={{ width:w, height:h, borderRadius:r, background:'#EEF2F7', animation:'skPulse 1.6s ease-in-out infinite', flexShrink:0 }} />
 );
 
-const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SIcon, accent, surface = '#fff', border = '#E2E8F0', textPrimary = '#0F172A' }) => {
   const [hov, setHov] = React.useState(false);
   return (
     <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)} style={{
-      background:'#fff', border:`1.5px solid ${hov ? accent+'44' : '#E2E8F0'}`,
+      background: surface, border:`1.5px solid ${hov ? accent+'44' : border}`,
       borderRadius:'16px', padding:'20px', display:'flex', alignItems:'center', gap:'16px',
       boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
       transition:'all .2s', flex:1, minWidth:'140px',
@@ -29,7 +30,7 @@ const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
       </div>
       <div>
         <p style={{ fontSize:'10.5px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', margin:'0 0 4px', letterSpacing:'.5px' }}>{label}</p>
-        <p style={{ fontSize:'23px', fontWeight:'800', color:'#0F172A', margin:0 }}>{value}</p>
+        <p style={{ fontSize:'23px', fontWeight:'800', color: textPrimary, margin:0 }}>{value}</p>
       </div>
     </div>
   );
@@ -40,6 +41,14 @@ const PlayerDetail = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, fetchAssignedPlayersForCoach, userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E2E8F0';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#475569';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
   const [player, setPlayer] = useState(null);
   const [sessionCardIds, setSessionCardIds] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -164,7 +173,7 @@ const PlayerDetail = () => {
 
       try {
         setSessionsLoading(true);
-        const token = userToken || localStorage.getItem('userToken');
+        const token = userToken || JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken;
         const fetchedSessions = [];
 
         for (const sessionCardId of sessionCardIds) {
@@ -234,8 +243,8 @@ const PlayerDetail = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
             {[1, 2, 3, 4].map((i) => (
               <div key={i} style={{
-                background: '#FFFFFF', borderRadius: '8px', padding: '16px',
-                border: '1px solid #E2E8F0', animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
+                background: surface, borderRadius: '8px', padding: '16px',
+                border: `1px solid ${border}`, animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
               }}>
                 <div style={{ width: '50%', height: '14px', background: 'rgba(200, 200, 200, 0.3)', borderRadius: '4px', marginBottom: '8px' }} />
                 <div style={{ width: '40%', height: '24px', background: 'rgba(200, 200, 200, 0.3)', borderRadius: '4px' }} />
@@ -247,8 +256,8 @@ const PlayerDetail = () => {
             <div>
               {[1, 2].map((i) => (
                 <div key={i} style={{
-                  background: '#FFFFFF', borderRadius: '8px', padding: '24px',
-                  border: '1px solid #E2E8F0', marginBottom: '24px',
+                  background: surface, borderRadius: '8px', padding: '24px',
+                  border: `1px solid ${border}`, marginBottom: '24px',
                   animation: `pulse 2s ease-in-out infinite ${i * 0.15}s`
                 }}>
                   <div style={{ width: '40%', height: '18px', background: 'rgba(200, 200, 200, 0.3)', borderRadius: '4px', marginBottom: '16px' }} />
@@ -261,7 +270,7 @@ const PlayerDetail = () => {
                 </div>
               ))}
             </div>
-            <div style={{ background: '#FFFFFF', borderRadius: '8px', padding: '24px', border: '1px solid #E2E8F0', animation: 'pulse 2s ease-in-out infinite 0.2s' }}>
+            <div style={{ background: surface, borderRadius: '8px', padding: '24px', border: `1px solid ${border}`, animation: 'pulse 2s ease-in-out infinite 0.2s' }}>
               {[1, 2, 3].map((i) => (
                 <div key={i} style={{ paddingBottom: '12px', marginBottom: '12px', borderBottom: i < 3 ? '1px solid #F1F5F9' : 'none' }}>
                   <div style={{ width: '70%', height: '14px', background: 'rgba(200, 200, 200, 0.3)', borderRadius: '4px', marginBottom: '6px' }} />
@@ -297,7 +306,7 @@ const PlayerDetail = () => {
           </button>
           <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', padding: '48px 20px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
             <BookOpen size={48} style={{ margin: '0 auto 16px', opacity: 0.3, color: '#CBD5E1' }} />
-            <p style={{ fontSize: '16px', color: '#475569', margin: '0' }}>Player not found.</p>
+            <p style={{ fontSize: '16px', color: textSecondary, margin: '0' }}>Player not found.</p>
           </div>
         </div>
       </Layout>
@@ -345,10 +354,10 @@ const PlayerDetail = () => {
 
         {/* Summary Cards */}
         <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' }}>
-          <SummaryCard label="Total Points" value={player.totalPoints} icon={Award} accent="#6366F1" />
-          <SummaryCard label="Sessions" value={sessions.length} icon={BookOpen} accent="#10B981" />
-          <SummaryCard label="Balance" value={player.currentPoints} icon={TrendingUp} accent="#F59E0B" />
-          <SummaryCard label="Status" value={player.status || 'active'} icon={CheckCircle} accent={player.status === 'active' ? '#10B981' : '#EF4444'} />
+          <SummaryCard label="Total Points" value={player.totalPoints} icon={Award} accent="#6366F1" surface={surface} border={border} textPrimary={textPrimary} />
+          <SummaryCard label="Sessions" value={sessions.length} icon={BookOpen} accent="#10B981" surface={surface} border={border} textPrimary={textPrimary} />
+          <SummaryCard label="Balance" value={player.currentPoints} icon={TrendingUp} accent="#F59E0B" surface={surface} border={border} textPrimary={textPrimary} />
+          <SummaryCard label="Status" value={player.status || 'active'} icon={CheckCircle} accent={player.status === 'active' ? '#10B981' : '#EF4444'} surface={surface} border={border} textPrimary={textPrimary} />
         </div>
 
         {/* Hero info strip */}
@@ -392,88 +401,88 @@ const PlayerDetail = () => {
         </div>
 
         {/* Personal Information Section */}
-        <div style={{ background: '#FFFFFF', borderRadius: '12px', padding: '24px', marginBottom: '32px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: surface, borderRadius: '12px', padding: '24px', marginBottom: '32px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
             <div style={{ width: '4px', height: '28px', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', borderRadius: '2px' }}></div>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: 0 }}>Personal Information</h3>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: 0 }}>Personal Information</h3>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
             {/* Father Name */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <User size={16} color="#064E3B" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Father's Name</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Father's Name</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>{player.fatherName}</p>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>{player.fatherName}</p>
             </div>
 
             {/* Mother Name */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <User size={16} color="#7C2D12" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Mother's Name</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Mother's Name</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>{player.motherName}</p>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>{player.motherName}</p>
             </div>
 
             {/* Date of Birth */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <Calendar size={16} color="#7F1D1D" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Date of Birth</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Date of Birth</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>
                 {player.dateOfBirth ? new Date(player.dateOfBirth).toLocaleDateString() : 'N/A'}
               </p>
             </div>
 
             {/* Primary Phone */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <Mail size={16} color="#059669" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Primary Phone</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Primary Phone</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>{player.phone}</p>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>{player.phone}</p>
             </div>
 
             {/* Alternative Number */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <Mail size={16} color="#7C3AED" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Alternative Number</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Alternative Number</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>{player.alternativeNumber || 'N/A'}</p>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>{player.alternativeNumber || 'N/A'}</p>
             </div>
 
             {/* Registration Date */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <Calendar size={16} color="#0891B2" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Registration Date</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Registration Date</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>
                 {player.dateOfRegistration ? new Date(player.dateOfRegistration).toLocaleDateString() : 'N/A'}
               </p>
             </div>
 
             {/* Status */}
-            <div style={{ padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
+            <div style={{ padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
-              <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px' }}>Status</label>
+              <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px' }}>Status</label>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px',
                 background: player.status === 'active' ? '#D1FAE5' : '#FEE2E2',
@@ -486,24 +495,24 @@ const PlayerDetail = () => {
             </div>
 
             {/* Address */}
-            <div style={{ gridColumn: 'span 2', padding: '16px', background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', transition: 'all 0.3s ease' }}
+            <div style={{ gridColumn: 'span 2', padding: '16px', background: surface2, borderRadius: '10px', border: `1px solid ${border}`, transition: 'all 0.3s ease' }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)'; e.currentTarget.style.borderColor = '#CBD5E1'; }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '#E2E8F0'; }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <FileText size={16} color="#0369A1" />
-                <label style={{ fontSize: '11px', color: '#475569', fontWeight: '700', textTransform: 'uppercase' }}>Address</label>
+                <label style={{ fontSize: '11px', color: textSecondary, fontWeight: '700', textTransform: 'uppercase' }}>Address</label>
               </div>
-              <p style={{ fontSize: '15px', color: '#0F172A', fontWeight: '600', margin: 0 }}>{player.address || 'N/A'}</p>
+              <p style={{ fontSize: '15px', color: textPrimary, fontWeight: '600', margin: 0 }}>{player.address || 'N/A'}</p>
             </div>
           </div>
         </div>
 
         {/* Player Sessions Section */}
-        <div style={{ background: '#FFFFFF', borderRadius: '12px', padding: '24px', marginBottom: '32px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: surface, borderRadius: '12px', padding: '24px', marginBottom: '32px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ width: '4px', height: '28px', background: 'linear-gradient(180deg, #3B82F6, #1D4ED8)', borderRadius: '2px' }}></div>
-              <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: 0 }}>Player Sessions</h3>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: 0 }}>Player Sessions</h3>
             </div>
             <span style={{ padding: '6px 14px', background: '#E0E7FF', color: '#3B82F6', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
               {sessions.length} Total
@@ -513,7 +522,7 @@ const PlayerDetail = () => {
           {sessionsLoading ? (
             <div style={{ textAlign: 'center', padding: '48px 32px' }}>
               <Loader size={40} style={{ margin: '0 auto 16px', animation: 'spin 1s linear infinite', color: '#94A3B8' }} />
-              <p style={{ color: '#475569', fontSize: '14px', fontWeight: '500' }}>Loading sessions...</p>
+              <p style={{ color: textSecondary, fontSize: '14px', fontWeight: '500' }}>Loading sessions...</p>
             </div>
           ) : sessions.length > 0 ? (
             <div>
@@ -522,39 +531,39 @@ const PlayerDetail = () => {
                 <div style={{ marginBottom: '40px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '24px' }}>
                     <Zap size={20} color="#94A3B8" />
-                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>In Progress Sessions</h4>
-                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: '#F8FAFC', color: '#475569', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>In Progress Sessions</h4>
+                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: surface2, color: textSecondary, borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
                       {sessions.filter(s => isInProgress(s.status)).length}
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
                     {sessions.filter(s => isInProgress(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: '#F8FAFC', border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
+                      <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
                         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
                       >
                         <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: 'radial-gradient(circle, rgba(107, 114, 128, 0.1) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }}></div>
 
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: '#FFFFFF', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ padding: '8px', background: surface, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Zap size={18} color="#94A3B8" />
                           </div>
                           <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
+                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
+                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
                           </div>
                         </div>
 
-                        <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {session.Description || `Session ${session.session || 'N/A'}`}
                         </p>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: '#F8FAFC', color: '#475569', borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>In Progress</span>
+                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>In Progress</span>
                           <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
                           {session.totalPoints && (
-                            <span style={{ padding: '5px 11px', background: '#F8FAFC', color: '#475569', borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <Zap size={12} />{session.totalPoints} pts
                             </span>
                           )}
@@ -579,36 +588,36 @@ const PlayerDetail = () => {
                 <div style={{ marginBottom: '40px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '24px' }}>
                     <Clock size={20} color="#94A3B8" />
-                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>Upcoming Sessions</h4>
-                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: '#F8FAFC', color: '#475569', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>Upcoming Sessions</h4>
+                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: surface2, color: textSecondary, borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
                       {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status)).length}
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
                     {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: '#F8FAFC', border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
+                      <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
                         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
                       >
                         <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: 'radial-gradient(circle, rgba(107, 114, 128, 0.1) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }}></div>
 
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: '#FFFFFF', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ padding: '8px', background: surface, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Clock size={18} color="#94A3B8" />
                           </div>
                           <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
+                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
+                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
                           </div>
                         </div>
 
-                        <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {session.Description || `Session ${session.session || 'N/A'}`}
                         </p>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: '#F8FAFC', color: '#475569', borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>
+                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>
                             {session.status === 'in_progress' ? 'In Progress' : 'Upcoming'}
                           </span>
                           <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
@@ -636,38 +645,38 @@ const PlayerDetail = () => {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '24px' }}>
                     <CheckCircle size={20} color="#94A3B8" />
-                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>Completed Sessions</h4>
-                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: '#F8FAFC', color: '#475569', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>Completed Sessions</h4>
+                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: surface2, color: textSecondary, borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
                       {sessions.filter(s => isCompleted(s.status)).length}
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
                     {sessions.filter(s => isCompleted(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: '#F8FAFC', border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
+                      <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
                         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
                       >
                         <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: 'radial-gradient(circle, rgba(107, 114, 128, 0.1) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }}></div>
 
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: '#FFFFFF', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ padding: '8px', background: surface, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <CheckCircle size={18} color="#94A3B8" />
                           </div>
                           <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: '#0F172A', margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: '#475569', margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
+                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
+                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
                           </div>
                         </div>
 
-                        <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {session.Description || `Session ${session.session || 'N/A'}`}
                         </p>
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: '#F8FAFC', color: '#475569', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>Completed</span>
+                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>Completed</span>
                           <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
-                          <span style={{ padding: '5px 11px', background: '#F8FAFC', color: '#475569', borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <Zap size={12} />{session.totalPoints || 0}
                           </span>
                         </div>
@@ -687,10 +696,10 @@ const PlayerDetail = () => {
               )}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '48px 32px', background: '#F8FAFC', borderRadius: '10px', border: '2px dashed #E2E8F0' }}>
+            <div style={{ textAlign: 'center', padding: '48px 32px', background: surface2, borderRadius: '10px', border: '2px dashed #E2E8F0' }}>
               <BookOpen size={40} style={{ margin: '0 auto 16px', opacity: 0.4, color: '#CBD5E1' }} />
-              <p style={{ color: '#475569', fontSize: '15px', margin: 0, fontWeight: '500' }}>No sessions assigned yet</p>
-              <p style={{ color: '#94A3B8', fontSize: '13px', margin: '8px 0 0 0' }}>Sessions will appear here once they are created</p>
+              <p style={{ color: textSecondary, fontSize: '15px', margin: 0, fontWeight: '500' }}>No sessions assigned yet</p>
+              <p style={{ color: textMuted, fontSize: '13px', margin: '8px 0 0 0' }}>Sessions will appear here once they are created</p>
             </div>
           )}
         </div>

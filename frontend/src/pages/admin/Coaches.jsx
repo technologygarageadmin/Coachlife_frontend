@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
+import { useTheme } from '../../context/ThemeContext';
 
 const COACH_API_URL = 'https://4w5wn37653.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Adding_Coaches';
 
@@ -47,7 +48,7 @@ const PALETTES = [
   ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
   ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
 ];
-const pal = (name = '') => PALETTES[name.charCodeAt(0) % PALETTES.length];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
 
 /* ── skeleton ── */
 const Sk = ({ w, h, r = 8 }) => (
@@ -55,14 +56,14 @@ const Sk = ({ w, h, r = 8 }) => (
 );
 
 /* ── stat summary card ── */
-const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SummaryIcon, accent, surface, border }) => {
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'16px', padding:'18px 20px',
-        border:`1.5px solid ${hov ? accent+'50' : '#F1F5F9'}`,
+        background: surface, borderRadius:'16px', padding:'18px 20px',
+        border:`1.5px solid ${hov ? accent+'50' : border}`,
         boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
         display:'flex', alignItems:'center', gap:'14px',
         transition:'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
@@ -80,7 +81,7 @@ const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
 };
 
 /* ── coach card ── */
-const CoachCard = ({ coach, onEdit, onDelete, onView }) => {
+const CoachCard = ({ coach, onEdit, onDelete, onView, surface, border }) => {
   const [hov, setHov] = useState(false);
   const [accent, light] = pal(coach.name || '');
   const playerCount = coach.assignedPlayers?.length || 0;
@@ -91,8 +92,8 @@ const CoachCard = ({ coach, onEdit, onDelete, onView }) => {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'20px',
-        border:`1.5px solid ${hov ? accent+'40' : '#F1F5F9'}`,
+        background: surface, borderRadius:'20px',
+        border:`1.5px solid ${hov ? accent+'40' : border}`,
         boxShadow: hov ? `0 16px 48px ${accent}22, 0 4px 16px rgba(0,0,0,.08)` : '0 2px 10px rgba(0,0,0,.06)',
         overflow:'hidden', transition:'all .25s cubic-bezier(.16,1,.3,1)',
         transform: hov ? 'translateY(-5px)' : 'none',
@@ -122,7 +123,7 @@ const CoachCard = ({ coach, onEdit, onDelete, onView }) => {
           position:'absolute', bottom:'-24px', left:'20px',
           width:'50px', height:'50px', borderRadius:'50%',
           background:`linear-gradient(135deg, ${accent}, ${light})`,
-          border:'3px solid #fff',
+          border:`3px solid ${surface}`,
           display:'flex', alignItems:'center', justifyContent:'center',
           color:'#fff', fontWeight:'800', fontSize:'20px',
           boxShadow:`0 4px 16px ${accent}55`, flexShrink:0,
@@ -163,19 +164,19 @@ const CoachCard = ({ coach, onEdit, onDelete, onView }) => {
           </div>
         </div>
 
-        <div style={{ height:'1px', background:'#F1F5F9' }} />
+        <div style={{ height:'1px', background: border }} />
 
         <div style={{ display:'flex', gap:'8px' }}>
           <button
             onClick={e => { e.stopPropagation(); onEdit(coach); }}
             style={{
-              flex:1, padding:'8px', borderRadius:'9px', border:'1.5px solid #E2E8F0',
+              flex:1, padding:'8px', borderRadius:'9px', border:`1.5px solid ${border}`,
               background:'#F8FAFC', color:'#6366F1', fontWeight:'700', fontSize:'12px',
               cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px',
               transition:'all .18s ease',
             }}
             onMouseEnter={e => { e.currentTarget.style.background='#EEF2FF'; e.currentTarget.style.borderColor='#6366F1'; }}
-            onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor='#E2E8F0'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor=border; }}
           >
             <Edit3 size={12} /> Edit
           </button>
@@ -203,6 +204,14 @@ const CoachCard = ({ coach, onEdit, onDelete, onView }) => {
 ════════════════════════════════════════════════ */
 const Coaches = () => {
   const { coaches, fetchCoaches, deleteCoachRemote, userToken, clearCoachesCache, updateCoachRemote } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#F1F5F9';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#64748B';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
 
   const [toast, setToast]               = useState({ msg:'', type:'success' });
   const [loading, setLoading]           = useState(false);
@@ -407,41 +416,41 @@ const Coaches = () => {
         {/* ── Summary stats ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }} className="co-stats">
           {isFetching ? [1,2,3,4].map(i => (
-            <div key={i} style={{ background:'#fff', borderRadius:'16px', padding:'18px 20px', border:'1px solid #F1F5F9', display:'flex', gap:'14px', alignItems:'center' }}>
+            <div key={i} style={{ background: surface, borderRadius:'16px', padding:'18px 20px', border:`1px solid ${border}`, display:'flex', gap:'14px', alignItems:'center' }}>
               <Sk w="48px" h="48px" r={13} />
               <div style={{ flex:1 }}><Sk w="60%" h="10px" /><div style={{marginTop:8}}><Sk w="42%" h="22px" /></div></div>
             </div>
           )) : <>
-            <SummaryCard label="Total Coaches"  value={stats.total}        icon={Users}      accent="#6366F1" />
-            <SummaryCard label="Total Players"  value={stats.totalPlayers} icon={BookOpen}   accent="#10B981" />
-            <SummaryCard label="Avg Players"    value={stats.avgPlayers}   icon={TrendingUp} accent="#F59E0B" />
-            <SummaryCard label="Admin Coaches"  value={stats.admins}       icon={Shield}     accent="#EC4899" />
+            <SummaryCard label="Total Coaches"  value={stats.total}        icon={Users}      accent="#6366F1" surface={surface} border={border} />
+            <SummaryCard label="Total Players"  value={stats.totalPlayers} icon={BookOpen}   accent="#10B981" surface={surface} border={border} />
+            <SummaryCard label="Avg Players"    value={stats.avgPlayers}   icon={TrendingUp} accent="#F59E0B" surface={surface} border={border} />
+            <SummaryCard label="Admin Coaches"  value={stats.admins}       icon={Shield}     accent="#EC4899" surface={surface} border={border} />
           </>}
         </div>
 
         {/* ── Filter / sort bar ── */}
         <div style={{
           display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px',
-          background:'#fff', padding:'12px 16px', borderRadius:'14px',
-          border:'1px solid #F1F5F9', boxShadow:'0 2px 6px rgba(0,0,0,.04)',
+          background: surface, padding:'12px 16px', borderRadius:'14px',
+          border:`1px solid ${border}`, boxShadow:'0 2px 6px rgba(0,0,0,.04)',
           flexWrap:'wrap',
         }} className="co-bar">
           {/* Search */}
           <div style={{
             display:'flex', alignItems:'center', gap:'8px', flex:'1', minWidth:'200px', maxWidth:'340px',
-            border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'8px 12px', background:'#FAFBFC',
+            border:`1.5px solid ${border}`, borderRadius:'10px', padding:'8px 12px', background: surface2,
             transition:'border-color .18s, box-shadow .18s',
           }}
           onFocusCapture={e => { e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(99,102,241,.1)'; }}
-          onBlurCapture={e => { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.boxShadow='none'; }}>
-            <Search size={15} color="#94A3B8" />
+          onBlurCapture={e => { e.currentTarget.style.borderColor=border; e.currentTarget.style.boxShadow='none'; }}>
+            <Search size={15} color={textMuted} />
             <input
               type="text" placeholder="Search coaches…" value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color:'#1E293B', flex:1, fontFamily:'inherit' }}
             />
             {searchTerm && (
-              <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color:'#94A3B8', padding:0, display:'flex' }}>
+              <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color: textMuted, padding:0, display:'flex' }}>
                 <X size={14} />
               </button>
             )}
@@ -452,9 +461,9 @@ const Coaches = () => {
             {['all','coach','admin'].map(role => (
               <button key={role} onClick={() => setRoleFilter(role)} style={{
                 padding:'7px 14px', borderRadius:'999px', fontSize:'12px', fontWeight:'700',
-                border: roleFilter === role ? '1.5px solid #6366F1' : '1.5px solid #E2E8F0',
-                background: roleFilter === role ? '#6366F1' : '#F8FAFC',
-                color: roleFilter === role ? '#fff' : '#64748B',
+                border: roleFilter === role ? '1.5px solid #6366F1' : `1.5px solid ${border}`,
+                background: roleFilter === role ? '#6366F1' : surface2,
+                color: roleFilter === role ? '#fff' : textSecondary,
                 cursor:'pointer', transition:'all .18s ease', textTransform:'capitalize',
               }}>
                 {role === 'all' ? 'All' : role}
@@ -469,7 +478,7 @@ const Coaches = () => {
                 padding:'7px 12px', borderRadius:'8px', fontSize:'11.5px', fontWeight:'700',
                 border: sortBy === key ? '1.5px solid #6366F1' : '1.5px solid transparent',
                 background: sortBy === key ? '#EEF2FF' : 'transparent',
-                color: sortBy === key ? '#6366F1' : '#94A3B8',
+                color: sortBy === key ? '#6366F1' : textMuted,
                 cursor:'pointer', transition:'all .18s ease', display:'flex', alignItems:'center', gap:'4px',
               }}>
                 {sortBy === key && <TrendingUp size={11} />} {label}
@@ -478,7 +487,7 @@ const Coaches = () => {
           </div>
 
           {/* Count */}
-          <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:'12px', fontWeight:'700', color: textMuted, whiteSpace:'nowrap' }}>
             <span style={{ color:'#6366F1' }}>{filteredCoaches.length}</span> / {coaches.length}
           </span>
         </div>
@@ -487,7 +496,7 @@ const Coaches = () => {
         {isFetching ? (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'18px' }}>
             {[1,2,3,4,5,6].map(i => (
-              <div key={i} style={{ borderRadius:'20px', overflow:'hidden', border:'1.5px solid #F1F5F9', background:'#fff' }}>
+              <div key={i} style={{ borderRadius:'20px', overflow:'hidden', border:`1.5px solid ${border}`, background: surface }}>
                 <div style={{ height:'72px', background:'#EEF2F7', animation:'plsPulse 1.6s ease-in-out infinite' }} />
                 <div style={{ padding:'36px 20px 20px', display:'flex', flexDirection:'column', gap:'12px' }}>
                   <div><Sk w="65%" h="16px" /><div style={{marginTop:7}}><Sk w="45%" h="12px" /></div></div>
@@ -506,10 +515,10 @@ const Coaches = () => {
             <div style={{ width:'80px', height:'80px', borderRadius:'22px', background:'linear-gradient(135deg,#EEF2FF,#E0E7FF)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', boxShadow:'0 8px 24px #6366F120' }}>
               <Users size={36} color="#6366F1" />
             </div>
-            <p style={{ fontSize:'17px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>
+            <p style={{ fontSize:'17px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>
               {searchTerm || roleFilter !== 'all' ? 'No coaches found' : 'No coaches yet'}
             </p>
-            <p style={{ fontSize:'13.5px', color:'#94A3B8', margin:'0 0 24px' }}>
+            <p style={{ fontSize:'13.5px', color: textMuted, margin:'0 0 24px' }}>
               {searchTerm ? 'Try a different search or clear the filter' : 'Add your first coach to get started'}
             </p>
             {!searchTerm && roleFilter === 'all' && (
@@ -528,7 +537,7 @@ const Coaches = () => {
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'18px' }}>
             {filteredCoaches.map((c, i) => (
               <div key={c.coachId} className="co-card" style={{ animationDelay:`${i * 40}ms` }}>
-                <CoachCard coach={c} onEdit={openEdit} onDelete={setDeleteConfirm} onView={setSelectedCoach} />
+                <CoachCard coach={c} onEdit={openEdit} onDelete={setDeleteConfirm} onView={setSelectedCoach} surface={surface} border={border} />
               </div>
             ))}
           </div>
@@ -542,15 +551,15 @@ const Coaches = () => {
             <div style={{ width:'68px', height:'68px', borderRadius:'18px', background:'#FEF2F2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 18px', boxShadow:'0 4px 16px #EF444420' }}>
               <Trash2 size={30} color="#EF4444" />
             </div>
-            <h3 style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>Delete this coach?</h3>
-            <p style={{ fontSize:'13.5px', color:'#64748B', margin:'0 0 28px', lineHeight:1.6 }}>
+            <h3 style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>Delete this coach?</h3>
+            <p style={{ fontSize:'13.5px', color: textSecondary, margin:'0 0 28px', lineHeight:1.6 }}>
               This cannot be undone. All associated data will be permanently removed.
             </p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
               <button onClick={() => setDeleteConfirm(null)}
-                style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background:'#F1F5F9', color:'#475569', border:'1.5px solid #E2E8F0', cursor:'pointer', fontSize:'13.5px' }}
+                style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background: surface2, color: textSecondary, border:`1.5px solid ${border}`, cursor:'pointer', fontSize:'13.5px' }}
                 onMouseEnter={e => e.currentTarget.style.background='#E2E8F0'}
-                onMouseLeave={e => e.currentTarget.style.background='#F1F5F9'}>
+                onMouseLeave={e => e.currentTarget.style.background=surface2}>
                 Cancel
               </button>
               <button
@@ -619,8 +628,8 @@ const Coaches = () => {
                     { label:'Email',          value: selectedCoach.email },
                     { label:'Specialization', value: selectedCoach.specialization },
                   ].map(({ label, value }) => (
-                    <div key={label} style={{ padding:'10px 14px', borderRadius:'10px', background:'#F8FAFC', border:'1px solid #F1F5F9', marginBottom:'8px' }}>
-                      <p style={{ margin:'0 0 3px', fontSize:'10px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase' }}>{label}</p>
+                    <div key={label} style={{ padding:'10px 14px', borderRadius:'10px', background: surface2, border:`1px solid ${border}`, marginBottom:'8px' }}>
+                      <p style={{ margin:'0 0 3px', fontSize:'10px', fontWeight:'700', color: textMuted, textTransform:'uppercase' }}>{label}</p>
                       <p style={{ margin:0, fontSize:'13.5px', fontWeight:'600', color: value?'#1E293B':'#CBD5E1' }}>{value || '-'}</p>
                     </div>
                   ))}
@@ -694,9 +703,9 @@ const Coaches = () => {
                   style={{
                     padding:'10px 28px', borderRadius:'9px', fontSize:'13.5px', fontWeight:'700',
                     textTransform:'capitalize', border:'1.5px solid',
-                    borderColor: isSelected ? '#6366F1' : '#E2E8F0',
-                    background: isSelected ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : '#F8FAFC',
-                    color: isSelected ? '#fff' : '#64748B',
+                    borderColor: isSelected ? '#6366F1' : border,
+                    background: isSelected ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : surface2,
+                    color: isSelected ? '#fff' : textSecondary,
                     boxShadow: isSelected ? '0 4px 12px rgba(99,102,241,.3)' : 'none',
                     cursor: loading ? 'not-allowed' : 'pointer',
                     transition:'all .18s ease', opacity: loading ? 0.6 : 1,
@@ -715,9 +724,9 @@ const Coaches = () => {
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginTop:'24px' }}>
             <button onClick={closeModal} disabled={loading}
-              style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background:'#F1F5F9', color:'#475569', border:'1.5px solid #E2E8F0', cursor: loading?'not-allowed':'pointer', fontSize:'13.5px', opacity: loading?0.6:1 }}
+              style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background: surface2, color: textSecondary, border:`1.5px solid ${border}`, cursor: loading?'not-allowed':'pointer', fontSize:'13.5px', opacity: loading?0.6:1 }}
               onMouseEnter={e => !loading && (e.currentTarget.style.background='#E2E8F0')}
-              onMouseLeave={e => !loading && (e.currentTarget.style.background='#F1F5F9')}>
+              onMouseLeave={e => !loading && (e.currentTarget.style.background=surface2)}>
               Cancel
             </button>
             <button onClick={handleSubmit} disabled={loading}

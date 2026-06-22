@@ -204,7 +204,7 @@ export const useStore = create(
 
   getAllRoles: () => {
     const state = get();
-    return state.currentUser?.roles || [state.currentUser?.role] || [];
+    return state.currentUser?.roles || (state.currentUser?.role ? [state.currentUser.role] : []);
   },
 
   // Data state
@@ -559,7 +559,6 @@ export const useStore = create(
       const headers = { 'Content-Type': 'application/json' };
       if (token) {
         headers['userToken'] = token;
-        headers['Authorization'] = `Bearer ${token}`;
       }
 
       const response = await axios.get(GET_PLAYERS_URL, { headers });
@@ -853,7 +852,8 @@ export const useStore = create(
             assignedPlayers: [],
             totalSessions: 0,
             joinDate: new Date().toISOString().split('T')[0]
-          }]
+          }],
+          coachesLastFetchTime: 0,
         }));
         return { success: true, data };
       } else {
@@ -883,7 +883,6 @@ export const useStore = create(
       const headers = { 'Content-Type': 'application/json' };
       if (token) {
         headers['userToken'] = token;
-        headers['Authorization'] = `Bearer ${token}`;
       }
 
       const response = await axios.get(VIEW_COACHES_URL, { headers });
@@ -1184,7 +1183,7 @@ export const useStore = create(
         redeemId: `rd${get().redeemHistory.length + 1}`,
         playerId,
         rewardId,
-        rewardName: reward.name,
+        rewardName: reward.rewardName,
         pointsUsed: reward.pointsRequired,
         date: new Date().toISOString().split('T')[0],
         status: 'completed',

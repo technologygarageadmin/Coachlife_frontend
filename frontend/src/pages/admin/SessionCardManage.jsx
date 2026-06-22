@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
@@ -102,18 +102,18 @@ const SessionCardManage = () => {
     }
   }, []);
 
-  // Fetch players on mount (only once)
-  useEffect(() => {
-    fetchPlayers();
-    fetchBatches();
-  }, [userToken]);
+  const isFirstMount = useRef(true);
 
-  // Refetch whenever this page is visited via navigation (location key changes)
+  // Fetch data once on mount + on each navigation visit
   useEffect(() => {
     setIsFetching(true);
     setSessionCards([]);
-    setSelectedPlayer(null);
+    if (!isFirstMount.current) {
+      setSelectedPlayer(null);
+    }
+    isFirstMount.current = false;
     fetchPlayers();
+    fetchBatches();
   }, [location.key]);
 
   // Fetch session cards when player is selected (with caching)
@@ -124,7 +124,8 @@ const SessionCardManage = () => {
     } else {
       setSessionCards([]);
     }
-  }, [selectedPlayer?.playerId, selectedPlayer?.sessionCardIds?.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlayer?.playerId, JSON.stringify(selectedPlayer?.sessionCardIds)]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -474,734 +475,285 @@ const SessionCardManage = () => {
     navigate(`/admin/edit-session-card/${cardId}`, { state: { playerId: selectedPlayer.playerId } });
   };
 
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E5E7EB';
+  const textPrimary = dark ? 'var(--cl-text)' : '#111827';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#64748B';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
+  const statusColors = (s) => {
+    const v = s?.toLowerCase();
+    if (v === 'completed') return { bg: '#DCFCE7', text: '#166534' };
+    if (v === 'in progress') return { bg: '#DBEAFE', text: '#075985' };
+    if (v === 'upcoming') return { bg: '#FEF3C7', text: '#92400E' };
+    return { bg: dark ? 'rgba(255,255,255,0.08)' : '#F3F4F6', text: dark ? '#94A3B8' : '#6B7280' };
+  };
+
   return (
     <Layout>
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
+        @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
         @keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }
       `}</style>
 
       {toastMessage && (
-        <Toast
-          message={toastMessage}
-          type={toastType}
-          duration={3000}
-          onClose={() => setToastMessage('')}
-        />
+        <Toast message={toastMessage} type={toastType} duration={3000} onClose={() => setToastMessage('')} />
       )}
 
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: isMobile ? '0 12px' : isNarrow ? '0 20px' : '0 32px' }}>
-        {/* ── Header banner ── */}
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: isMobile ? '0 12px' : '0 24px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
+
+        {/* ── Header ── */}
         <div style={{
           background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-          borderRadius: '20px',
-          padding: isMobile ? '20px 16px' : '28px 32px',
-          marginBottom: '24px',
+          borderRadius: '16px', padding: '20px 28px', marginBottom: '16px', flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap',
-          boxShadow: '0 12px 40px rgba(6,0,48,.3)',
+          boxShadow: '0 8px 32px rgba(6,0,48,.3)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.2)', flexShrink: 0 }}>
-              <Sparkles size={24} color="#fff" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Sparkles size={20} color="#fff" />
             </div>
             <div>
-              <h1 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>
-                Session Card Management
-              </h1>
-              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
-                Create, manage, and monitor session cards for all players
+              <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#fff', margin: '0 0 2px', letterSpacing: '-.4px' }}>Session Card Management</h1>
+              <p style={{ fontSize: '12px', color: 'rgba(255,255,255,.55)', margin: 0 }}>
+                {players.length} players · {sessionCards.length} cards loaded{selectedPlayer ? ` · ${selectedPlayer.playerName}` : ''}
               </p>
             </div>
           </div>
-        </div>
 
-        {/* ── Summary stats ── */}
-        <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <SummaryCard label="Total Players" value={players.length} icon={Users} accent="#6366F1" dark={dark} />
-          <SummaryCard label="Total Cards" value={sessionCards.length} icon={Star} accent="#F59E0B" dark={dark} />
-          <SummaryCard label="Selected Player" value={selectedPlayer ? selectedPlayer.playerName || '✓' : '-'} icon={User} accent="#10B981" dark={dark} />
-        </div>
-
-        {/* View toggle: By Student / By Batch */}
-        <div style={{
-          display: 'inline-flex',
-          gap: '4px',
-          background: dark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
-          padding: '4px',
-          borderRadius: '12px',
-          marginBottom: isMobile ? '16px' : '24px',
-          border: dark ? '1px solid rgba(255,255,255,0.1)' : 'none',
-        }}>
-          {[
-            { key: 'student', label: 'By Student', Icon: User },
-            { key: 'batch', label: 'By Batch', Icon: Layers }
-          ].map(tab => {
-            const active = viewMode === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={() => setViewMode(tab.key)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: isMobile ? '8px 14px' : '9px 20px',
-                  borderRadius: '9px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  transition: 'all 0.2s',
-                  background: active ? 'linear-gradient(135deg, #060030ff 0%, #3b0080 100%)' : 'transparent',
-                  color: active ? 'white' : (dark ? 'rgba(255,255,255,0.5)' : '#6B7280'),
-                  boxShadow: active ? '0 2px 8px rgba(6,0,48,0.25)' : 'none'
-                }}
-              >
-                <tab.Icon size={14} />
-                {tab.label}
-              </button>
-            );
-          })}
+          {/* View toggle inside header */}
+          <div style={{ display: 'inline-flex', gap: '3px', background: 'rgba(255,255,255,0.1)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.15)' }}>
+            {[{ key: 'student', label: 'By Student', Icon: User }, { key: 'batch', label: 'By Batch', Icon: Layers }].map(tab => {
+              const active = viewMode === tab.key;
+              return (
+                <button key={tab.key} onClick={() => setViewMode(tab.key)} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '7px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                  fontSize: '12.5px', fontWeight: '600', transition: 'all 0.18s',
+                  background: active ? 'rgba(255,255,255,0.18)' : 'transparent',
+                  color: active ? '#fff' : 'rgba(255,255,255,0.5)',
+                  boxShadow: active ? '0 1px 6px rgba(0,0,0,0.2)' : 'none'
+                }}>
+                  <tab.Icon size={13} /> {!isMobile && tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {isFetching ? (
-          <div style={{
-            display: 'flex',
-            flexDirection: isNarrow ? 'column' : 'row',
-            alignItems: isNarrow ? 'stretch' : 'center',
-            justifyContent: 'center',
-            minHeight: '400px',
-            gap: '24px'
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ marginBottom: '16px' }}>
-                <Sk w="100%" h="20px" r={8} />
-              </div>
-              {[...Array(6)].map((_, i) => (
-                <div key={i} style={{ marginBottom: '12px' }}>
-                  <Sk w="100%" h="60px" r={8} />
-                </div>
-              ))}
+          <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
+            <div style={{ width: '260px', flexShrink: 0, borderRadius: '14px', background: surface, border: `1px solid ${border}`, padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[1,2,3,4,5,6].map(i => <div key={i} style={{ height: '60px', borderRadius: '10px', background: surface2, animation: 'skPulse 1.5s ease infinite', animationDelay: `${i*0.1}s` }} />)}
             </div>
-            {!isNarrow && (
-              <div style={{ flex: 1.5 }}>
-                <div style={{ marginBottom: '16px' }}><Sk w="100%" h="300px" r={12} /></div>
-                <Sk w="100%" h="200px" r={12} />
-              </div>
-            )}
+            <div style={{ flex: 1, borderRadius: '14px', background: surface, border: `1px solid ${border}`, padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Loader size={28} color="#6366F1" style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
           </div>
         ) : viewMode === 'student' ? (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isNarrow ? '1fr' : '1fr 1.5fr',
-            gap: isMobile ? '16px' : '24px'
-          }}>
-            {/* Players List Section - hidden on narrow when a player is selected */}
+          <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
+
+            {/* ── LEFT: Player list ── */}
             {(!isNarrow || !selectedPlayer) && (
-              <div>
-                <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                  <div style={{ padding: '20px', borderBottom: `2px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`, background: dark ? 'rgba(255,255,255,0.03)' : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: dark ? 'var(--cl-text)' : '#111827' }}>
-                        Players
-                      </h2>
-                    </div>
-                    <p style={{ fontSize: '13px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>
-                      {filteredPlayers.length} available
-                    </p>
-                  </div>
+              <div style={{ width: isNarrow ? '100%' : '260px', flexShrink: 0, background: surface, border: `1px solid ${border}`, borderRadius: '14px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {/* Search */}
+                <div style={{ padding: '12px', borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+                  <input
+                    type="text"
+                    placeholder="Search players..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    style={{ width: '100%', border: `1px solid ${border}`, outline: 'none', fontSize: '13px', background: surface2, color: textPrimary, borderRadius: '8px', padding: '8px 12px', boxSizing: 'border-box' }}
+                    onFocus={e => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 2px rgba(99,102,241,0.15)'; }}
+                    onBlur={e => { e.target.style.borderColor = border; e.target.style.boxShadow = 'none'; }}
+                  />
+                  <p style={{ fontSize: '11px', color: textMuted, margin: '8px 0 0', fontWeight: '500' }}>{filteredPlayers.length} players</p>
+                </div>
 
-                  {/* Search */}
-                  <div style={{ padding: '16px' }}>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 14px',
-                      border: `2px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                      background: dark ? 'rgba(255,255,255,0.04)' : '#FFFFFF'
-                    }}>
-                      <Search size={18} color="#9CA3AF" />
-                      <input
-                        type="text"
-                        placeholder="Search players..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          fontSize: '14px',
-                          background: 'transparent'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Players List */}
-                  <div style={{ maxHeight: isMobile ? '450px' : '600px', overflowY: 'auto' }}>
-                    {filteredPlayers.length > 0 ? (
-                      filteredPlayers.map((player) => (
-                        <div
-                          key={player.playerId}
-                          onClick={() => handleSelectPlayer(player)}
-                          style={{
-                            padding: '14px 16px',
-                            borderBottom: '1px solid #E5E7EB',
-                            cursor: 'pointer',
-                            background: selectedPlayer?.playerId === player.playerId
-                              ? (dark ? 'rgba(99,102,241,0.15)' : 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)')
-                              : (dark ? 'transparent' : '#FFFFFF'),
-                            transition: 'all 0.3s',
-                            borderLeft: selectedPlayer?.playerId === player.playerId ? '4px solid #818CF8' : '4px solid transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px'
-                          }}
-                          onMouseEnter={(e) => {
-                            if (selectedPlayer?.playerId !== player.playerId) {
-                              e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : '#F9FAFB';
-                              e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(124, 58, 237, 0.1)';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (selectedPlayer?.playerId !== player.playerId) {
-                              e.currentTarget.style.background = dark ? 'transparent' : '#FFFFFF';
-                              e.currentTarget.style.boxShadow = 'none';
-                            }
-                          }}
-                        >
-                          {/* Avatar */}
-                          <div style={{
-                            width: '44px',
-                            height: '44px',
-                            borderRadius: '50%',
-                            background: `linear-gradient(135deg, ${pal(player.playerName)[0]} 0%, ${pal(player.playerName)[1]} 100%)`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '18px',
-                            fontWeight: '700',
-                            color: 'white',
-                            flexShrink: 0,
-                            boxShadow: '0 4px 12px rgba(6, 0, 48, 0.2)'
-                          }}>
-                            {player.playerName.charAt(0).toUpperCase()}
-                          </div>
-
-                          {/* Player Info */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '4px', gap: '8px' }}>
-                              <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: dark ? 'var(--cl-text)' : '#111827', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {player.playerName}
-                              </p>
-                              {player.LearningPathway && !isMobile && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  fontWeight: '700',
-                                  padding: '3px 10px',
-                                  borderRadius: '12px',
-                                  background: dark ? 'rgba(99,102,241,0.15)' : 'rgba(6, 0, 48, 0.1)',
-                                  color: dark ? '#818CF8' : '#060030',
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0
-                                }}>
-                                  {player.LearningPathway}
-                                </span>
-                              )}
-                            </div>
-                            {isMobile && player.LearningPathway && (
-                              <p style={{ fontSize: '11px', color: dark ? '#818CF8' : '#060030', fontWeight: '600', margin: '0 0 2px 0' }}>
-                                {player.LearningPathway}
-                              </p>
-                            )}
-                            <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {player.email}
-                            </p>
-                          </div>
+                {/* Player items */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                  {filteredPlayers.length > 0 ? filteredPlayers.map(player => {
+                    const isActive = selectedPlayer?.playerId === player.playerId;
+                    const [c1, c2] = pal(player.playerName);
+                    return (
+                      <button key={player.playerId} onClick={() => handleSelectPlayer(player)} style={{
+                        width: '100%', textAlign: 'left', padding: '10px 10px', borderRadius: '10px', marginBottom: '3px',
+                        background: isActive ? 'linear-gradient(135deg, #060030 0%, #3b0080 100%)' : 'transparent',
+                        border: isActive ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', transition: 'all .15s'
+                      }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : '#F1F5F9'; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: `linear-gradient(135deg, ${c1}, ${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: 'white', flexShrink: 0 }}>
+                          {player.playerName.charAt(0).toUpperCase()}
                         </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-                        <div style={{
-                          width: '64px',
-                          height: '64px',
-                          borderRadius: '50%',
-                          background: 'rgba(124, 58, 237, 0.1)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          margin: '0 auto 12px'
-                        }}>
-                          <Users size={32} style={{ color: '#7C3AED', opacity: 0.7 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: '13px', fontWeight: '600', color: isActive ? '#fff' : textPrimary, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.playerName}</p>
+                          {player.LearningPathway && (
+                            <p style={{ fontSize: '11px', color: isActive ? 'rgba(255,255,255,0.65)' : textMuted, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player.LearningPathway}</p>
+                          )}
                         </div>
-                        <p style={{ fontSize: '14px', fontWeight: '600', color: '#111827', margin: '0 0 4px 0' }}>
-                          No players found
-                        </p>
-                        <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>
-                          Try adjusting your search
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                        {player.sessionCardIds?.length > 0 && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: isActive ? 'rgba(255,255,255,0.9)' : (dark ? '#818CF8' : '#4F46E5'), background: isActive ? 'rgba(255,255,255,0.15)' : (dark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)'), padding: '2px 7px', borderRadius: '20px', flexShrink: 0 }}>
+                            {player.sessionCardIds.length}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  }) : (
+                    <div style={{ padding: '32px 12px', textAlign: 'center' }}>
+                      <Users size={32} color={textMuted} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                      <p style={{ fontSize: '13px', color: textMuted, margin: 0 }}>No players found</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Player Details Section */}
+            {/* ── RIGHT: Player detail + cards ── */}
             {selectedPlayer ? (
-              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
-                {/* Back button - only on narrow screens */}
+              <div style={{ flex: 1, minWidth: 0, background: surface, border: `1px solid ${border}`, borderRadius: '14px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
                 {isNarrow && (
-                  <button
-                    onClick={() => setSelectedPlayer(null)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '12px 16px',
-                      background: '#F9FAFB',
-                      border: 'none',
-                      borderBottom: '1px solid #E5E7EB',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#060030',
-                      width: '100%',
-                      textAlign: 'left'
-                    }}
-                  >
-                    <ChevronLeft size={18} /> Back to Players
+                  <button onClick={() => setSelectedPlayer(null)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'transparent', border: 'none', borderBottom: `1px solid ${border}`, cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: textPrimary, width: '100%', textAlign: 'left' }}>
+                    <ChevronLeft size={16} /> Back
                   </button>
                 )}
 
-                {/* Enhanced Header */}
-                <div style={{
-                  padding: isMobile ? '24px 16px' : '32px 20px',
-                  background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-                  color: 'white',
-                  textAlign: 'center',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{
-                    position: 'absolute',
-                    top: '-50%',
-                    right: '-5%',
-                    width: '300px',
-                    height: '300px',
-                    borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.05)',
-                    pointerEvents: 'none'
-                  }} />
-
-                  <div style={{ position: 'relative', zIndex: 1 }}>
-                    <div style={{
-                      width: isMobile ? '64px' : '80px',
-                      height: isMobile ? '64px' : '80px',
-                      borderRadius: '50%',
-                      background: 'linear-gradient(135deg, #7c3aed86 0%, #ec489a88 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: isMobile ? '26px' : '32px',
-                      fontWeight: '700',
-                      margin: '0 auto 16px',
-                      border: '4px solid rgba(255, 255, 255, 0.68)',
-                      boxShadow: '0 8px 24px rgba(124, 58, 237, 0.3)'
-                    }}>
-                      {selectedPlayer.playerName.charAt(0).toUpperCase()}
+                {/* Player profile strip */}
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', background: dark ? 'rgba(255,255,255,0.02)' : '#FAFBFC', flexShrink: 0 }}>
+                  <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: `linear-gradient(135deg, ${pal(selectedPlayer.playerName)[0]}, ${pal(selectedPlayer.playerName)[1]})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: '800', color: 'white', flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                    {selectedPlayer.playerName.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h2 style={{ fontSize: '17px', fontWeight: '800', color: textPrimary, margin: '0 0 4px' }}>{selectedPlayer.playerName}</h2>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      {selectedPlayer.LearningPathway && (
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? '#818CF8' : '#4F46E5', background: dark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)', padding: '2px 10px', borderRadius: '20px' }}>{selectedPlayer.LearningPathway}</span>
+                      )}
+                      <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>{sessionCards.length} card{sessionCards.length !== 1 ? 's' : ''}</span>
                     </div>
-
-                    <h2 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: '800', margin: '0 0 8px 0' }}>
-                      {selectedPlayer.playerName}
-                    </h2>
-                    <div style={{
-                      display: 'inline-block',
-                      background: 'rgba(255,255,255,0.15)',
-                      padding: '6px 16px',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      marginBottom: '16px',
-                      border: '1px solid rgba(255,255,255,0.2)'
-                    }}>
-                      {selectedPlayer.LearningPathway || 'Learning Pathway'}
-                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <button onClick={handleGenerateCard} disabled={loading}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: 'linear-gradient(135deg, #060030, #000)', color: 'white', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.8 : 1, transition: 'all .18s' }}
+                      onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+                    >
+                      {loading ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
+                      {loading ? 'Generating...' : 'Generate'}
+                    </button>
+                    <button onClick={() => navigate('/admin/custom-generate-card', { state: { playerId: selectedPlayer.playerId, playerName: selectedPlayer.playerName, LearningPathway: selectedPlayer.LearningPathway } })}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: 'linear-gradient(135deg, #4F46E5, #6D28D9)', color: 'white', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: 'pointer', transition: 'all .18s' }}
+                      onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+                    >
+                      <Sparkles size={14} /> Custom
+                    </button>
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div style={{
-                  padding: '16px',
-                  borderTop: '1px solid #E5E7EB',
-                  background: '#FFFFFF',
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: isMobile ? '8px' : '12px'
-                }}>
-                  <button
-                    onClick={handleGenerateCard}
-                    disabled={loading}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      padding: isMobile ? '10px 12px' : '12px 16px',
-                      background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: isMobile ? '12px' : '13px',
-                      fontWeight: '600',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      transition: 'all 0.3s',
-                      opacity: loading ? 0.8 : 1
-                    }}
-                    onMouseEnter={(e) => !loading && (e.currentTarget.style.transform = 'translateY(-2px)')}
-                    onMouseLeave={(e) => !loading && (e.currentTarget.style.transform = 'translateY(0)')}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                        {!isMobile && 'Generating...'}
-                      </>
-                    ) : (
-                      <>
-                        <Plus size={16} /> {isMobile ? 'Generate' : 'Generate Card'}
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => navigate('/admin/custom-generate-card', { state: { playerId: selectedPlayer.playerId, playerName: selectedPlayer.playerName, LearningPathway: selectedPlayer.LearningPathway } })}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      padding: isMobile ? '10px 12px' : '12px 16px',
-                      background: 'linear-gradient(135deg, #060030ff 0%, #6D28D9 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: isMobile ? '12px' : '13px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                  >
-                    <Sparkles size={16} /> {isMobile ? 'Custom' : 'Custom Generate'}
-                  </button>
-                </div>
-
-                {/* Session Cards */}
-                {isLoadingSessionCards ? (
-                  <div style={{ padding: '20px', borderTop: '1px solid #E5E7EB' }}>
-                    <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#111827', margin: '0 0 16px 0' }}>
-                      Loading Session Cards...
-                    </h3>
-                    <div style={{ display: 'grid', gap: '12px' }}>
-                      {[...Array(3)].map((_, i) => (
-                        <Sk key={i} w="100%" h="80px" r={8} />
-                      ))}
+                {/* Session cards area */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+                  {isLoadingSessionCards ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+                      {[1,2,3].map(i => <div key={i} style={{ height: '140px', borderRadius: '12px', background: surface2, animation: 'skPulse 1.5s ease infinite', animationDelay: `${i*0.1}s` }} />)}
                     </div>
-                  </div>
-                ) : sessionCards.length > 0 && (
-                  <div style={{ padding: '20px', borderTop: '1px solid #E5E7EB' }}>
-                    <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#111827', margin: '0 0 16px 0' }}>
-                      Session Cards ({sessionCards.length})
-                    </h3>
+                  ) : sessionCards.length > 0 ? (
+                    <>
+                      {/* Card search */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <input type="text" placeholder="Search cards..." value={cardSearchTerm} onChange={e => setCardSearchTerm(e.target.value)}
+                          style={{ width: '100%', border: `1px solid ${border}`, outline: 'none', fontSize: '13px', background: surface2, color: textPrimary, borderRadius: '8px', padding: '8px 12px', boxSizing: 'border-box' }}
+                          onFocus={e => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 2px rgba(99,102,241,0.15)'; }}
+                          onBlur={e => { e.target.style.borderColor = border; e.target.style.boxShadow = 'none'; }}
+                        />
+                      </div>
 
-                    {/* Search Cards */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '8px 12px',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '6px',
-                      background: '#FFFFFF',
-                      marginBottom: '12px'
-                    }}>
-                      <Search size={16} color="#9CA3AF" />
-                      <input
-                        type="text"
-                        placeholder="Search cards by topic or objective..."
-                        value={cardSearchTerm}
-                        onChange={(e) => setCardSearchTerm(e.target.value)}
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          fontSize: '13px',
-                          background: 'transparent'
-                        }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'grid', gap: '12px', maxHeight: isMobile ? '400px' : '300px', overflowY: 'auto' }}>
-                      {sessionCards
-                        .filter(card =>
-                          card.Topic?.toLowerCase().includes(cardSearchTerm.toLowerCase()) ||
-                          card.Objective?.toLowerCase().includes(cardSearchTerm.toLowerCase())
-                        )
-                        .sort((a, b) => {
-                          const getSessionOrder = (card) => {
-                            const val = card.session ?? card.sessionNumber ?? card.sessionNo ?? card.sessionId;
-                            const num = Number(val);
-                            return Number.isFinite(num) ? num : null;
-                          };
-
-                          const orderA = getSessionOrder(a);
-                          const orderB = getSessionOrder(b);
-
-                          if (orderA !== null && orderB !== null) return orderA - orderB;
-                          if (orderA !== null) return -1;
-                          if (orderB !== null) return 1;
-
-                          if (cardSortBy === 'duration') {
-                            return (a.Duration || 0) - (b.Duration || 0);
-                          }
-                          return (a.Topic || '').localeCompare(b.Topic || '');
-                        })
-                        .map((card, index) => (
-                        <div
-                          key={card._id || index}
-                          onClick={() => handleOpenSessionCard(card)}
-                          style={{
-                            padding: isMobile ? '12px' : '14px',
-                            background: '#F9FAFB',
-                            border: '1px solid #E5E7EB',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            transition: 'all 0.3s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#E0E7FF';
-                            e.currentTarget.style.borderColor = '#060030ff';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#F9FAFB';
-                            e.currentTarget.style.borderColor = '#E5E7EB';
-                          }}
-                        >
-                          {/* Card header row: session label + type badge */}
-                          {(() => {
-                            const sessionLabel = card.session;
-                            const displayLabel = sessionLabel ? `Session ${sessionLabel}` : `Session ${index + 1}`;
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+                        {sessionCards
+                          .filter(card => card.Topic?.toLowerCase().includes(cardSearchTerm.toLowerCase()) || card.Objective?.toLowerCase().includes(cardSearchTerm.toLowerCase()))
+                          .sort((a, b) => {
+                            const n = c => { const v = c.session ?? c.sessionNumber ?? c.sessionNo; const n = Number(v); return Number.isFinite(n) ? n : null; };
+                            const na = n(a), nb = n(b);
+                            if (na !== null && nb !== null) return na - nb;
+                            if (na !== null) return -1; if (nb !== null) return 1;
+                            return (a.Topic || '').localeCompare(b.Topic || '');
+                          })
+                          .map((card, index) => {
+                            const sc = statusColors(card.status);
+                            const sessionNum = card.session ?? (index + 1);
                             return (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', gap: '8px' }}>
-                                <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>
-                                  {displayLabel}
-                                </p>
-                                <span style={{
-                                  fontSize: '10px',
-                                  fontWeight: '600',
-                                  padding: '4px 10px',
-                                  borderRadius: '4px',
-                                  textTransform: 'capitalize',
-                                  whiteSpace: 'nowrap',
-                                  background: card.status?.toLowerCase() === 'completed' ? '#DCFCE7' :
-                                             card.status?.toLowerCase() === 'upcoming' ? '#FEF3C7' :
-                                             card.status?.toLowerCase() === 'in progress' ? '#DBEAFE' : '#F3F4F6',
-                                  color: card.status?.toLowerCase() === 'completed' ? '#166534' :
-                                         card.status?.toLowerCase() === 'upcoming' ? '#92400E' :
-                                         card.status?.toLowerCase() === 'in progress' ? '#075985' : '#6B7280'
-                                }}>
-                                  {card.status || 'Draft'}
-                                </span>
+                              <div key={card._id || index} onClick={() => handleOpenSessionCard(card)}
+                                style={{ borderRadius: '12px', border: `1px solid ${border}`, background: dark ? 'rgba(255,255,255,0.03)' : '#fff', cursor: 'pointer', transition: 'all .18s', overflow: 'hidden' }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)'; e.currentTarget.style.borderColor = '#6366F1'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = border; }}
+                              >
+                                {/* Card top accent */}
+                                <div style={{ height: '4px', background: card.status?.toLowerCase() === 'completed' ? '#10B981' : card.status?.toLowerCase() === 'in progress' ? '#3B82F6' : card.status?.toLowerCase() === 'upcoming' ? '#F59E0B' : '#6366F1' }} />
+                                <div style={{ padding: '14px 14px 12px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '8px' }}>
+                                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: dark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                      <span style={{ fontSize: '12px', fontWeight: '800', color: dark ? '#818CF8' : '#4F46E5' }}>{sessionNum}</span>
+                                    </div>
+                                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: sc.bg, color: sc.text, whiteSpace: 'nowrap' }}>
+                                      {card.status || 'Draft'}
+                                    </span>
+                                  </div>
+                                  <p style={{ fontSize: '13.5px', fontWeight: '700', color: textPrimary, margin: '0 0 4px', lineHeight: '1.3' }}>{card.Topic || 'Untitled'}</p>
+                                  <p style={{ fontSize: '11.5px', color: textSecondary, margin: '0 0 10px', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                                    {card.Objective || '—'}
+                                  </p>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                    <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>⏱ {card.totalDuration || 30} min</span>
+                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                      <button onClick={e => { e.stopPropagation(); handleOpenSessionCard(card); }}
+                                        style={{ padding: '5px 10px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: dark ? '#818CF8' : '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(99,102,241,0.25)' : '#E0E7FF'}
+                                        onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF'}
+                                      ><Eye size={12} /> View</button>
+                                      {card.status?.toLowerCase() !== 'completed' && (
+                                        <button onClick={e => { e.stopPropagation(); handleEditSessionCard(card._id); }}
+                                          style={{ padding: '5px 10px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                          onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(245,158,11,0.25)' : '#FDE68A'}
+                                          onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7'}
+                                        ><Edit3 size={12} /> Edit</button>
+                                      )}
+                                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(card._id); }}
+                                        style={{ padding: '5px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(239,68,68,0.2)' : '#FECACA'}
+                                        onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2'}
+                                      ><Trash2 size={12} /></button>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             );
-                          })()}
-
-                          <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: '0 0 4px 0' }}>
-                            {card.Topic || 'Untitled'}
-                          </p>
-                          <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 8px 0', lineHeight: '1.4' }}>
-                            {card.Objective?.substring(0, 60)}...
-                          </p>
-
-                          {/* Bottom row: duration + type badge + action buttons */}
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '8px',
-                            flexWrap: 'wrap'
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '11px', color: '#9CA3AF' }}>⏱ {card.totalDuration || 30} min</span>
-                              <span style={{
-                                fontSize: '10px',
-                                fontWeight: '600',
-                                padding: '4px 10px',
-                                borderRadius: '4px',
-                                textTransform: 'capitalize',
-                                background: card.typeOfSessioncard?.toLowerCase() === 'completed' ? '#DCFCE7' :
-                                           card.typeOfSessioncard?.toLowerCase() === 'upcoming' ? '#FEF3C7' :
-                                           card.typeOfSessioncard?.toLowerCase() === 'in progress' ? '#DBEAFE' : '#F3F4F6',
-                                color: card.typeOfSessioncard?.toLowerCase() === 'completed' ? '#166534' :
-                                       card.typeOfSessioncard?.toLowerCase() === 'upcoming' ? '#92400E' :
-                                       card.typeOfSessioncard?.toLowerCase() === 'in progress' ? '#075985' : '#6B7280'
-                              }}>
-                                {card.typeOfSessioncard || 'Draft'}
-                              </span>
-                            </div>
-
-                            {/* Action buttons */}
-                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenSessionCard(card);
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: isMobile ? '0' : '4px',
-                                  padding: isMobile ? '6px 8px' : '6px 12px',
-                                  background: '#E0E7FF',
-                                  color: '#060030ff',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: '600',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.3s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = '#C7D2FE'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = '#E0E7FF'}
-                              >
-                                <Eye size={14} />
-                                {!isMobile && ' View'}
-                              </button>
-
-                              {card.status?.toLowerCase() !== 'completed' && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditSessionCard(card._id);
-                                  }}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: isMobile ? '0' : '4px',
-                                    padding: isMobile ? '6px 8px' : '6px 12px',
-                                    background: '#FEF08A',
-                                    color: '#92400E',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.3s'
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#FDE047'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = '#FEF08A'}
-                                >
-                                  <Edit3 size={14} />
-                                  {!isMobile && ' Edit'}
-                                </button>
-                              )}
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteConfirm(card._id);
-                                }}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: isMobile ? '0' : '4px',
-                                  padding: isMobile ? '6px 8px' : '6px 12px',
-                                  background: '#FECACA',
-                                  color: '#991B1B',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  fontSize: '11px',
-                                  fontWeight: '600',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.3s'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = '#FCA5A5'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = '#FECACA'}
-                              >
-                                <Trash2 size={14} />
-                                {!isMobile && ' Delete'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                          })}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center', gap: '12px' }}>
+                      <div style={{ width: '60px', height: '60px', borderRadius: '16px', background: dark ? 'rgba(99,102,241,0.1)' : '#EEF2FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Star size={28} color="#6366F1" style={{ opacity: 0.6 }} />
+                      </div>
+                      <p style={{ fontSize: '15px', fontWeight: '700', color: textPrimary, margin: 0 }}>No Session Cards Yet</p>
+                      <p style={{ fontSize: '13px', color: textMuted, margin: 0 }}>Click Generate or Custom to create the first card</p>
                     </div>
-                  </div>
-                )}
-
-                {/* No Session Cards State */}
-                {!isLoadingSessionCards && selectedPlayer && sessionCards.length === 0 && (
-                  <div style={{
-                    borderTop: '1px solid #E5E7EB',
-                    textAlign: 'center',
-                    padding: '32px 20px'
-                  }}>
-                    <div style={{
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: '50%',
-                      background: '#FEF2F2',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 16px',
-                      opacity: 0.6
-                    }}>
-                      <Plus size={32} color="#6B7280" />
-                    </div>
-                    <h4 style={{ fontSize: '15px', fontWeight: '600', color: '#111827', margin: '0 0 8px 0' }}>
-                      No Session Cards Yet
-                    </h4>
-                    <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
-                      Create the first session card for this player to get started
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               !isNarrow && (
-                <div style={{
-                  background: dark ? 'var(--cl-surface)' : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)',
-                  border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`,
-                  borderRadius: '16px', overflow: 'hidden',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: '400px',
-                }}>
-                  <div style={{ textAlign: 'center', color: dark ? 'var(--cl-text-3)' : '#9CA3AF' }}>
-                    <div style={{
-                      width: '72px',
-                      height: '72px',
-                      borderRadius: '50%',
-                      background: dark ? 'rgba(96,165,250,0.08)' : 'rgba(96, 165, 250, 0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 24px'
-                    }}>
-                      <Eye size={36} color='#60A5FA' opacity={0.6} />
+                <div style={{ flex: 1, background: surface, border: `1px solid ${border}`, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ textAlign: 'center', color: textMuted }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '18px', background: dark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                      <Users size={32} color="#6366F1" style={{ opacity: 0.5 }} />
                     </div>
-                    <h3 style={{ fontSize: '18px', fontWeight: '600', color: dark ? 'var(--cl-text-2)' : '#111827', margin: '0 0 8px 0' }}>
-                      No Player Selected
-                    </h3>
-                    <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>
-                      Select a player from the list to view and manage their session cards
-                    </p>
+                    <p style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: '0 0 6px' }}>No Player Selected</p>
+                    <p style={{ fontSize: '13px', color: textMuted, margin: 0 }}>Pick a player from the list to manage their session cards</p>
                   </div>
                 </div>
               )
@@ -1209,186 +761,102 @@ const SessionCardManage = () => {
           </div>
         ) : (
           /* ── By Batch view ── */
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isNarrow ? '1fr' : '1fr 1.5fr',
-            gap: isMobile ? '16px' : '24px'
-          }}>
-            {/* Batch list - hidden on narrow when a batch is selected */}
+          <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
+
+            {/* Batch list */}
             {(!isNarrow || !selectedBatch) && (
-              <div style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                <div style={{ padding: '20px', borderBottom: '2px solid #E5E7EB', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
-                  <h2 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 8px 0', color: '#111827' }}>Batches</h2>
-                  <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>{displayBatches.length} available</p>
+              <div style={{ width: isNarrow ? '100%' : '260px', flexShrink: 0, background: surface, border: `1px solid ${border}`, borderRadius: '14px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ padding: '12px', borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+                  <p style={{ fontSize: '13px', fontWeight: '700', color: textPrimary, margin: '0 0 2px' }}>Batches</p>
+                  <p style={{ fontSize: '11px', color: textMuted, margin: 0 }}>{displayBatches.length} available</p>
                 </div>
-                <div style={{ maxHeight: isMobile ? '450px' : '600px', overflowY: 'auto' }}>
-                  {displayBatches.length > 0 ? (
-                    displayBatches.map(batch => (
-                      <div
-                        key={batch.batchId}
-                        onClick={() => handleSelectBatch(batch.batchId)}
-                        style={{
-                          padding: '14px 16px',
-                          borderBottom: '1px solid #E5E7EB',
-                          cursor: 'pointer',
-                          background: selectedBatchId === batch.batchId ? 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)' : '#FFFFFF',
-                          borderLeft: selectedBatchId === batch.batchId ? '4px solid #060030' : '4px solid transparent',
-                          transition: 'all 0.3s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px'
-                        }}
-                        onMouseEnter={(e) => { if (selectedBatchId !== batch.batchId) e.currentTarget.style.background = '#F9FAFB'; }}
-                        onMouseLeave={(e) => { if (selectedBatchId !== batch.batchId) e.currentTarget.style.background = '#FFFFFF'; }}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                  {displayBatches.length > 0 ? displayBatches.map(batch => {
+                    const isActive = selectedBatchId === batch.batchId;
+                    return (
+                      <button key={batch.batchId} onClick={() => handleSelectBatch(batch.batchId)} style={{
+                        width: '100%', textAlign: 'left', padding: '10px 10px', borderRadius: '10px', marginBottom: '3px',
+                        background: isActive ? 'linear-gradient(135deg, #060030, #3b0080)' : 'transparent',
+                        border: isActive ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', transition: 'all .15s'
+                      }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : '#F1F5F9'; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                       >
-                        <div style={{
-                          width: '44px', height: '44px', borderRadius: '12px',
-                          background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: 'white', flexShrink: 0
-                        }}>
-                          <Layers size={20} />
+                        <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: isActive ? 'rgba(255,255,255,0.15)' : (dark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)'), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Layers size={16} color={isActive ? '#fff' : (dark ? '#818CF8' : '#4F46E5')} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 2px 0', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {batch.batchName}
-                          </p>
-                          <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>
-                            {batch.players.length} player{batch.players.length === 1 ? '' : 's'}
-                          </p>
+                          <p style={{ fontSize: '13px', fontWeight: '600', color: isActive ? '#fff' : textPrimary, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{batch.batchName}</p>
+                          <p style={{ fontSize: '11px', color: isActive ? 'rgba(255,255,255,0.65)' : textMuted, margin: '2px 0 0' }}>{batch.players.length} player{batch.players.length !== 1 ? 's' : ''}</p>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-                      <Layers size={32} style={{ color: '#7C3AED', opacity: 0.6, marginBottom: '8px' }} />
-                      <p style={{ fontSize: '14px', fontWeight: '600', color: '#111827', margin: 0 }}>No batches found</p>
+                      </button>
+                    );
+                  }) : (
+                    <div style={{ padding: '32px 12px', textAlign: 'center' }}>
+                      <Layers size={28} color={textMuted} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                      <p style={{ fontSize: '13px', color: textMuted, margin: 0 }}>No batches found</p>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Selected batch detail */}
+            {/* Batch detail */}
             {selectedBatch ? (
-              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 10px 40px rgba(6, 0, 48, 0.1)' }}>
+              <div style={{ flex: 1, minWidth: 0, background: surface, border: `1px solid ${border}`, borderRadius: '14px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {isNarrow && (
-                  <button
-                    onClick={() => setSelectedBatchId('')}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '12px 16px', background: '#F9FAFB', border: 'none',
-                      borderBottom: '1px solid #E5E7EB', cursor: 'pointer',
-                      fontSize: '14px', fontWeight: '600', color: '#060030', width: '100%', textAlign: 'left'
-                    }}
-                  >
-                    <ChevronLeft size={18} /> Back to Batches
+                  <button onClick={() => setSelectedBatchId('')} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', background: 'transparent', border: 'none', borderBottom: `1px solid ${border}`, cursor: 'pointer', fontSize: '13px', fontWeight: '600', color: textPrimary, width: '100%', textAlign: 'left' }}>
+                    <ChevronLeft size={16} /> Back
                   </button>
                 )}
 
-                <div style={{
-                  padding: isMobile ? '20px 16px' : '24px 20px',
-                  background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-                  color: 'white'
-                }}>
-                  <h2 style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: '800', margin: '0 0 4px 0' }}>
-                    {selectedBatch.batchName}
-                  </h2>
-                  <p style={{ fontSize: '13px', opacity: 0.9, margin: 0 }}>
-                    {selectedBatch.players.length} player{selectedBatch.players.length === 1 ? '' : 's'} in this batch
-                  </p>
+                {/* Batch header strip */}
+                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', background: dark ? 'rgba(255,255,255,0.02)' : '#FAFBFC', flexShrink: 0 }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #060030, #3b0080)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Layers size={20} color="#fff" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h2 style={{ fontSize: '17px', fontWeight: '800', color: textPrimary, margin: '0 0 3px' }}>{selectedBatch.batchName}</h2>
+                    <p style={{ fontSize: '12px', color: textMuted, margin: 0 }}>{selectedBatch.players.length} player{selectedBatch.players.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <button onClick={handleBatchGenerate} disabled={batchGenerating}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: 'linear-gradient(135deg, #060030, #000)', color: 'white', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1 }}>
+                      {batchGenerating ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</> : <><Plus size={14} /> Generate</>}
+                    </button>
+                    <button onClick={handleBatchCustom} disabled={batchGenerating}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: 'linear-gradient(135deg, #4F46E5, #6D28D9)', color: 'white', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1 }}>
+                      <Sparkles size={14} /> Custom
+                    </button>
+                  </div>
                 </div>
 
-                {/* Action buttons */}
-                <div style={{
-                  padding: '16px', borderBottom: '1px solid #E5E7EB',
-                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? '8px' : '12px'
-                }}>
-                  <button
-                    onClick={handleBatchGenerate}
-                    disabled={batchGenerating}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      padding: isMobile ? '10px 12px' : '12px 16px',
-                      background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-                      color: 'white', border: 'none', borderRadius: '8px',
-                      fontSize: isMobile ? '12px' : '13px', fontWeight: '600',
-                      cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1
-                    }}
-                  >
-                    {batchGenerating
-                      ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> {!isMobile && 'Generating...'}</>
-                      : <><Plus size={16} /> {isMobile ? 'Generate' : 'Generate Cards'}</>}
-                  </button>
-                  <button
-                    onClick={handleBatchCustom}
-                    disabled={batchGenerating}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      padding: isMobile ? '10px 12px' : '12px 16px',
-                      background: 'linear-gradient(135deg, #060030ff 0%, #6D28D9 100%)',
-                      color: 'white', border: 'none', borderRadius: '8px',
-                      fontSize: isMobile ? '12px' : '13px', fontWeight: '600',
-                      cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1
-                    }}
-                  >
-                    <Sparkles size={16} /> {isMobile ? 'Custom' : 'Custom Generate'}
-                  </button>
-                </div>
-
-                {/* Player rows with per-player status */}
-                <div style={{ padding: '12px', maxHeight: isMobile ? '420px' : '520px', overflowY: 'auto' }}>
+                {/* Players in batch */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
                   {selectedBatch.players.map(player => {
                     const status = batchGenStatus[player.playerId]?.state || 'idle';
-                    const playerDisplayName = player.playerName || player.name || '';
+                    const name = player.playerName || player.name || '';
+                    const [c1, c2] = pal(name);
                     return (
-                      <div
-                        key={player.playerId}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '12px',
-                          padding: '12px 14px', borderBottom: '1px solid #F3F4F6'
-                        }}
-                      >
-                        <div style={{
-                          width: '40px', height: '40px', borderRadius: '50%',
-                          background: `linear-gradient(135deg, ${pal(playerDisplayName)[0]} 0%, ${pal(playerDisplayName)[1]} 100%)`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          color: 'white', fontWeight: '700', flexShrink: 0
-                        }}>
-                          {(playerDisplayName || '?').charAt(0).toUpperCase()}
+                      <div key={player.playerId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', marginBottom: '4px', background: dark ? 'rgba(255,255,255,0.02)' : '#FAFBFC', border: `1px solid ${border}` }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: `linear-gradient(135deg, ${c1}, ${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
+                          {(name || '?').charAt(0).toUpperCase()}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {player.playerName}
-                          </p>
-                          {player.LearningPathway && (
-                            <p style={{ fontSize: '11px', color: '#6B7280', margin: 0 }}>{player.LearningPathway}</p>
-                          )}
+                          <p style={{ fontSize: '13px', fontWeight: '600', margin: 0, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+                          {player.LearningPathway && <p style={{ fontSize: '11px', color: textMuted, margin: '2px 0 0' }}>{player.LearningPathway}</p>}
                         </div>
-
-                        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-                          {status === 'loading' && (
-                            <Loader size={18} style={{ animation: 'spin 1s linear infinite', color: '#060030' }} />
-                          )}
-                          {status === 'success' && (
-                            <CheckCircle size={20} color="#16A34A" />
-                          )}
+                        <div style={{ flexShrink: 0 }}>
+                          {status === 'loading' && <Loader size={16} style={{ animation: 'spin 1s linear infinite', color: '#6366F1' }} />}
+                          {status === 'success' && <CheckCircle size={18} color="#10B981" />}
                           {status === 'error' && (
-                            <button
-                              onClick={() => setErrorDetail({ playerName: player.playerName, message: batchGenStatus[player.playerId]?.message })}
-                              title="View error details"
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: '4px',
-                                padding: '4px 10px', background: '#FECACA', color: '#991B1B',
-                                border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer'
-                              }}
-                            >
-                              <Info size={14} /> {!isMobile && 'Details'}
+                            <button onClick={() => setErrorDetail({ playerName: name, message: batchGenStatus[player.playerId]?.message })}
+                              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                              <Info size={12} /> Error
                             </button>
                           )}
-                          {status === 'idle' && (
-                            <span style={{ fontSize: '13px', color: '#D1D5DB' }}>-</span>
-                          )}
+                          {status === 'idle' && <span style={{ fontSize: '13px', color: textMuted }}>—</span>}
                         </div>
                       </div>
                     );
@@ -1397,18 +865,13 @@ const SessionCardManage = () => {
               </div>
             ) : (
               !isNarrow && (
-                <div style={{
-                  background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', overflow: 'hidden',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minHeight: '400px', background: 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)'
-                }}>
-                  <div style={{ textAlign: 'center', color: '#9CA3AF' }}>
-                    <Layers size={36} color='#60A5FA' opacity={0.6} style={{ marginBottom: '16px' }} />
-                    <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', margin: '0 0 8px 0' }}>No Batch Selected</h3>
-                    <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
-                      Select a batch to generate session cards for all its players
-                    </p>
+                <div style={{ flex: 1, background: surface, border: `1px solid ${border}`, borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ textAlign: 'center', color: textMuted }}>
+                    <div style={{ width: '64px', height: '64px', borderRadius: '18px', background: dark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                      <Layers size={32} color="#6366F1" style={{ opacity: 0.5 }} />
+                    </div>
+                    <p style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: '0 0 6px' }}>No Batch Selected</p>
+                    <p style={{ fontSize: '13px', color: textMuted, margin: 0 }}>Select a batch to generate cards for all its players</p>
                   </div>
                 </div>
               )

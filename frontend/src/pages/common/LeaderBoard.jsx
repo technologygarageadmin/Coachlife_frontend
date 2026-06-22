@@ -108,8 +108,15 @@ export default function LeaderBoard() {
       });
       const data = await res.json();
 
-      if (data?.players) {
-        const mappedPlayers = data.players.map((p) => ({
+      let rawPlayers = [];
+      if (Array.isArray(data)) rawPlayers = data;
+      else if (data?.players) rawPlayers = data.players;
+      else if (data?.Items) rawPlayers = data.Items;
+      else if (data?.data) rawPlayers = data.data;
+      else if (data?.body && typeof data.body === 'string') { try { rawPlayers = JSON.parse(data.body); } catch { rawPlayers = []; } }
+
+      if (rawPlayers.length > 0) {
+        const mappedPlayers = rawPlayers.map((p) => ({
           id: p._id || p.id || p.playerId,
           playerName: p.playerName,
           name: p.playerName,
@@ -136,7 +143,7 @@ export default function LeaderBoard() {
         setPlayers(mappedPlayers);
       }
     } catch (err) {
-      console.error("Failed to load leaderboard", err);
+      console.error('Failed to load leaderboard', err);
       setPlayers([]);
     } finally {
       setLoading(false);
@@ -401,7 +408,7 @@ function GridCard({ player, rank, navigate, hasRole, assignedPlayerIds, dark }) 
     navigate(route, { state: { player } });
   };
 
-  const avatarBg = isTop ? '#FFD700' : pal(player.name)[0];
+  const avatarBg = isTop ? '#FFD700' : 'linear-gradient(135deg, #6366F1, #8B5CF6)';
   const cardBg = isTop
     ? (dark ? 'rgba(255,215,0,0.07)' : 'linear-gradient(135deg, #FFF9E6 0%, #FFFFFF 100%)')
     : (dark ? 'var(--cl-surface)' : 'white');
@@ -479,7 +486,7 @@ function ListRow({ player, rank, navigate, hasRole, assignedPlayerIds, dark }) {
     navigate(route, { state: { player } });
   };
 
-  const avatarBg = isTop ? '#FFD700' : pal(player.name)[0];
+  const avatarBg = isTop ? '#FFD700' : 'linear-gradient(135deg, #6366F1, #8B5CF6)';
 
   const rowBg = dark ? 'var(--cl-surface)' : 'white';
   const hoverBg = dark ? 'var(--cl-surface-2)' : '#F8FAFC';

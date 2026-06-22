@@ -282,11 +282,22 @@ select:focus {
 [data-theme='dark'] .page-content [style*="background: #F1F5F9"],
 [data-theme='dark'] .page-content [style*="background: #f1f5f9"],
 [data-theme='dark'] .page-content [style*="background: rgb(249, 250, 251)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(249, 250, 251)"],
 [data-theme='dark'] .page-content [style*="background: #f9fafb"],
+[data-theme='dark'] .page-content [style*="background: #F9FAFB"],
+[data-theme='dark'] .page-content [style*="background-color: #F9FAFB"],
+[data-theme='dark'] .page-content [style*="background-color: #f9fafb"],
 [data-theme='dark'] .page-content [style*="background: rgb(250, 251, 252)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(250, 251, 252)"],
 [data-theme='dark'] .page-content [style*="background: #FAFBFC"],
 [data-theme='dark'] .page-content [style*="background: rgb(240, 244, 248)"],
 [data-theme='dark'] .page-content [style*="background: #F0F4F8"],
+[data-theme='dark'] .page-content [style*="background: rgb(243, 244, 246)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(243, 244, 246)"],
+[data-theme='dark'] .page-content [style*="background: #F3F4F6"],
+[data-theme='dark'] .page-content [style*="background: #f3f4f6"],
+[data-theme='dark'] .page-content [style*="background-color: #F3F4F6"],
+[data-theme='dark'] .page-content [style*="background-color: #f3f4f6"],
 [data-theme='dark'] .page-content [style*="background-color: rgb(241, 245, 249)"],
 [data-theme='dark'] .page-content [style*="background-color: #F8FAFC"],
 [data-theme='dark'] .page-content [style*="background-color: #F1F5F9"] {
@@ -295,12 +306,46 @@ select:focus {
 
 /* ---- EEF2FF / light-indigo tints (used in banners, info rows) ---- */
 [data-theme='dark'] .page-content [style*="background: rgb(238, 242, 255)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(238, 242, 255)"],
 [data-theme='dark'] .page-content [style*="background: #EEF2FF"],
+[data-theme='dark'] .page-content [style*="background-color: #EEF2FF"],
 [data-theme='dark'] .page-content [style*="background: rgb(224, 231, 255)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(224, 231, 255)"],
 [data-theme='dark'] .page-content [style*="background: #E0E7FF"],
+[data-theme='dark'] .page-content [style*="background-color: #E0E7FF"],
 [data-theme='dark'] .page-content [style*="background: rgb(245, 243, 255)"],
-[data-theme='dark'] .page-content [style*="background: #F5F3FF"] {
+[data-theme='dark'] .page-content [style*="background-color: rgb(245, 243, 255)"],
+[data-theme='dark'] .page-content [style*="background: #F5F3FF"],
+[data-theme='dark'] .page-content [style*="background-color: #F5F3FF"],
+[data-theme='dark'] .page-content [style*="background: rgb(239, 246, 255)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(239, 246, 255)"],
+[data-theme='dark'] .page-content [style*="background: #EFF6FF"],
+[data-theme='dark'] .page-content [style*="background-color: #EFF6FF"] {
   background: var(--cl-surface-3) !important;
+}
+
+/* ---- Pastel tints (green, yellow, red, blue used in activity rows) ---- */
+[data-theme='dark'] .page-content [style*="background: rgb(240, 253, 244)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(240, 253, 244)"],
+[data-theme='dark'] .page-content [style*="background: #F0FDF4"],
+[data-theme='dark'] .page-content [style*="background-color: #F0FDF4"],
+[data-theme='dark'] .page-content [style*="background: rgb(220, 252, 231)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(220, 252, 231)"],
+[data-theme='dark'] .page-content [style*="background: #DCFCE7"],
+[data-theme='dark'] .page-content [style*="background-color: #DCFCE7"] {
+  background: var(--cl-emerald-tint) !important;
+}
+[data-theme='dark'] .page-content [style*="background: rgb(254, 243, 199)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(254, 243, 199)"],
+[data-theme='dark'] .page-content [style*="background: #FEF3C7"],
+[data-theme='dark'] .page-content [style*="background-color: #FEF3C7"] {
+  background: var(--cl-yellow-tint) !important;
+}
+[data-theme='dark'] .page-content [style*="background: rgb(254, 226, 226)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(254, 226, 226)"],
+[data-theme='dark'] .page-content [style*="background: #FEE2E2"],
+[data-theme='dark'] .page-content [style*="background-color: #FEE2E2"] {
+  background: var(--cl-danger-tint) !important;
 }
 
 /* ---- Dark text → brand light ---- */
@@ -324,19 +369,58 @@ select:focus {
 [data-theme='dark'] .page-content [style*="color: #475569"],
 [data-theme='dark'] .page-content [style*="color: rgb(100, 116, 139)"],
 [data-theme='dark'] .page-content [style*="color: #64748B"],
-[data-theme='dark'] .page-content [style*="color: #64748b"] {
+[data-theme='dark'] .page-content [style*="color: #64748b"],
+[data-theme='dark'] .page-content [style*="color: rgb(107, 114, 128)"],
+[data-theme='dark'] .page-content [style*="color: #6B7280"],
+[data-theme='dark'] .page-content [style*="color: #6b7280"],
+[data-theme='dark'] .page-content [style*="color: rgb(102, 102, 102)"],
+[data-theme='dark'] .page-content [style*="color: #666666"],
+[data-theme='dark'] .page-content [style*="color: #666"] {
   color: var(--cl-text-2) !important;
 }
 
 [data-theme='dark'] .page-content [style*="color: rgb(148, 163, 184)"],
 [data-theme='dark'] .page-content [style*="color: #94A3B8"],
-[data-theme='dark'] .page-content [style*="color: #94a3b8"] {
+[data-theme='dark'] .page-content [style*="color: #94a3b8"],
+[data-theme='dark'] .page-content [style*="color: rgb(153, 153, 153)"],
+[data-theme='dark'] .page-content [style*="color: #999999"],
+[data-theme='dark'] .page-content [style*="color: #999"],
+[data-theme='dark'] .page-content [style*="color: rgb(136, 136, 136)"],
+[data-theme='dark'] .page-content [style*="color: #888888"],
+[data-theme='dark'] .page-content [style*="color: #888"] {
   color: var(--cl-text-3) !important;
+}
+
+/* ---- Brand dark navy (#060030) → primary in dark mode ---- */
+[data-theme='dark'] .page-content [style*="color: rgb(6, 0, 48)"],
+[data-theme='dark'] .page-content [style*="color: #060030"] {
+  color: var(--cl-primary) !important;
+}
+
+/* ---- Deep indigo / violet brand text → lighter in dark ---- */
+[data-theme='dark'] .page-content [style*="color: rgb(67, 56, 202)"],
+[data-theme='dark'] .page-content [style*="color: #4338CA"],
+[data-theme='dark'] .page-content [style*="color: rgb(99, 102, 241)"],
+[data-theme='dark'] .page-content [style*="color: #6366F1"] {
+  color: var(--cl-primary) !important;
 }
 
 /* ---- Light border → dark border ---- */
 [data-theme='dark'] .page-content [style*="rgb(226, 232, 240)"] {
   border-color: var(--cl-border) !important;
+}
+[data-theme='dark'] .page-content [style*="rgb(229, 231, 235)"],
+[data-theme='dark'] .page-content [style*="#e5e7eb"],
+[data-theme='dark'] .page-content [style*="#E5E7EB"] {
+  border-color: var(--cl-border) !important;
+}
+[data-theme='dark'] .page-content [style*="rgb(209, 213, 219)"],
+[data-theme='dark'] .page-content [style*="#D1D5DB"],
+[data-theme='dark'] .page-content [style*="#d1d5db"],
+[data-theme='dark'] .page-content [style*="rgb(199, 210, 254)"],
+[data-theme='dark'] .page-content [style*="#C7D2FE"],
+[data-theme='dark'] .page-content [style*="#c7d2fe"] {
+  border-color: var(--cl-border-strong) !important;
 }
 [data-theme='dark'] .page-content [style*="rgb(203, 213, 225)"] {
   border-color: var(--cl-border-strong) !important;

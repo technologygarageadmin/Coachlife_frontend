@@ -8,6 +8,7 @@ import {
   AlertCircle, Loader, ChevronDown, Phone,
   BookOpen, Star, X, TrendingUp,
 } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 /* ── input helpers ── */
 const inputBase = {
@@ -43,7 +44,7 @@ const PALETTES = [
   ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
   ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
 ];
-const pal = (name = '') => PALETTES[name.charCodeAt(0) % PALETTES.length];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
 
 /* ── skeleton ── */
 const Sk = ({ w, h, r = 8 }) => (
@@ -51,14 +52,14 @@ const Sk = ({ w, h, r = 8 }) => (
 );
 
 /* ── stat summary card ── */
-const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SummaryIcon, accent, surface, border }) => {
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'16px', padding:'18px 20px',
-        border:`1.5px solid ${hov ? accent+'50' : '#F1F5F9'}`,
+        background: surface, borderRadius:'16px', padding:'18px 20px',
+        border:`1.5px solid ${hov ? accent+'50' : border}`,
         boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
         display:'flex', alignItems:'center', gap:'14px',
         transition:'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
@@ -76,9 +77,8 @@ const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
 };
 
 /* ── player card ── */
-const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
+const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts, surface, border }) => {
   const [hov, setHov] = useState(false);
-  const [accent, light] = pal(player.name || '');
   const pts    = player.TotalPoints ?? player.totalPoints ?? 0;
   const bal    = player.PointBalance ?? player.pointBalance ?? 0;
   const active = player.status === 'active';
@@ -90,9 +90,9 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'20px',
-        border:`1.5px solid ${hov ? accent+'40' : '#F1F5F9'}`,
-        boxShadow: hov ? `0 16px 48px ${accent}22, 0 4px 16px rgba(0,0,0,.08)` : '0 2px 10px rgba(0,0,0,.06)',
+        background: surface, borderRadius:'20px',
+        border:`1.5px solid ${hov ? 'rgba(99,102,241,0.3)' : border}`,
+        boxShadow: hov ? '0 16px 48px rgba(6,0,48,0.12), 0 4px 16px rgba(0,0,0,.08)' : '0 2px 10px rgba(0,0,0,.06)',
         overflow:'hidden', transition:'all .25s cubic-bezier(.16,1,.3,1)',
         transform: hov ? 'translateY(-5px)' : 'none',
         display:'flex', flexDirection:'column',
@@ -100,17 +100,17 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
       }}
       onClick={() => onView(player)}
     >
-      {/* Coloured top band */}
+      {/* Top band — consistent brand color */}
       <div style={{
         height:'72px', position:'relative', flexShrink:0,
-        background:`linear-gradient(135deg, ${accent} 0%, ${light} 100%)`,
+        background:'linear-gradient(135deg, #060030 0%, #1a0060 100%)',
       }}>
-        {/* Status dot top-right */}
+        {/* Status pill */}
         <div style={{
           position:'absolute', top:'12px', right:'14px',
           display:'flex', alignItems:'center', gap:'5px',
-          background: active ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.18)',
-          backdropFilter:'blur(8px)', border:'1px solid rgba(255,255,255,.3)',
+          background: active ? 'rgba(255,255,255,.15)' : 'rgba(0,0,0,.18)',
+          backdropFilter:'blur(8px)', border:'1px solid rgba(255,255,255,.2)',
           borderRadius:'999px', padding:'3px 9px',
         }}>
           <div style={{ width:'6px', height:'6px', borderRadius:'50%', background: active ? '#4ADE80' : '#FCD34D' }} />
@@ -118,15 +118,15 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
             {active ? 'Active' : 'Inactive'}
           </span>
         </div>
-        {/* Avatar - sits on bottom edge */}
+        {/* Avatar */}
         <div style={{
           position:'absolute', bottom:'-24px', left:'20px',
           width:'50px', height:'50px', borderRadius:'50%',
-          background:`linear-gradient(135deg, ${accent}, ${light})`,
-          border:'3px solid #fff',
+          background:'linear-gradient(135deg, #6366F1, #8B5CF6)',
+          border:`3px solid ${surface}`,
           display:'flex', alignItems:'center', justifyContent:'center',
           color:'#fff', fontWeight:'800', fontSize:'20px',
-          boxShadow:`0 4px 16px ${accent}55`,
+          boxShadow:'0 4px 16px rgba(99,102,241,0.4)',
           flexShrink:0,
         }}>
           {name.charAt(0).toUpperCase()}
@@ -149,10 +149,10 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
           <div style={{
             display:'inline-flex', alignItems:'center', gap:'6px',
             padding:'5px 11px', borderRadius:'8px', alignSelf:'flex-start',
-            background:`${accent}14`, border:`1px solid ${accent}30`,
+            background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.2)',
           }}>
-            <BookOpen size={11} color={accent} />
-            <span style={{ fontSize:'11.5px', fontWeight:'700', color: accent }}>{player.LearningPathway}</span>
+            <BookOpen size={11} color="#6366F1" />
+            <span style={{ fontSize:'11.5px', fontWeight:'700', color:'#6366F1' }}>{player.LearningPathway}</span>
           </div>
         ) : (
           <span style={{ fontSize:'11.5px', color:'#CBD5E1', fontWeight:'600' }}>No pathway assigned</span>
@@ -163,9 +163,8 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
           <div style={{ padding:'10px 12px', borderRadius:'10px', background:'#F8FAFF', border:'1px solid #EEF2FF' }}>
             <p style={{ margin:'0 0 2px', fontSize:'10px', fontWeight:'700', color:'#6366F1', textTransform:'uppercase', letterSpacing:'.4px' }}>Earned</p>
             <p style={{ margin:0, fontSize:'18px', fontWeight:'800', color:'#4338CA', letterSpacing:'-.5px' }}>{pts.toLocaleString()}</p>
-            {/* mini progress bar */}
             <div style={{ marginTop:'5px', height:'3px', borderRadius:'2px', background:'#E0E7FF', overflow:'hidden' }}>
-              <div style={{ height:'100%', borderRadius:'2px', background:`linear-gradient(90deg, ${accent}, ${light})`, width:`${pct}%`, transition:'width .6s ease' }} />
+              <div style={{ height:'100%', borderRadius:'2px', background:'linear-gradient(90deg, #6366F1, #8B5CF6)', width:`${pct}%`, transition:'width .6s ease' }} />
             </div>
           </div>
           <div style={{ padding:'10px 12px', borderRadius:'10px', background:'#F0FDF8', border:'1px solid #D1FAE5' }}>
@@ -176,33 +175,33 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts }) => {
         </div>
 
         {/* Divider */}
-        <div style={{ height:'1px', background:'#F1F5F9' }} />
+        <div style={{ height:'1px', background: border }} />
 
         {/* Action buttons */}
         <div style={{ display:'flex', gap:'8px' }}>
           <button
             onClick={e => { e.stopPropagation(); onEdit(player); }}
             style={{
-              flex:1, padding:'8px', borderRadius:'9px', border:'1.5px solid #E2E8F0',
+              flex:1, padding:'8px', borderRadius:'9px', border:`1.5px solid ${border}`,
               background:'#F8FAFC', color:'#6366F1', fontWeight:'700', fontSize:'12px',
               cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px',
               transition:'all .18s ease',
             }}
             onMouseEnter={e => { e.currentTarget.style.background='#EEF2FF'; e.currentTarget.style.borderColor='#6366F1'; }}
-            onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor='#E2E8F0'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor=border; }}
           >
             <Edit3 size={12} /> Edit
           </button>
           <button
             onClick={e => { e.stopPropagation(); onView(player); }}
             style={{
-              flex:1, padding:'8px', borderRadius:'9px', border:'1.5px solid #E2E8F0',
+              flex:1, padding:'8px', borderRadius:'9px', border:`1.5px solid ${border}`,
               background:'#F8FAFC', color:'#8B5CF6', fontWeight:'700', fontSize:'12px',
               cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'5px',
               transition:'all .18s ease',
             }}
             onMouseEnter={e => { e.currentTarget.style.background='#F5F3FF'; e.currentTarget.style.borderColor='#8B5CF6'; }}
-            onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor='#E2E8F0'; }}
+            onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor=border; }}
           >
             <Eye size={12} /> View
           </button>
@@ -233,6 +232,14 @@ const Players = () => {
     players, fetchPlayers, addPlayerRemote, updatePlayerRemote,
     deletePlayerRemote, learningPathway, fetchLearningPathway,
   } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#F1F5F9';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#64748B';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
 
   const [toast, setToast]               = useState({ msg:'', type:'success' });
   const [loading, setLoading]           = useState(false);
@@ -413,40 +420,40 @@ const Players = () => {
         {/* ── Summary stats ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }} className="pl-stats">
           {isFetching ? [1,2,3,4].map(i => (
-            <div key={i} style={{ background:'#fff', borderRadius:'16px', padding:'18px 20px', border:'1px solid #F1F5F9', display:'flex', gap:'14px', alignItems:'center' }}>
+            <div key={i} style={{ background: surface, borderRadius:'16px', padding:'18px 20px', border:`1px solid ${border}`, display:'flex', gap:'14px', alignItems:'center' }}>
               <Sk w="48px" h="48px" r={13} />
               <div style={{ flex:1 }}><Sk w="60%" h="10px" /><div style={{marginTop:8}}><Sk w="42%" h="22px" /></div></div>
             </div>
           )) : <>
-            <SummaryCard label="Total Players"  value={stats.total}  icon={Users}      accent="#6366F1" />
-            <SummaryCard label="Active"         value={stats.active} icon={Target}     accent="#10B981" />
-            <SummaryCard label="Points Earned"  value={stats.totalPoints.toLocaleString()} icon={Award} accent="#F59E0B" />
-            <SummaryCard label="Point Balance"  value={stats.balance.toLocaleString()} icon={Star}  accent="#EC4899" />
+            <SummaryCard label="Total Players"  value={stats.total}  icon={Users}      accent="#6366F1" surface={surface} border={border} />
+            <SummaryCard label="Active"         value={stats.active} icon={Target}     accent="#10B981" surface={surface} border={border} />
+            <SummaryCard label="Points Earned"  value={stats.totalPoints.toLocaleString()} icon={Award} accent="#F59E0B" surface={surface} border={border} />
+            <SummaryCard label="Point Balance"  value={stats.balance.toLocaleString()} icon={Star}  accent="#EC4899" surface={surface} border={border} />
           </>}
         </div>
 
         {/* ── Filter / sort bar ── */}
         <div style={{
           display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px',
-          background:'#fff', padding:'12px 16px', borderRadius:'14px',
-          border:'1px solid #F1F5F9', boxShadow:'0 2px 6px rgba(0,0,0,.04)',
+          background: surface, padding:'12px 16px', borderRadius:'14px',
+          border:`1px solid ${border}`, boxShadow:'0 2px 6px rgba(0,0,0,.04)',
           flexWrap:'wrap',
         }} className="pl-bar">
           {/* Search */}
           <div style={{
             display:'flex', alignItems:'center', gap:'8px', flex:'1', minWidth:'200px', maxWidth:'340px',
-            border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'8px 12px', background:'#FAFBFC',
+            border:`1.5px solid ${border}`, borderRadius:'10px', padding:'8px 12px', background: surface2,
             transition:'border-color .18s, box-shadow .18s',
           }}
           onFocusCapture={e => { e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(99,102,241,.1)'; }}
-          onBlurCapture={e => { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.boxShadow='none'; }}>
-            <Search size={15} color="#94A3B8" />
+          onBlurCapture={e => { e.currentTarget.style.borderColor=border; e.currentTarget.style.boxShadow='none'; }}>
+            <Search size={15} color={textMuted} />
             <input
               type="text" placeholder="Search players…" value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color:'#1E293B', flex:1, fontFamily:'inherit' }}
             />
-            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color:'#94A3B8', padding:0, display:'flex' }}><X size={14} /></button>}
+            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color: textMuted, padding:0, display:'flex' }}><X size={14} /></button>}
           </div>
 
           {/* Pathway chips */}
@@ -454,9 +461,9 @@ const Players = () => {
             {['all', ...uniquePathways].map(pw => (
               <button key={pw} onClick={() => setPathwayFilter(pw)} style={{
                 padding:'7px 14px', borderRadius:'999px', fontSize:'12px', fontWeight:'700',
-                border: pathwayFilter === pw ? '1.5px solid #6366F1' : '1.5px solid #E2E8F0',
-                background: pathwayFilter === pw ? '#6366F1' : '#F8FAFC',
-                color: pathwayFilter === pw ? '#fff' : '#64748B',
+                border: pathwayFilter === pw ? '1.5px solid #6366F1' : `1.5px solid ${border}`,
+                background: pathwayFilter === pw ? '#6366F1' : surface2,
+                color: pathwayFilter === pw ? '#fff' : textSecondary,
                 cursor:'pointer', transition:'all .18s ease', whiteSpace:'nowrap',
               }}>
                 {pw === 'all' ? 'All' : pw}
@@ -471,7 +478,7 @@ const Players = () => {
                 padding:'7px 12px', borderRadius:'8px', fontSize:'11.5px', fontWeight:'700',
                 border: sortBy === key ? '1.5px solid #6366F1' : '1.5px solid transparent',
                 background: sortBy === key ? '#EEF2FF' : 'transparent',
-                color: sortBy === key ? '#6366F1' : '#94A3B8',
+                color: sortBy === key ? '#6366F1' : textMuted,
                 cursor:'pointer', transition:'all .18s ease', display:'flex', alignItems:'center', gap:'4px',
               }}>
                 {sortBy === key && <TrendingUp size={11} />} {label}
@@ -480,7 +487,7 @@ const Players = () => {
           </div>
 
           {/* Count */}
-          <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:'12px', fontWeight:'700', color: textMuted, whiteSpace:'nowrap' }}>
             <span style={{ color:'#6366F1' }}>{filteredPlayers.length}</span> / {players.length}
           </span>
         </div>
@@ -489,7 +496,7 @@ const Players = () => {
         {isFetching ? (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'18px' }}>
             {[1,2,3,4,5,6].map(i => (
-              <div key={i} style={{ borderRadius:'20px', overflow:'hidden', border:'1.5px solid #F1F5F9', background:'#fff' }}>
+              <div key={i} style={{ borderRadius:'20px', overflow:'hidden', border:`1.5px solid ${border}`, background: surface }}>
                 <div style={{ height:'72px', background:'#EEF2F7', animation:'plsPulse 1.6s ease-in-out infinite' }} />
                 <div style={{ padding:'36px 20px 20px', display:'flex', flexDirection:'column', gap:'12px' }}>
                   <div><Sk w="65%" h="16px" /><div style={{marginTop:7}}><Sk w="45%" h="12px" /></div></div>
@@ -512,10 +519,10 @@ const Players = () => {
             <div style={{ width:'80px', height:'80px', borderRadius:'22px', background:'linear-gradient(135deg,#EEF2FF,#E0E7FF)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', boxShadow:'0 8px 24px #6366F120' }}>
               <Users size={36} color="#6366F1" />
             </div>
-            <p style={{ fontSize:'17px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>
+            <p style={{ fontSize:'17px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>
               {searchTerm || pathwayFilter !== 'all' ? 'No players found' : 'No players yet'}
             </p>
-            <p style={{ fontSize:'13.5px', color:'#94A3B8', margin:'0 0 24px' }}>
+            <p style={{ fontSize:'13.5px', color: textMuted, margin:'0 0 24px' }}>
               {searchTerm ? 'Try a different search or clear the filter' : 'Add your first player to get started'}
             </p>
             {!searchTerm && pathwayFilter === 'all' && (
@@ -540,6 +547,8 @@ const Players = () => {
                   onEdit={openEdit}
                   onDelete={setDeleteConfirm}
                   onView={setSelectedPlayer}
+                  surface={surface}
+                  border={border}
                 />
               </div>
             ))}
@@ -554,15 +563,15 @@ const Players = () => {
             <div style={{ width:'68px', height:'68px', borderRadius:'18px', background:'#FEF2F2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 18px', boxShadow:'0 4px 16px #EF444420' }}>
               <Trash2 size={30} color="#EF4444" />
             </div>
-            <h3 style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>Delete this player?</h3>
-            <p style={{ fontSize:'13.5px', color:'#64748B', margin:'0 0 28px', lineHeight:1.6 }}>
+            <h3 style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>Delete this player?</h3>
+            <p style={{ fontSize:'13.5px', color: textSecondary, margin:'0 0 28px', lineHeight:1.6 }}>
               This cannot be undone. All associated data will be permanently removed.
             </p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
               <button onClick={() => setDeleteConfirm(null)}
-                style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background:'#F1F5F9', color:'#475569', border:'1.5px solid #E2E8F0', cursor:'pointer', fontSize:'13.5px' }}
+                style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background: surface2, color: textSecondary, border:`1.5px solid ${border}`, cursor:'pointer', fontSize:'13.5px' }}
                 onMouseEnter={e => e.currentTarget.style.background='#E2E8F0'}
-                onMouseLeave={e => e.currentTarget.style.background='#F1F5F9'}>Cancel</button>
+                onMouseLeave={e => e.currentTarget.style.background=surface2}>Cancel</button>
               <button disabled={loading} onClick={async () => {
                   setLoading(true);
                   try {
@@ -587,7 +596,6 @@ const Players = () => {
         <Modal isOpen={!!selectedPlayer} onClose={() => setSelectedPlayer(null)} title="Player Profile">
           <div style={{ padding:'0 24px 28px' }}>
             {(() => {
-              const [accent, light] = pal(selectedPlayer.name || selectedPlayer.playerName || '');
               const active = selectedPlayer.status === 'active';
               const name = selectedPlayer.playerName || selectedPlayer.name || '';
               const pts  = selectedPlayer.TotalPoints ?? selectedPlayer.totalPoints ?? 0;
@@ -596,11 +604,11 @@ const Players = () => {
                 <>
                   {/* Hero */}
                   <div style={{
-                    background:`linear-gradient(135deg, ${accent} 0%, ${light} 100%)`,
+                    background:'linear-gradient(135deg, #060030 0%, #1a0060 100%)',
                     borderRadius:'16px', padding:'24px', marginBottom:'20px',
                     display:'flex', alignItems:'center', gap:'16px',
                   }}>
-                    <div style={{ width:'64px', height:'64px', borderRadius:'50%', flexShrink:0, background:'rgba(255,255,255,.25)', border:'3px solid rgba(255,255,255,.5)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'26px', boxShadow:`0 6px 20px rgba(0,0,0,.2)` }}>
+                    <div style={{ width:'64px', height:'64px', borderRadius:'50%', flexShrink:0, background:'linear-gradient(135deg,#6366F1,#8B5CF6)', border:'3px solid rgba(255,255,255,.4)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'26px', boxShadow:'0 6px 20px rgba(0,0,0,.2)' }}>
                       {name.charAt(0).toUpperCase()}
                     </div>
                     <div>
@@ -647,11 +655,11 @@ const Players = () => {
                     ]},
                   ].map(({ section, fields }) => (
                     <div key={section} style={{ marginBottom:'16px' }}>
-                      <p style={{ fontSize:'10px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'.7px', margin:'0 0 10px' }}>{section}</p>
+                      <p style={{ fontSize:'10px', fontWeight:'700', color: textMuted, textTransform:'uppercase', letterSpacing:'.7px', margin:'0 0 10px' }}>{section}</p>
                       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px' }}>
                         {fields.map(({ label, value, full }) => (
-                          <div key={label} style={{ gridColumn: full?'1/-1':undefined, padding:'10px 14px', borderRadius:'10px', background:'#F8FAFC', border:'1px solid #F1F5F9' }}>
-                            <p style={{ margin:'0 0 3px', fontSize:'10px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase' }}>{label}</p>
+                          <div key={label} style={{ gridColumn: full?'1/-1':undefined, padding:'10px 14px', borderRadius:'10px', background: surface2, border:`1px solid ${border}` }}>
+                            <p style={{ margin:'0 0 3px', fontSize:'10px', fontWeight:'700', color: textMuted, textTransform:'uppercase' }}>{label}</p>
                             <p style={{ margin:0, fontSize:'13.5px', fontWeight:'600', color: value?'#1E293B':'#CBD5E1' }}>{value || '-'}</p>
                           </div>
                         ))}
@@ -661,7 +669,7 @@ const Players = () => {
 
                   <button
                     onClick={() => { setSelectedPlayer(null); openEdit(selectedPlayer); }}
-                    style={{ width:'100%', padding:'12px', borderRadius:'11px', background:`linear-gradient(135deg, ${accent}, ${light})`, color:'white', border:'none', fontWeight:'700', fontSize:'13.5px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', boxShadow:`0 4px 14px ${accent}40`, marginTop:'8px' }}>
+                    style={{ width:'100%', padding:'12px', borderRadius:'11px', background:'linear-gradient(135deg, #060030, #1a0060)', color:'white', border:'none', fontWeight:'700', fontSize:'13.5px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', boxShadow:'0 4px 14px rgba(6,0,48,0.35)', marginTop:'8px' }}>
                     <Edit3 size={15} /> Edit Player
                   </button>
                 </>
@@ -703,7 +711,7 @@ const Players = () => {
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
-                <ChevronDown size={13} style={{ position:'absolute', right:'9px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:'#64748B' }} />
+                <ChevronDown size={13} style={{ position:'absolute', right:'9px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color: textSecondary }} />
               </div>
             </FormField>
           </div>
@@ -730,15 +738,15 @@ const Players = () => {
                 <option value="" disabled>Select a pathway…</option>
                 {pathwayOptions.map(pw => <option key={pw} value={pw}>{pw}</option>)}
               </select>
-              <ChevronDown size={13} style={{ position:'absolute', right:'9px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:'#64748B' }} />
+              <ChevronDown size={13} style={{ position:'absolute', right:'9px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color: textSecondary }} />
             </div>
           </FormField>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginTop:'24px' }}>
             <button onClick={closeModal} disabled={loading}
-              style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background:'#F1F5F9', color:'#475569', border:'1.5px solid #E2E8F0', cursor: loading?'not-allowed':'pointer', fontSize:'13.5px', opacity: loading?.6:1 }}
+              style={{ padding:'11px', borderRadius:'10px', fontWeight:'600', background: surface2, color: textSecondary, border:`1.5px solid ${border}`, cursor: loading?'not-allowed':'pointer', fontSize:'13.5px', opacity: loading?.6:1 }}
               onMouseEnter={e => !loading && (e.currentTarget.style.background='#E2E8F0')}
-              onMouseLeave={e => !loading && (e.currentTarget.style.background='#F1F5F9')}>
+              onMouseLeave={e => !loading && (e.currentTarget.style.background=surface2)}>
               Cancel
             </button>
             <button onClick={handleSubmit} disabled={loading}

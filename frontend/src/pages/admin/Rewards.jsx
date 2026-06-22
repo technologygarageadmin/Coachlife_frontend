@@ -3,6 +3,7 @@ import { Layout } from '../../components/Layout';
 import { Gift, Edit2, Trash2, Package, Search, Plus, X, Loader, CheckCircle, TrendingUp, Star } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo, createElement } from 'react';
 import { Toast } from '../../components/Toast';
+import { useTheme } from '../../context/ThemeContext';
 
 const API_ENDPOINTS = {
   VIEW:   'https://vzcyj52ypb.execute-api.ap-south-1.amazonaws.com/default/CL_View_Reward',
@@ -36,20 +37,20 @@ const PALETTES = [
   ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
   ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
 ];
-const pal = (name = '') => PALETTES[name.charCodeAt(0) % PALETTES.length];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
 
 const Sk = ({ w, h, r = 8 }) => (
   <div style={{ width:w, height:h, borderRadius:r, background:'#EEF2F7', animation:'rwdPulse 1.6s ease-in-out infinite', flexShrink:0 }} />
 );
 
-const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SummaryIcon, accent, surface, border }) => {
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'16px', padding:'18px 20px',
-        border:`1.5px solid ${hov ? accent+'50' : '#F1F5F9'}`,
+        background: surface, borderRadius:'16px', padding:'18px 20px',
+        border:`1.5px solid ${hov ? accent+'50' : border}`,
         boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
         display:'flex', alignItems:'center', gap:'14px',
         transition:'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
@@ -67,31 +68,30 @@ const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
 };
 
 /* ── reward card (module-level, memo-friendly) ── */
-const RewardCard = ({ reward, onEdit, onDelete }) => {
+const RewardCard = ({ reward, onEdit, onDelete, surface, border }) => {
   const [hov, setHov] = useState(false);
-  const [accent, light] = pal(reward.rewardName || '');
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'16px', overflow:'hidden',
-        border:`1.5px solid ${hov ? accent+'40' : '#F1F5F9'}`,
-        boxShadow: hov ? `0 12px 32px ${accent}18` : '0 2px 8px rgba(0,0,0,.05)',
+        background: surface, borderRadius:'16px', overflow:'hidden',
+        border:`1.5px solid ${hov ? 'rgba(99,102,241,0.35)' : border}`,
+        boxShadow: hov ? '0 12px 32px rgba(6,0,48,0.12)' : '0 2px 8px rgba(0,0,0,.05)',
         display:'flex', flexDirection:'column',
         transition:'all .22s cubic-bezier(.34,1.56,.64,1)',
         transform: hov ? 'translateY(-5px)' : 'none',
         animation:'rwdFadeUp .3s ease',
       }}
     >
-      {/* color band */}
-      <div style={{ height:'5px', background:`linear-gradient(90deg, ${accent}, ${light})` }} />
+      {/* brand top band */}
+      <div style={{ height:'5px', background:'linear-gradient(90deg, #060030, #6366F1)' }} />
 
       <div style={{ padding:'20px', flex:1, display:'flex', flexDirection:'column' }}>
         {/* top row */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'10px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:`${accent}15`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <Gift size={17} color={accent} />
+            <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:'rgba(99,102,241,0.1)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Gift size={17} color="#6366F1" />
             </div>
             <h3 style={{ fontSize:'15px', fontWeight:'800', color:'#0F172A', margin:0, lineHeight:'1.3' }}>{reward.rewardName}</h3>
           </div>
@@ -116,15 +116,15 @@ const RewardCard = ({ reward, onEdit, onDelete }) => {
         {/* points badge */}
         <div style={{
           display:'flex', alignItems:'center', gap:'8px',
-          padding:'10px 13px', background:`${accent}0d`,
-          border:`1.5px solid ${accent}25`, borderRadius:'10px', marginBottom:'14px',
+          padding:'10px 13px', background:'rgba(99,102,241,0.06)',
+          border:'1.5px solid rgba(99,102,241,0.18)', borderRadius:'10px', marginBottom:'14px',
         }}>
-          <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:`${accent}22`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-            <Star size={13} color={accent} />
+          <div style={{ width:'28px', height:'28px', borderRadius:'7px', background:'rgba(99,102,241,0.12)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Star size={13} color="#6366F1" />
           </div>
           <div>
             <p style={{ fontSize:'10px', fontWeight:'700', color:'#94A3B8', margin:0, textTransform:'uppercase', letterSpacing:'.5px' }}>Points Required</p>
-            <p style={{ fontSize:'16px', fontWeight:'800', color: accent, margin:0 }}>{reward.points}</p>
+            <p style={{ fontSize:'16px', fontWeight:'800', color:'#6366F1', margin:0 }}>{reward.points}</p>
           </div>
         </div>
 
@@ -167,6 +167,15 @@ const RewardCard = ({ reward, onEdit, onDelete }) => {
 ════════════════════════════════════════════════ */
 const Rewards = () => {
   const { userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#F1F5F9';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#64748B';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
   const [rewards, setRewards]               = useState([]);
   const [searchTerm, setSearchTerm]         = useState('');
   const [statusFilter, setStatusFilter]     = useState('all');
@@ -329,51 +338,51 @@ const Rewards = () => {
         {/* ── Summary cards ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }}>
           {loading ? [1,2,3,4].map(i => (
-            <div key={i} style={{ background:'#fff', borderRadius:'16px', padding:'18px 20px', border:'1px solid #F1F5F9', display:'flex', gap:'14px', alignItems:'center' }}>
+            <div key={i} style={{ background: surface, borderRadius:'16px', padding:'18px 20px', border:`1px solid ${border}`, display:'flex', gap:'14px', alignItems:'center' }}>
               <Sk w="48px" h="48px" r={13} />
               <div style={{ flex:1 }}><Sk w="60%" h="10px" /><div style={{marginTop:8}}><Sk w="42%" h="22px" /></div></div>
             </div>
           )) : <>
-            <SummaryCard label="Total Rewards" value={stats.total}    icon={Gift}        accent="#6366F1" />
-            <SummaryCard label="Active"         value={stats.active}  icon={CheckCircle} accent="#10B981" />
-            <SummaryCard label="Inactive"       value={stats.inactive} icon={Package}    accent="#F59E0B" />
-            <SummaryCard label="Avg Points"     value={stats.avg}     icon={TrendingUp}  accent="#EC4899" />
+            <SummaryCard label="Total Rewards" value={stats.total}    icon={Gift}        accent="#6366F1" surface={surface} border={border} />
+            <SummaryCard label="Active"         value={stats.active}  icon={CheckCircle} accent="#10B981" surface={surface} border={border} />
+            <SummaryCard label="Inactive"       value={stats.inactive} icon={Package}    accent="#F59E0B" surface={surface} border={border} />
+            <SummaryCard label="Avg Points"     value={stats.avg}     icon={TrendingUp}  accent="#EC4899" surface={surface} border={border} />
           </>}
         </div>
 
         {/* ── Filter bar ── */}
         <div style={{
           display:'flex', alignItems:'center', gap:'10px', marginBottom:'24px',
-          background:'#fff', padding:'12px 16px', borderRadius:'14px',
-          border:'1px solid #F1F5F9', boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
+          background: surface, padding:'12px 16px', borderRadius:'14px',
+          border:`1px solid ${border}`, boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
         }}>
           <div style={{
             display:'flex', alignItems:'center', gap:'8px', flex:'1', minWidth:'200px',
-            border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'8px 12px', background:'#FAFBFC',
+            border:`1.5px solid ${border}`, borderRadius:'10px', padding:'8px 12px', background: surface2,
           }}
           onFocusCapture={e => { e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(99,102,241,.1)'; }}
-          onBlurCapture={e => { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.boxShadow='none'; }}>
-            <Search size={15} color="#94A3B8" />
+          onBlurCapture={e => { e.currentTarget.style.borderColor=border; e.currentTarget.style.boxShadow='none'; }}>
+            <Search size={15} color={textMuted} />
             <input
               type="text" placeholder="Search rewards…" value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color:'#1E293B', flex:1, fontFamily:'inherit' }}
             />
-            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color:'#94A3B8', padding:0, display:'flex' }}><X size={14} /></button>}
+            {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color: textMuted, padding:0, display:'flex' }}><X size={14} /></button>}
           </div>
 
           <div style={{ display:'flex', gap:'6px' }}>
             {[['all','All'], ['active','Active'], ['inactive','Inactive']].map(([v,l]) => (
               <button key={v} onClick={() => setStatusFilter(v)} style={{
                 padding:'7px 14px', borderRadius:'999px', fontSize:'12px', fontWeight:'700',
-                border: statusFilter === v ? '1.5px solid #6366F1' : '1.5px solid #E2E8F0',
-                background: statusFilter === v ? '#6366F1' : '#F8FAFC',
-                color: statusFilter === v ? '#fff' : '#64748B', cursor:'pointer', transition:'all .18s ease',
+                border: statusFilter === v ? '1.5px solid #6366F1' : `1.5px solid ${border}`,
+                background: statusFilter === v ? '#6366F1' : surface2,
+                color: statusFilter === v ? '#fff' : textSecondary, cursor:'pointer', transition:'all .18s ease',
               }}>{l}</button>
             ))}
           </div>
 
-          <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', marginLeft:'auto', whiteSpace:'nowrap' }}>
+          <span style={{ fontSize:'12px', fontWeight:'700', color: textMuted, marginLeft:'auto', whiteSpace:'nowrap' }}>
             <span style={{ color:'#6366F1' }}>{filteredRewards.length}</span> / {rewards.length}
           </span>
         </div>
@@ -382,7 +391,7 @@ const Rewards = () => {
         {loading ? (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))', gap:'18px' }}>
             {[1,2,3,4,5,6].map(i => (
-              <div key={i} style={{ background:'#fff', borderRadius:'16px', overflow:'hidden', border:'1px solid #F1F5F9' }}>
+              <div key={i} style={{ background: surface, borderRadius:'16px', overflow:'hidden', border:`1px solid ${border}` }}>
                 <div style={{ height:'5px', background:'#EEF2F7', animation:'rwdPulse 1.6s ease-in-out infinite' }} />
                 <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'12px' }}>
                   <div style={{ display:'flex', gap:'10px', alignItems:'center' }}>
@@ -405,16 +414,18 @@ const Rewards = () => {
                 reward={reward}
                 onEdit={handleEditClick}
                 onDelete={r => { setSelectedReward(r); setDeleteModalOpen(true); }}
+                surface={surface}
+                border={border}
               />
             ))}
           </div>
         ) : (
-          <div style={{ textAlign:'center', padding:'80px 24px', background:'#fff', borderRadius:'16px', border:'2px dashed #E2E8F0' }}>
+          <div style={{ textAlign:'center', padding:'80px 24px', background: surface, borderRadius:'16px', border:`2px dashed ${border}` }}>
             <div style={{ width:'80px', height:'80px', borderRadius:'22px', background:'#EEF2FF', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
               <Package size={36} color="#6366F1" />
             </div>
-            <p style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>No rewards found</p>
-            <p style={{ fontSize:'13.5px', color:'#94A3B8', margin:0 }}>
+            <p style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>No rewards found</p>
+            <p style={{ fontSize:'13.5px', color: textMuted, margin:0 }}>
               {searchTerm || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Add your first reward to get started'}
             </p>
           </div>
@@ -428,7 +439,7 @@ const Rewards = () => {
             animation:'fadeOverlay .2s ease',
           }} onClick={e => { if (e.target === e.currentTarget) handleCloseModal(); }}>
             <div style={{
-              background:'#fff', borderRadius:'20px', padding:'28px 28px 24px', maxWidth:'500px', width:'92%',
+              background: surface, borderRadius:'20px', padding:'28px 28px 24px', maxWidth:'500px', width:'92%',
               boxShadow:'0 30px 60px rgba(0,0,0,.22)', animation:'slideModal .3s cubic-bezier(.34,1.56,.64,1)',
             }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'22px' }}>
@@ -436,13 +447,13 @@ const Rewards = () => {
                   <div style={{ width:'40px', height:'40px', borderRadius:'11px', background:'linear-gradient(135deg,#6366F1,#8B5CF6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
                     <Gift size={18} color="#fff" />
                   </div>
-                  <h3 style={{ fontSize:'18px', fontWeight:'800', color:'#0F172A', margin:0 }}>
+                  <h3 style={{ fontSize:'18px', fontWeight:'800', color: textPrimary, margin:0 }}>
                     {editingReward ? 'Edit Reward' : 'Add New Reward'}
                   </h3>
                 </div>
-                <button onClick={handleCloseModal} style={{ width:'32px', height:'32px', borderRadius:'8px', border:'none', background:'#F8FAFC', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .18s ease' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#EEF2F7'} onMouseLeave={e => e.currentTarget.style.background='#F8FAFC'}>
-                  <X size={16} color="#64748B" />
+                <button onClick={handleCloseModal} style={{ width:'32px', height:'32px', borderRadius:'8px', border:'none', background: surface2, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .18s ease' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#EEF2F7'} onMouseLeave={e => e.currentTarget.style.background=surface2}>
+                  <X size={16} color={textSecondary} />
                 </button>
               </div>
 
@@ -461,7 +472,7 @@ const Rewards = () => {
                     <input type="number" value={formData.points} onChange={e => setFormData({...formData, points:e.target.value})}
                       placeholder="e.g., 1000" style={inputBase} onFocus={iFocus} onBlur={iBlur} />
                   </FormField>
-                  <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background:'#F8FAFC', borderRadius:'10px', border:'1.5px solid #E2E8F0', cursor:'pointer' }}
+                  <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'10px 14px', background: surface2, borderRadius:'10px', border:`1.5px solid ${border}`, cursor:'pointer' }}
                     onClick={() => setFormData({...formData, isActive:!formData.isActive})}>
                     <div style={{ width:'20px', height:'20px', borderRadius:'5px', border:`2px solid ${formData.isActive ? '#6366F1' : '#CBD5E1'}`, background: formData.isActive ? '#6366F1' : 'transparent', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .18s ease', flexShrink:0 }}>
                       {formData.isActive && <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4.5 7.5L10 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
@@ -472,11 +483,11 @@ const Rewards = () => {
 
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
                   <button type="button" onClick={handleCloseModal} style={{
-                    padding:'11px', border:'1.5px solid #E2E8F0', background:'#F8FAFC', borderRadius:'10px',
-                    fontSize:'14px', fontWeight:'700', color:'#64748B', cursor:'pointer', transition:'all .18s ease',
+                    padding:'11px', border:`1.5px solid ${border}`, background: surface2, borderRadius:'10px',
+                    fontSize:'14px', fontWeight:'700', color: textSecondary, cursor:'pointer', transition:'all .18s ease',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.background='#EEF2F7'; e.currentTarget.style.borderColor='#CBD5E1'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background='#F8FAFC'; e.currentTarget.style.borderColor='#E2E8F0'; }}>
+                  onMouseLeave={e => { e.currentTarget.style.background=surface2; e.currentTarget.style.borderColor=border; }}>
                     Cancel
                   </button>
                   <button type="submit" disabled={submitting} style={{
@@ -502,20 +513,20 @@ const Rewards = () => {
             animation:'fadeOverlay .2s ease',
           }} onClick={e => { if (e.target === e.currentTarget && !submitting) setDeleteModalOpen(false); }}>
             <div style={{
-              background:'#fff', borderRadius:'20px', padding:'32px 28px', maxWidth:'400px', width:'92%',
+              background: surface, borderRadius:'20px', padding:'32px 28px', maxWidth:'400px', width:'92%',
               boxShadow:'0 30px 60px rgba(0,0,0,.22)', textAlign:'center', animation:'slideModal .3s cubic-bezier(.34,1.56,.64,1)',
             }}>
               <div style={{ width:'64px', height:'64px', borderRadius:'16px', background:'#FEE2E2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 18px' }}>
                 <Trash2 size={28} color="#DC2626" />
               </div>
-              <h3 style={{ fontSize:'20px', fontWeight:'800', color:'#0F172A', margin:'0 0 10px' }}>Delete Reward?</h3>
-              <p style={{ fontSize:'14px', color:'#64748B', margin:'0 0 26px', lineHeight:'1.6' }}>
-                Are you sure you want to delete <strong style={{ color:'#0F172A' }}>"{selectedReward.rewardName}"</strong>? This cannot be undone.
+              <h3 style={{ fontSize:'20px', fontWeight:'800', color: textPrimary, margin:'0 0 10px' }}>Delete Reward?</h3>
+              <p style={{ fontSize:'14px', color: textSecondary, margin:'0 0 26px', lineHeight:'1.6' }}>
+                Are you sure you want to delete <strong style={{ color: textPrimary }}>"{selectedReward.rewardName}"</strong>? This cannot be undone.
               </p>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
                 <button onClick={() => setDeleteModalOpen(false)} disabled={submitting} style={{
-                  padding:'12px', border:'1.5px solid #E2E8F0', background:'#F8FAFC', borderRadius:'10px',
-                  fontSize:'14px', fontWeight:'700', color:'#64748B', cursor:'pointer', transition:'all .18s ease',
+                  padding:'12px', border:`1.5px solid ${border}`, background: surface2, borderRadius:'10px',
+                  fontSize:'14px', fontWeight:'700', color: textSecondary, cursor:'pointer', transition:'all .18s ease',
                 }}>
                   Cancel
                 </button>

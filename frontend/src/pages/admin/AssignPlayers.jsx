@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, createElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import {
@@ -28,11 +29,11 @@ const FormField = ({ label, required, children }) => (
   </div>
 );
 
-const SectionHeading = ({ children }) => (
+const SectionHeading = ({ border, textMuted }) => (
   <div style={{ display:'flex', alignItems:'center', gap:'8px', margin:'18px 0 12px' }}>
-    <div style={{ flex:1, height:'1px', background:'#EEF2F7' }} />
-    <span style={{ fontSize:'10px', fontWeight:'700', color:'#94A3B8', textTransform:'uppercase', letterSpacing:'.8px', whiteSpace:'nowrap' }}>{children}</span>
-    <div style={{ flex:1, height:'1px', background:'#EEF2F7' }} />
+    <div style={{ flex:1, height:'1px', background: border }} />
+    <span style={{ fontSize:'10px', fontWeight:'700', color: textMuted, textTransform:'uppercase', letterSpacing:'.8px', whiteSpace:'nowrap' }}>Selection</span>
+    <div style={{ flex:1, height:'1px', background: border }} />
   </div>
 );
 
@@ -57,7 +58,7 @@ const PALETTES = [
   ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
   ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
 ];
-const pal = (name = '') => PALETTES[name.charCodeAt(0) % PALETTES.length];
+const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
 
 /* ── skeleton ── */
 const Sk = ({ w, h, r = 8 }) => (
@@ -65,14 +66,14 @@ const Sk = ({ w, h, r = 8 }) => (
 );
 
 /* ── stat summary card ── */
-const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SummaryIcon, accent, surface, border, textPrimary, textMuted }) => {
   const [hov, setHov] = useState(false);
   return (
     <div
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
       style={{
-        background:'#fff', borderRadius:'16px', padding:'18px 20px',
-        border:`1.5px solid ${hov ? accent+'50' : '#F1F5F9'}`,
+        background: surface, borderRadius:'16px', padding:'18px 20px',
+        border:`1.5px solid ${hov ? accent+'50' : border}`,
         boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
         display:'flex', alignItems:'center', gap:'14px',
         transition:'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
@@ -82,8 +83,8 @@ const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
         {createElement(SummaryIcon, { size: 22, color: accent })}
       </div>
       <div>
-        <p style={{ fontSize:'10.5px', fontWeight:'700', color:'#94A3B8', margin:0, textTransform:'uppercase', letterSpacing:'.6px' }}>{label}</p>
-        <p style={{ fontSize:'23px', fontWeight:'800', color:'#0F172A', margin:'3px 0 0', letterSpacing:'-1px' }}>{value}</p>
+        <p style={{ fontSize:'10.5px', fontWeight:'700', color: textMuted, margin:0, textTransform:'uppercase', letterSpacing:'.6px' }}>{label}</p>
+        <p style={{ fontSize:'23px', fontWeight:'800', color: textPrimary, margin:'3px 0 0', letterSpacing:'-1px' }}>{value}</p>
       </div>
     </div>
   );
@@ -95,6 +96,15 @@ const SummaryCard = ({ label, value, icon: SummaryIcon, accent }) => {
 const AssignPlayers = () => {
   const navigate = useNavigate();
   const { players, coaches, assignPlayerToCoach, fetchPlayers, fetchCoaches, removePlayerFromCoach, swapPlayerBetweenCoaches, fetchAssignedPlayersForCoach } = useStore();
+
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E5E7EB';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#475569';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
 
   const [removingPlayerId, setRemovingPlayerId]       = useState(null);
   const [coachAssignments, setCoachAssignments]       = useState({});
@@ -312,15 +322,15 @@ const AssignPlayers = () => {
         {/* ── Summary stats ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }} className="ap-stats">
           {isPageLoading ? [1,2,3,4].map(i => (
-            <div key={i} style={{ background:'#fff', borderRadius:'16px', padding:'18px 20px', border:'1px solid #F1F5F9', display:'flex', gap:'14px', alignItems:'center' }}>
+            <div key={i} style={{ background: surface, borderRadius:'16px', padding:'18px 20px', border:`1px solid ${border}`, display:'flex', gap:'14px', alignItems:'center' }}>
               <Sk w="48px" h="48px" r={13} />
               <div style={{ flex:1 }}><Sk w="60%" h="10px" /><div style={{marginTop:8}}><Sk w="42%" h="22px" /></div></div>
             </div>
           )) : <>
-            <SummaryCard label="Total Players"   value={stats.total}            icon={Users}      accent="#6366F1" />
-            <SummaryCard label="Assigned"        value={stats.assigned}         icon={UserCheck}  accent="#10B981" />
-            <SummaryCard label="Unassigned"      value={stats.unassigned}       icon={Users}      accent="#F59E0B" />
-            <SummaryCard label="Assignments"     value={stats.totalAssignments} icon={Link2}      accent="#EC4899" />
+            <SummaryCard label="Total Players"   value={stats.total}            icon={Users}      accent="#6366F1" surface={surface} border={border} textPrimary={textPrimary} textMuted={textMuted} />
+            <SummaryCard label="Assigned"        value={stats.assigned}         icon={UserCheck}  accent="#10B981" surface={surface} border={border} textPrimary={textPrimary} textMuted={textMuted} />
+            <SummaryCard label="Unassigned"      value={stats.unassigned}       icon={Users}      accent="#F59E0B" surface={surface} border={border} textPrimary={textPrimary} textMuted={textMuted} />
+            <SummaryCard label="Assignments"     value={stats.totalAssignments} icon={Link2}      accent="#EC4899" surface={surface} border={border} textPrimary={textPrimary} textMuted={textMuted} />
           </>}
         </div>
 
@@ -331,17 +341,17 @@ const AssignPlayers = () => {
           <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
 
             {/* Assign form */}
-            <div style={{ background:'#fff', borderRadius:'16px', padding:'20px', border:'1px solid #F1F5F9', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
+            <div style={{ background: surface, borderRadius:'16px', padding:'20px', border:`1px solid ${border}`, boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'4px' }}>
                 <div style={{ width:'36px', height:'36px', borderRadius:'10px', background:'#EEF2FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                   <Link2 size={16} color="#6366F1" />
                 </div>
                 <div>
-                  <h3 style={{ margin:0, fontSize:'14px', fontWeight:'800', color:'#0F172A' }}>Assign Player</h3>
-                  <p style={{ margin:0, fontSize:'11px', color:'#94A3B8', fontWeight:'500' }}>Link a player to a coach</p>
+                  <h3 style={{ margin:0, fontSize:'14px', fontWeight:'800', color: textPrimary }}>Assign Player</h3>
+                  <p style={{ margin:0, fontSize:'11px', color: textMuted, fontWeight:'500' }}>Link a player to a coach</p>
                 </div>
               </div>
-              <SectionHeading>Selection</SectionHeading>
+              <SectionHeading border={border} textMuted={textMuted} />
               <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
                 <SelectWrap label="Player" required value={selectedPlayer} onChange={e => setSelectedPlayer(e.target.value)} disabled={isLoading}>
                   <option value="">{isLoading ? 'Loading…' : 'Choose player…'}</option>
@@ -357,8 +367,8 @@ const AssignPlayers = () => {
                   style={{
                     padding:'11px', borderRadius:'10px', fontWeight:'700', fontSize:'13.5px',
                     background: selectedPlayer && selectedCoach && !isAssigning && !isLoading
-                      ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : '#F1F5F9',
-                    color: selectedPlayer && selectedCoach && !isAssigning && !isLoading ? '#fff' : '#94A3B8',
+                      ? 'linear-gradient(135deg,#6366F1,#8B5CF6)' : surface2,
+                    color: selectedPlayer && selectedCoach && !isAssigning && !isLoading ? '#fff' : textMuted,
                     border:'none', cursor: selectedPlayer && selectedCoach && !isAssigning && !isLoading ? 'pointer' : 'not-allowed',
                     display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
                     boxShadow: selectedPlayer && selectedCoach ? '0 4px 12px rgba(99,102,241,.3)' : 'none',
@@ -372,17 +382,17 @@ const AssignPlayers = () => {
             </div>
 
             {/* Swap form */}
-            <div style={{ background:'#fff', borderRadius:'16px', padding:'20px', border:'1px solid #F1F5F9', boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
+            <div style={{ background: surface, borderRadius:'16px', padding:'20px', border:`1px solid ${border}`, boxShadow:'0 2px 8px rgba(0,0,0,.05)' }}>
               <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'4px' }}>
                 <div style={{ width:'36px', height:'36px', borderRadius:'10px', background:'#FEF3C7', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                   <ArrowLeftRight size={16} color="#D97706" />
                 </div>
                 <div>
-                  <h3 style={{ margin:0, fontSize:'14px', fontWeight:'800', color:'#0F172A' }}>Swap Player</h3>
-                  <p style={{ margin:0, fontSize:'11px', color:'#94A3B8', fontWeight:'500' }}>Move between coaches</p>
+                  <h3 style={{ margin:0, fontSize:'14px', fontWeight:'800', color: textPrimary }}>Swap Player</h3>
+                  <p style={{ margin:0, fontSize:'11px', color: textMuted, fontWeight:'500' }}>Move between coaches</p>
                 </div>
               </div>
-              <SectionHeading>Selection</SectionHeading>
+              <SectionHeading border={border} textMuted={textMuted} />
               <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
                 <SelectWrap label="Player (assigned)" required value={selectedSwapPlayer} onChange={e => setSelectedSwapPlayer(e.target.value)} disabled={isLoading}>
                   <option value="">{isLoading ? 'Loading…' : 'Choose player…'}</option>
@@ -408,8 +418,8 @@ const AssignPlayers = () => {
                   style={{
                     padding:'11px', borderRadius:'10px', fontWeight:'700', fontSize:'13.5px',
                     background: selectedSwapPlayer && selectedSwapFromCoach && selectedSwapToCoach && !isSwapping && !isLoading
-                      ? 'linear-gradient(135deg,#F59E0B,#D97706)' : '#F1F5F9',
-                    color: selectedSwapPlayer && selectedSwapFromCoach && selectedSwapToCoach && !isSwapping && !isLoading ? '#fff' : '#94A3B8',
+                      ? 'linear-gradient(135deg,#F59E0B,#D97706)' : surface2,
+                    color: selectedSwapPlayer && selectedSwapFromCoach && selectedSwapToCoach && !isSwapping && !isLoading ? '#fff' : textMuted,
                     border:'none', cursor: selectedSwapPlayer && selectedSwapFromCoach && selectedSwapToCoach && !isSwapping && !isLoading ? 'pointer' : 'not-allowed',
                     display:'flex', alignItems:'center', justifyContent:'center', gap:'8px',
                     transition:'all .18s ease',
@@ -427,42 +437,42 @@ const AssignPlayers = () => {
             {/* Filter bar */}
             <div style={{
               display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px',
-              background:'#fff', padding:'12px 16px', borderRadius:'14px',
-              border:'1px solid #F1F5F9', boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
+              background: surface, padding:'12px 16px', borderRadius:'14px',
+              border:`1px solid ${border}`, boxShadow:'0 2px 6px rgba(0,0,0,.04)', flexWrap:'wrap',
             }}>
               <div style={{
                 display:'flex', alignItems:'center', gap:'8px', flex:'1', minWidth:'180px',
-                border:'1.5px solid #E2E8F0', borderRadius:'10px', padding:'8px 12px', background:'#FAFBFC',
+                border:`1.5px solid ${border}`, borderRadius:'10px', padding:'8px 12px', background: surface2,
               }}
               onFocusCapture={e => { e.currentTarget.style.borderColor='#6366F1'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(99,102,241,.1)'; }}
-              onBlurCapture={e => { e.currentTarget.style.borderColor='#E2E8F0'; e.currentTarget.style.boxShadow='none'; }}>
-                <Search size={15} color="#94A3B8" />
+              onBlurCapture={e => { e.currentTarget.style.borderColor=border; e.currentTarget.style.boxShadow='none'; }}>
+                <Search size={15} color={textMuted} />
                 <input
                   type="text" placeholder="Search players…" value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color:'#1E293B', flex:1, fontFamily:'inherit' }}
+                  style={{ border:'none', outline:'none', background:'transparent', fontSize:'13px', fontWeight:'500', color: textPrimary, flex:1, fontFamily:'inherit' }}
                 />
-                {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color:'#94A3B8', padding:0, display:'flex' }}><X size={14} /></button>}
+                {searchTerm && <button onClick={() => setSearchTerm('')} style={{ border:'none', background:'none', cursor:'pointer', color: textMuted, padding:0, display:'flex' }}><X size={14} /></button>}
               </div>
 
               <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
                 <button onClick={() => setFilterCoach('all')} style={{
                   padding:'7px 14px', borderRadius:'999px', fontSize:'12px', fontWeight:'700',
-                  border: filterCoach === 'all' ? '1.5px solid #6366F1' : '1.5px solid #E2E8F0',
-                  background: filterCoach === 'all' ? '#6366F1' : '#F8FAFC',
-                  color: filterCoach === 'all' ? '#fff' : '#64748B', cursor:'pointer', transition:'all .18s ease',
+                  border: filterCoach === 'all' ? '1.5px solid #6366F1' : `1.5px solid ${border}`,
+                  background: filterCoach === 'all' ? '#6366F1' : surface2,
+                  color: filterCoach === 'all' ? '#fff' : textSecondary, cursor:'pointer', transition:'all .18s ease',
                 }}>All</button>
                 {coaches.map(c => (
                   <button key={c.coachId} onClick={() => setFilterCoach(c.coachId)} style={{
                     padding:'7px 14px', borderRadius:'999px', fontSize:'12px', fontWeight:'700',
-                    border: filterCoach === c.coachId ? '1.5px solid #6366F1' : '1.5px solid #E2E8F0',
-                    background: filterCoach === c.coachId ? '#6366F1' : '#F8FAFC',
-                    color: filterCoach === c.coachId ? '#fff' : '#64748B', cursor:'pointer', transition:'all .18s ease', whiteSpace:'nowrap',
+                    border: filterCoach === c.coachId ? '1.5px solid #6366F1' : `1.5px solid ${border}`,
+                    background: filterCoach === c.coachId ? '#6366F1' : surface2,
+                    color: filterCoach === c.coachId ? '#fff' : textSecondary, cursor:'pointer', transition:'all .18s ease', whiteSpace:'nowrap',
                   }}>{c.name}</button>
                 ))}
               </div>
 
-              <span style={{ fontSize:'12px', fontWeight:'700', color:'#94A3B8', whiteSpace:'nowrap', marginLeft:'auto' }}>
+              <span style={{ fontSize:'12px', fontWeight:'700', color: textMuted, whiteSpace:'nowrap', marginLeft:'auto' }}>
                 <span style={{ color:'#6366F1' }}>{filteredAssignments.length}</span> / {coaches.length} coaches
               </span>
             </div>
@@ -471,40 +481,39 @@ const AssignPlayers = () => {
             {isPageLoading ? (
               <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
                 {[1,2,3].map(i => (
-                  <div key={i} style={{ borderRadius:'16px', overflow:'hidden', border:'1px solid #F1F5F9' }}>
+                  <div key={i} style={{ borderRadius:'16px', overflow:'hidden', border:`1px solid ${border}` }}>
                     <div style={{ height:'68px', background:'#EEF2F7', animation:'plsPulse 1.6s ease-in-out infinite' }} />
-                    <div style={{ background:'#fff', padding:'16px', display:'flex', flexDirection:'column', gap:'10px' }}>
+                    <div style={{ background: surface, padding:'16px', display:'flex', flexDirection:'column', gap:'10px' }}>
                       {[1,2].map(j => <Sk key={j} w="100%" h="44px" r={10} />)}
                     </div>
                   </div>
                 ))}
               </div>
             ) : filteredAssignments.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'80px 24px', background:'#fff', borderRadius:'16px', border:'1px solid #F1F5F9' }}>
+              <div style={{ textAlign:'center', padding:'80px 24px', background: surface, borderRadius:'16px', border:`1px solid ${border}` }}>
                 <div style={{ width:'80px', height:'80px', borderRadius:'22px', background:'linear-gradient(135deg,#EEF2FF,#E0E7FF)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px' }}>
                   <Users size={36} color="#6366F1" />
                 </div>
-                <p style={{ fontSize:'17px', fontWeight:'800', color:'#0F172A', margin:'0 0 8px' }}>No assignments</p>
-                <p style={{ fontSize:'13.5px', color:'#94A3B8', margin:0 }}>
+                <p style={{ fontSize:'17px', fontWeight:'800', color: textPrimary, margin:'0 0 8px' }}>No assignments</p>
+                <p style={{ fontSize:'13.5px', color: textMuted, margin:0 }}>
                   {searchTerm || filterCoach !== 'all' ? 'No results for current filters' : 'No player assignments yet'}
                 </p>
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
                 {filteredAssignments.map(({ coach, assignedData }) => {
-                  const [accent, light] = pal(coach.name || '');
                   const filtered = searchTerm
                     ? assignedData.filter(item => (item.player?.playerName || item.player?.name || '').toLowerCase().includes(searchTerm.toLowerCase()))
                     : assignedData;
                   return (
-                    <div key={coach.coachId} style={{ borderRadius:'16px', overflow:'hidden', border:`1.5px solid ${accent}20`, boxShadow:'0 2px 10px rgba(0,0,0,.05)' }}>
+                    <div key={coach.coachId} style={{ borderRadius:'16px', overflow:'hidden', border:`1.5px solid ${border}`, boxShadow:'0 2px 10px rgba(0,0,0,.05)' }}>
                       {/* Coach header */}
                       <div style={{
-                        background:`linear-gradient(135deg, ${accent} 0%, ${light} 100%)`,
+                        background:'linear-gradient(135deg, #060030 0%, #1a0060 100%)',
                         padding:'16px 20px', display:'flex', alignItems:'center', justifyContent:'space-between',
                       }}>
                         <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
-                          <div style={{ width:'40px', height:'40px', borderRadius:'50%', background:'rgba(255,255,255,.25)', border:'2px solid rgba(255,255,255,.4)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'18px', flexShrink:0 }}>
+                          <div style={{ width:'40px', height:'40px', borderRadius:'50%', background:'linear-gradient(135deg,#6366F1,#8B5CF6)', border:'2px solid rgba(255,255,255,.3)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'18px', flexShrink:0 }}>
                             {coach.name?.charAt(0).toUpperCase() || '?'}
                           </div>
                           <div>
@@ -512,29 +521,28 @@ const AssignPlayers = () => {
                             <p style={{ margin:0, fontSize:'12px', color:'rgba(255,255,255,.75)', fontWeight:'500' }}>{coach.specialization || 'Coach'}</p>
                           </div>
                         </div>
-                        <div style={{ background:'rgba(255,255,255,.22)', border:'1px solid rgba(255,255,255,.3)', borderRadius:'999px', padding:'4px 12px', fontSize:'13px', fontWeight:'700', color:'#fff' }}>
+                        <div style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.2)', borderRadius:'999px', padding:'4px 12px', fontSize:'13px', fontWeight:'700', color:'#fff' }}>
                           {assignedData.length} player{assignedData.length !== 1 ? 's' : ''}
                         </div>
                       </div>
 
                       {/* Players */}
-                      <div style={{ background:'#fff', padding:'12px 16px', display:'flex', flexDirection:'column', gap:'8px' }}>
+                      <div style={{ background: surface, padding:'12px 16px', display:'flex', flexDirection:'column', gap:'8px' }}>
                         {filtered.length > 0 ? filtered.map(item => {
                           const player   = item.player;
                           const playerId = player?._id || player?.playerId;
                           const name     = player?.playerName || player?.name || 'Unknown';
-                          const [pAccent] = pal(name);
                           return (
                             <div key={`${coach.coachId}-${playerId}`} style={{
                               display:'flex', alignItems:'center', justifyContent:'space-between',
                               padding:'10px 12px', borderRadius:'10px',
-                              background:`${pAccent}08`, border:`1px solid ${pAccent}20`,
+                              background:'rgba(99,102,241,0.05)', border:`1px solid ${border}`,
                             }}>
                               <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-                                <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:`linear-gradient(135deg,${pAccent},${pal(name)[1]})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'13px', flexShrink:0 }}>
+                                <div style={{ width:'32px', height:'32px', borderRadius:'50%', background:'linear-gradient(135deg,#6366F1,#8B5CF6)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'800', fontSize:'13px', flexShrink:0 }}>
                                   {name.charAt(0).toUpperCase()}
                                 </div>
-                                <span style={{ fontSize:'13.5px', fontWeight:'700', color:'#0F172A' }}>{name}</span>
+                                <span style={{ fontSize:'13.5px', fontWeight:'700', color: textPrimary }}>{name}</span>
                               </div>
                               <button
                                 onClick={() => handleRemovePlayer(playerId, coach.coachId)}
@@ -555,7 +563,7 @@ const AssignPlayers = () => {
                             </div>
                           );
                         }) : (
-                          <p style={{ textAlign:'center', fontSize:'13px', color:'#CBD5E1', fontWeight:'600', padding:'12px 0', margin:0 }}>
+                          <p style={{ textAlign:'center', fontSize:'13px', color: textMuted, fontWeight:'600', padding:'12px 0', margin:0 }}>
                             No players assigned to this coach
                           </p>
                         )}

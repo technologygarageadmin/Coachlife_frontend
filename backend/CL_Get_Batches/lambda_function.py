@@ -104,6 +104,9 @@ def lambda_handler(event, context):
                 "players": player_info,
                 "coachIds": coach_ids,
                 "coaches": coach_info,
+                "days": batch.get("days", []),
+                "startTime": batch.get("startTime"),
+                "endTime": batch.get("endTime"),
                 "createdAt": batch.get("createdAt", ""),
             })
         return resp(200, {"batches": result})

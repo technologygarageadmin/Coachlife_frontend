@@ -69,18 +69,21 @@ def normalize_status(status):
     if not status:
         return "UPCOMING"
 
-    status = status.strip().upper()
+    s = status.strip().lower()
 
-    if status in ["UPCOMING", "NOT_STARTED","upcoming","UpComing"]:
+    if s in ("upcoming", "not_started"):
         return "UPCOMING"
 
-    if status in ["IN_PROGRESS", "INPROGRESS", "IN-PROGRESS","Inprogress","InProgress","inprogress","in progress"]:
+    if s in ("in_progress", "inprogress", "in-progress", "in progress"):
         return "in progress"
 
-    if status in ["COMPLETED", "COMPLETE", "DONE","Completed","completed"]:
+    if s in ("completed", "complete", "done"):
         return "completed"
 
-    return status
+    if s in ("pending", "absent", "excused"):
+        return "pending"
+
+    return status.strip()
 
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
@@ -140,11 +143,24 @@ def lambda_handler(event, context):
         # =====================================================
 
         # -------- START SESSION --------
-        if current_status == "UPCOMING":
+        if current_status in ("UPCOMING", "pending"):
             if current_session != last_completed_session + 1:
-                return response(400, {
-                    "message": f"Complete session {last_completed_session + 1} before starting this session"
-                })
+                # Allow starting if all sessions in the gap are pending (player was absent/excused)
+                gap_cards = list(session_cards.find(
+                    {
+                        "playerId": player_id,
+                        "session": {"$gt": last_completed_session, "$lt": current_session}
+                    },
+                    {"session": 1, "status": 1}
+                ))
+                all_skippable = bool(gap_cards) and all(
+                    str(s.get("status", "")).lower() in ("pending", "absent", "excused")
+                    for s in gap_cards
+                )
+                if not all_skippable:
+                    return response(400, {
+                        "message": f"Complete session {last_completed_session + 1} before starting this session"
+                    })
 
             session_cards.update_one(
                 {"_id": ObjectId(session_card_id)},

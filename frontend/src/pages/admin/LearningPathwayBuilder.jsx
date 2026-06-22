@@ -1,99 +1,64 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
-import { Card } from '../../components/Card';
 import { SkeletonContainer } from '../../components/SkeletonLoader';
-import { BookOpen, Search, Loader, AlertCircle, Plus, Trash, SquarePen, Eye, ChevronDown, ChevronUp, Star, Layers } from 'lucide-react';
+import { BookOpen, AlertCircle, Plus, Trash, SquarePen, Eye, Loader } from 'lucide-react';
 import axios from 'axios';
 import { useTheme } from '../../context/ThemeContext';
 
-const SummaryCard = ({ label, value, icon: SIcon, accent, dark }) => {
-  const [hov, setHov] = useState(false);
-  return (
-    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
-      background: dark ? 'var(--cl-surface)' : '#fff',
-      border: `1.5px solid ${hov ? accent + '44' : (dark ? 'var(--cl-border)' : '#F1F5F9')}`,
-      borderRadius: '16px', padding: '18px 20px',
-      boxShadow: hov ? `0 8px 24px ${accent}20` : '0 2px 6px rgba(0,0,0,.04)',
-      display: 'flex', alignItems: 'center', gap: '14px',
-      transition: 'all .22s ease', transform: hov ? 'translateY(-2px)' : 'none',
-    }}>
-      <div style={{ width: '48px', height: '48px', borderRadius: '13px', flexShrink: 0, background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <SIcon size={22} color={accent} />
-      </div>
-      <div>
-        <p style={{ fontSize: '10.5px', fontWeight: '700', color: dark ? 'var(--cl-text-3)' : '#94A3B8', margin: 0, textTransform: 'uppercase', letterSpacing: '.6px' }}>{label}</p>
-        <p style={{ fontSize: '23px', fontWeight: '800', color: dark ? 'var(--cl-text)' : '#0F172A', margin: '3px 0 0', letterSpacing: '-1px' }}>{value}</p>
-      </div>
-    </div>
-  );
-};
-
 const PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 const DELETE_PATHWAY_API_URL = 'https://w5qtdpsr58.execute-api.ap-south-1.amazonaws.com/default/CL_Delete_Learningpathway';
+
+const getStageColor = (session) => {
+  const n = parseInt(session) || 0;
+  if (n <= 24) return { bg: 'rgba(99,102,241,0.15)', text: '#818CF8', label: 'Foundation' };
+  if (n <= 72) return { bg: 'rgba(245,158,11,0.15)', text: '#FBBF24', label: 'Intermediate' };
+  return { bg: 'rgba(52,211,153,0.15)', text: '#34D399', label: 'Advanced' };
+};
 
 const LearningPathwayBuilder = () => {
   const { userToken } = useStore();
   const navigate = useNavigate();
   const { theme } = useTheme();
   const dark = theme === 'dark';
+
   const [pathways, setPathways] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPathwayName, setSelectedPathwayName] = useState(() => sessionStorage.getItem('lpb_selected') || null);
+
+  const selectPathway = (name) => {
+    setSelectedPathwayName(name);
+    sessionStorage.setItem('lpb_selected', name);
+  };
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pathwayToDelete, setPathwayToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [expandedStages, setExpandedStages] = useState({});
-  const [renameModal, setRenameModal] = useState({
-    isOpen: false,
-    stageName: '',
-    newName: '',
-    isLoading: false
-  });
+  const [renameModal, setRenameModal] = useState({ isOpen: false, stageName: '', newName: '', isLoading: false });
 
   useEffect(() => {
     fetchPathways();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userToken]);
 
   const fetchPathways = async () => {
     setLoading(true);
     setError('');
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(userToken && { 'userToken': userToken })
-      };
-
-
+      const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
       const response = await axios.get(PATHWAY_API_URL, { headers });
-      
       const data = response.data || {};
-      
-      // Extract sessions from the API response
       let sessions = [];
-      if (Array.isArray(data)) {
-        sessions = data;
-      } else if (data.sessions && Array.isArray(data.sessions)) {
-        sessions = data.sessions;
-      } else if (data.data && Array.isArray(data.data)) {
-        sessions = data.data;
-      } else if (data.pathways && Array.isArray(data.pathways)) {
-        sessions = data.pathways;
-      } else if (data.body && typeof data.body === 'string') {
-        try {
-          const parsed = JSON.parse(data.body);
-          sessions = Array.isArray(parsed) ? parsed : parsed.sessions || parsed.data || [];
-        } catch {
-          sessions = [];
-        }
+      if (Array.isArray(data)) sessions = data;
+      else if (data.sessions) sessions = data.sessions;
+      else if (data.data) sessions = data.data;
+      else if (data.pathways) sessions = data.pathways;
+      else if (data.body && typeof data.body === 'string') {
+        try { const p = JSON.parse(data.body); sessions = Array.isArray(p) ? p : p.sessions || p.data || []; } catch { sessions = []; }
       }
-
       setPathways(sessions);
     } catch (err) {
-      console.error('Error fetching pathways:', err);
       setError(err.response?.data?.message || err.message || 'Failed to fetch pathways');
       setPathways([]);
     } finally {
@@ -102,41 +67,16 @@ const LearningPathwayBuilder = () => {
   };
 
   const handleDelete = async () => {
-    if (!pathwayToDelete) {
-      return;
-    }
-
-    // Check if we have required ID field
+    if (!pathwayToDelete) return;
     const pathwayId = pathwayToDelete.mongoId || pathwayToDelete._id || pathwayToDelete.id;
-    if (!pathwayId) {
-      setError('Unable to delete: Missing session ID. Please refresh and try again.');
-      return;
-    }
-
+    if (!pathwayId) { setError('Unable to delete: Missing session ID.'); return; }
     setDeleting(true);
     setError('');
-
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(userToken && { 'usertoken': userToken })
-      };
-
-      const payload = {
-        id: pathwayId,
-        session: pathwayToDelete.session,
-        Topic: pathwayToDelete.Topic,
-        LearningPathway: pathwayToDelete.LearningPathway
-      };
-
-      
-
+      const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
+      const payload = { id: pathwayId, session: pathwayToDelete.session, Topic: pathwayToDelete.Topic, LearningPathway: pathwayToDelete.LearningPathway };
       const response = await axios.post(DELETE_PATHWAY_API_URL, payload, { headers });
-
-      
-
-      if (response.data && (response.data.statusCode === 200 || response.data.statusCode === 204 || response.status === 200 || response.status === 204)) {
-        
+      if (response.data && (response.data.statusCode === 200 || response.data.statusCode === 204 || response.status === 200)) {
         setDeleteConfirmOpen(false);
         setPathwayToDelete(null);
         await fetchPathways();
@@ -144,12 +84,6 @@ const LearningPathwayBuilder = () => {
         setError(response.data?.message || 'Failed to delete pathway');
       }
     } catch (err) {
-      console.error('❌ Error deleting pathway:', {
-        error: err.message,
-        response: err.response?.data,
-        status: err.response?.status,
-        pathwayData: pathwayToDelete
-      });
       setError(err.response?.data?.message || err.message || 'Failed to delete pathway');
     } finally {
       setDeleting(false);
@@ -159,21 +93,18 @@ const LearningPathwayBuilder = () => {
   const handleRenamePathway = async () => {
     const trimmed = renameModal.newName.trim();
     if (!trimmed || trimmed.toLowerCase() === renameModal.stageName.toLowerCase()) return;
-
     setRenameModal(prev => ({ ...prev, isLoading: true }));
-    setError('');
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(userToken && { 'userToken': userToken })
-      };
+      const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
       const response = await axios.post(
         'https://uqiws6r1v3.execute-api.ap-south-1.amazonaws.com/default/CL_Rename_LearningPathway',
         { oldName: renameModal.stageName, newName: trimmed },
         { headers }
       );
       if (response.status === 200 || response.data?.statusCode === 200) {
+        const updatedName = trimmed;
         setRenameModal({ isOpen: false, stageName: '', newName: '', isLoading: false });
+        selectPathway(updatedName);
         await fetchPathways();
       } else {
         setError(response.data?.message || 'Failed to rename pathway');
@@ -185,787 +116,353 @@ const LearningPathwayBuilder = () => {
     }
   };
 
-  // Toggle stage expand/collapse
-  const toggleStage = (stageName) => {
-    setExpandedStages(prev => ({
-      ...prev,
-      [stageName]: !prev[stageName]
-    }));
-  };
+  const groupedPathwaysArray = useMemo(() => {
+    const filtered = pathways
+      .filter(p => {
+        if (!searchTerm) return true;
+        const s = searchTerm.toLowerCase();
+        return p.Topic?.toLowerCase().includes(s) || p.LearningPathway?.toLowerCase().includes(s) || p.Objective?.toLowerCase().includes(s) || p.activities?.some(a => a.activityTitle?.toLowerCase().includes(s));
+      })
+      .sort((a, b) => (parseInt(a.session) || 0) - (parseInt(b.session) || 0));
 
-  // Calculate statistics
-  const stats = {
+    const groups = {};
+    filtered.forEach(p => {
+      const key = p.LearningPathway || 'Uncategorized';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    return Object.keys(groups).map(stage => ({ stage, pathways: groups[stage] }));
+  }, [pathways, searchTerm]);
+
+  useEffect(() => {
+    if (groupedPathwaysArray.length > 0) {
+      if (!selectedPathwayName || !groupedPathwaysArray.find(g => g.stage === selectedPathwayName)) {
+        setSelectedPathwayName(groupedPathwaysArray[0].stage);
+      }
+    }
+  }, [groupedPathwaysArray]);
+
+  const selectedGroup = groupedPathwaysArray.find(g => g.stage === selectedPathwayName);
+  const stats = useMemo(() => ({
     total: pathways.length,
     stages: new Set(pathways.map(p => p.LearningPathway || 'Uncategorized')).size,
     totalPoints: pathways.reduce((sum, p) => sum + (p.totalPoints || 0), 0)
-  };
+  }), [pathways]);
 
-  // Filter and sort pathways
-  const filteredPathways = pathways.filter(pathway => {
-    const search = searchTerm.toLowerCase();
-    
-    if (search === '') {
-      return true;
-    }
-
-    const matches = 
-      pathway.Topic?.toLowerCase().includes(search) ||
-      pathway.LearningPathway?.toLowerCase().includes(search) ||
-      pathway.Objective?.toLowerCase().includes(search) ||
-      (pathway.activities?.some(a => a.activityTitle?.toLowerCase().includes(search)));
-    
-    return matches;
-  }).sort((a, b) => (parseInt(a.session) || 0) - (parseInt(b.session) || 0));
-
-  
-
-  // Group pathways by LearningPathway name
-  const groupedPathways = filteredPathways.reduce((acc, pathway) => {
-    const stage = pathway.LearningPathway || 'Uncategorized';
-    
-    if (!acc[stage]) acc[stage] = [];
-    acc[stage].push(pathway);
-    return acc;
-  }, {});
-
-  // Get unique stages in order they appear
-  const groupedPathwaysArray = Object.keys(groupedPathways).map(stage => ({
-    stage,
-    pathways: groupedPathways[stage]
-  }));
-
-  // Auto-expand stages when searching
-  useEffect(() => {
-    if (searchTerm) {
-      const newExpandedStages = {};
-      groupedPathwaysArray.forEach(group => {
-        if (group.pathways.length > 0) {
-          newExpandedStages[group.stage] = true;
-        }
-      });
-      setExpandedStages(newExpandedStages);
-    } else {
-      // Collapse all when search is cleared
-      setExpandedStages({});
-    }
-  }, [searchTerm]);
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E5E7EB';
+  const textPrimary = dark ? 'var(--cl-text)' : '#111827';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#64748B';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
 
   return (
     <Layout>
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
-        {/* Header with Stats */}
-        {loading ? (
-          <SkeletonContainer>
-            <div style={{
-              background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-              backdropFilter: 'blur(20px)',
-              color: 'white',
-              padding: '40px 32px',
-              marginBottom: '32px',
-              borderRadius: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              boxShadow: '0 8px 32px rgba(37, 44, 53, 0.15)',
-              minHeight: '240px'
-            }}>
-              <style>{`
-                @keyframes pulse {
-                  0%, 100% { opacity: 1; }
-                  50% { opacity: 0.5; }
-                }
-              `}</style>
-              <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-                <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{
-                      height: '32px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      marginBottom: '12px',
-                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                      width: '280px'
-                    }} />
-                    <div style={{
-                      height: '14px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '6px',
-                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.1s',
-                      width: '320px'
-                    }} />
-                  </div>
-                  <div style={{
-                    height: '36px',
-                    width: '140px',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '8px',
-                    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.15s',
-                    flexShrink: 0
-                  }} />
-                </div>
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 80px)' }}>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} style={{
-                      height: '80px',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '6px',
-                      animation: `pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite ${i * 0.1}s`,
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }} />
-                  ))}
-                </div>
-              </div>
+        {/* ── Header ── */}
+        <div style={{
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
+          borderRadius: '16px', padding: '22px 28px', marginBottom: '16px', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
+          boxShadow: '0 8px 32px rgba(6,0,48,.3)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BookOpen size={22} color="#fff" />
             </div>
-          </SkeletonContainer>
-        ) : (
-        <>
-          {/* ── Header banner ── */}
+            <div>
+              <h1 style={{ fontSize: '22px', fontWeight: '800', color: '#fff', margin: '0 0 2px', letterSpacing: '-.4px' }}>Learning Pathways</h1>
+              <p style={{ fontSize: '12.5px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
+                {loading ? '...' : `${stats.total} sessions · ${stats.stages} pathways · ${stats.totalPoints.toLocaleString()} pts`}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/admin/learning-pathway/add')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '7px',
+              padding: '10px 18px', borderRadius: '10px',
+              background: 'rgba(255,255,255,.14)', backdropFilter: 'blur(8px)',
+              border: '1.5px solid rgba(255,255,255,.28)',
+              color: '#fff', fontWeight: '700', fontSize: '13px', cursor: 'pointer',
+              transition: 'all .2s ease', flexShrink: 0
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.24)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.14)'; e.currentTarget.style.transform = 'none'; }}
+          >
+            <Plus size={15} /> Add Session
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
           <div style={{
-            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-            borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
-            boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
+            display: 'flex', alignItems: 'flex-start', gap: '10px',
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+            color: dark ? '#F87171' : '#991B1B', padding: '12px 14px',
+            borderRadius: '10px', fontSize: '13px', marginBottom: '12px', flexShrink: 0
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
-                <BookOpen size={24} color="#fff" />
-              </div>
-              <div>
-                <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Learning Pathways</h1>
-                <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
-                  {stats.total} sessions across {stats.stages} pathway{stats.stages !== 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => navigate('/admin/learning-pathway/add')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '12px 22px', borderRadius: '12px',
-                background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(8px)',
-                border: '1.5px solid rgba(255,255,255,.3)',
-                color: '#fff', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer',
-                transition: 'all .2s ease',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.25)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.15)'; e.currentTarget.style.transform = 'none'; }}
-            >
-              <Plus size={16} /> Add Pathway/Session Card
-            </button>
+            <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <p style={{ margin: 0 }}>{error}</p>
           </div>
-
-          {/* ── Summary stats ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', marginBottom: '24px' }}>
-            <SummaryCard label="Total Sessions" value={stats.total} icon={BookOpen} accent="#6366F1" dark={dark} />
-            <SummaryCard label="Learning Pathways" value={stats.stages} icon={Layers} accent="#10B981" dark={dark} />
-            <SummaryCard label="Total Points" value={stats.totalPoints.toLocaleString()} icon={Star} accent="#F59E0B" dark={dark} />
-          </div>
-        </>
         )}
 
-        <div style={{ padding: '0 32px' }}>
-          {/* Search */}
-          <div style={{
-            borderRadius: '12px',
-            padding: '12px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            background: dark ? 'var(--cl-surface)' : 'white',
-            border: `1px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`,
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
-            gap: '10px',
-            marginBottom: '24px',
-            transition: 'all 0.3s'
-          }}>
-            <Search size={18} color={dark ? 'var(--cl-text-3)' : '#060030ff'} />
-            <input
-              type="text"
-              placeholder="Search by activity, stage, or project..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                border: 'none',
-                outline: 'none',
-                fontSize: '14px',
-                background: 'transparent',
-                color: dark ? 'var(--cl-text)' : '#111827',
-              }}
-              onFocus={(e) => {
-                e.target.parentElement.style.borderColor = '#6366F1';
-                e.target.parentElement.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.12)';
-              }}
-              onBlur={(e) => {
-                e.target.parentElement.style.borderColor = dark ? 'var(--cl-border)' : '#E2E8F0';
-                e.target.parentElement.style.boxShadow = '0 1px 3px rgba(0,0,0,0.08)';
-              }}
-            />
-          </div>
-
-          {/* Error Banner */}
-          {error && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '12px',
-              background: '#FEF2F2',
-              border: '2px solid #FECACA',
-              color: '#991B1B',
-              padding: '14px 16px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              marginBottom: '24px'
-            }}>
-              <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
-              <p style={{ margin: 0 }}>{error}</p>
+        {/* ── Main two-panel layout ── */}
+        {loading ? (
+          <SkeletonContainer>
+            <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
+              <div style={{ width: '220px', flexShrink: 0, borderRadius: '14px', background: surface, border: `1px solid ${border}`, padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[1,2,3,4,5].map(i => (
+                  <div key={i} style={{ height: '56px', borderRadius: '10px', background: surface2, animation: 'pulse 1.5s ease infinite', animationDelay: `${i*0.1}s` }} />
+                ))}
+              </div>
+              <div style={{ flex: 1, borderRadius: '14px', background: surface, border: `1px solid ${border}`, padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {[1,2,3,4].map(i => (
+                  <div key={i} style={{ height: '72px', borderRadius: '10px', background: surface2, animation: 'pulse 1.5s ease infinite', animationDelay: `${i*0.1}s` }} />
+                ))}
+              </div>
             </div>
-          )}
+            <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}`}</style>
+          </SkeletonContainer>
+        ) : (
+          <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
 
-          {/* Table */}
-          {loading ? (
-            <SkeletonContainer>
-              <Card style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
-                <div style={{ padding: '20px' }}>
-                  {/* Stage Skeleton - 3 stages */}
-                  {[1, 2, 3].map((stageIdx) => (
-                    <div key={stageIdx} style={{ marginBottom: '24px' }}>
-                      {/* Stage Header Skeleton */}
-                      <div style={{
-                        padding: '16px 20px',
-                        background: '#f0f0f0',
-                        borderRadius: stageIdx === 1 ? '12px 12px 0 0' : '0',
-                        marginBottom: '0',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          flex: 1
-                        }}>
-                          <div style={{
-                            width: '20px',
-                            height: '20px',
-                            background: '#e0e0e0',
-                            borderRadius: '4px',
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                          }} />
-                          <div style={{
-                            height: '20px',
-                            background: '#e0e0e0',
-                            borderRadius: '4px',
-                            width: '150px',
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                            animationDelay: '0.1s'
-                          }} />
-                          <div style={{
-                            height: '20px',
-                            background: '#e0e0e0',
-                            borderRadius: '4px',
-                            width: '40px',
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                            animationDelay: '0.2s'
-                          }} />
-                        </div>
-                        <div style={{
-                          width: '32px',
-                          height: '32px',
-                          background: '#e0e0e0',
-                          borderRadius: '8px',
-                          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                          animationDelay: '0.3s'
-                        }} />
-                      </div>
+            {/* ── LEFT: Pathway list ── */}
+            <div style={{
+              width: '220px', flexShrink: 0,
+              background: surface, border: `1px solid ${border}`,
+              borderRadius: '14px', display: 'flex', flexDirection: 'column',
+              overflow: 'hidden'
+            }}>
+              {/* Search */}
+              <div style={{ padding: '12px', borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  style={{ width: '100%', border: `1px solid ${border}`, outline: 'none', fontSize: '13px', background: surface2, color: textPrimary, borderRadius: '8px', padding: '7px 10px', boxSizing: 'border-box' }}
+                  onFocus={e => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 2px rgba(99,102,241,0.15)'; }}
+                  onBlur={e => { e.target.style.borderColor = border; e.target.style.boxShadow = 'none'; }}
+                />
+              </div>
 
-                      {/* Pathway Cards Skeleton - 2 cards per stage */}
-                      <div style={{
-                        background: 'white',
-                        borderRadius: stageIdx === 1 ? '0 0 12px 12px' : '12px',
-                        border: '1px solid #e5e7eb',
-                        borderTop: 'none',
-                        padding: '16px'
-                      }}>
-                        {[1, 2].map((cardIdx) => (
-                          <div key={cardIdx} style={{
-                            padding: '16px',
-                            border: '1px solid #f0f0f0',
-                            borderRadius: '8px',
-                            marginBottom: cardIdx === 2 ? '0' : '12px',
-                            display: 'grid',
-                            gridTemplateColumns: '1fr auto',
-                            gap: '16px'
-                          }}>
-                            {/* Left Content Skeleton */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                              <div style={{
-                                height: '18px',
-                                background: '#f5f5f5',
-                                borderRadius: '4px',
-                                width: '200px',
-                                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                                animationDelay: `${(stageIdx + cardIdx) * 0.1}s`
-                              }} />
-                              <div style={{
-                                height: '14px',
-                                background: '#f5f5f5',
-                                borderRadius: '4px',
-                                width: '100%',
-                                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                                animationDelay: `${(stageIdx + cardIdx) * 0.1 + 0.05}s`
-                              }} />
-                              {/* Meta info skeletons */}
-                              <div style={{
-                                display: 'flex',
-                                gap: '16px',
-                                marginTop: '8px'
-                              }}>
-                                {[1, 2, 3, 4].map((metaIdx) => (
-                                  <div key={metaIdx} style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '4px'
-                                  }}>
-                                    <div style={{
-                                      height: '10px',
-                                      background: '#f0f0f0',
-                                      borderRadius: '3px',
-                                      width: '50px',
-                                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                                      animationDelay: `${(stageIdx + cardIdx + metaIdx) * 0.08}s`
-                                    }} />
-                                    <div style={{
-                                      height: '12px',
-                                      background: '#f5f5f5',
-                                      borderRadius: '3px',
-                                      width: '60px',
-                                      animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                                      animationDelay: `${(stageIdx + cardIdx + metaIdx) * 0.08 + 0.05}s`
-                                    }} />
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Right Action Buttons Skeleton */}
-                            <div style={{
-                              display: 'flex',
-                              gap: '8px',
-                              flexDirection: 'column'
-                            }}>
-                              {[1, 2, 3].map((btnIdx) => (
-                                <div key={btnIdx} style={{
-                                  width: '80px',
-                                  height: '32px',
-                                  background: '#f0f0f0',
-                                  borderRadius: '6px',
-                                  animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                                  animationDelay: `${(stageIdx + cardIdx + btnIdx) * 0.12}s`
-                                }} />
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-              <style>{`
-                @keyframes pulse {
-                  0%, 100% { opacity: 1; }
-                  50% { opacity: 0.5; }
-                }
-              `}</style>
-            </SkeletonContainer>
-          ) : (
-            <Card style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', borderRadius: '12px', overflow: 'hidden' }}>
-              {groupedPathwaysArray.length > 0 ? (
-                <div style={{ overflowX: 'auto', overflowY: 'auto' }}>
-                  {groupedPathwaysArray.map((group, groupIndex) => (
-                    <div key={groupIndex} style={{ marginBottom: '24px' }}>
-                      <div
-                        onClick={() => toggleStage(group.stage)}
+              {/* Pathway items */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                {groupedPathwaysArray.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: textMuted, textAlign: 'center', padding: '20px 8px' }}>No pathways found</p>
+                ) : (
+                  groupedPathwaysArray.map(group => {
+                    const isActive = group.stage === selectedPathwayName;
+                    return (
+                      <button
+                        key={group.stage}
+                        onClick={() => selectPathway(group.stage)}
                         style={{
-                          padding: '16px 20px',
-                          background: expandedStages[group.stage]
-                            ? 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)'
-                            : (dark ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)'),
-                          borderBottom: expandedStages[group.stage] ? '2px solid #4F46E5' : `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
-                          position: 'sticky',
-                          top: 0,
-                          zIndex: 10,
-                          cursor: 'pointer',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          userSelect: 'none',
-                          borderRadius: expandedStages[group.stage] ? '12px 12px 0 0' : '12px',
-                          boxShadow: expandedStages[group.stage] 
-                            ? '0 4px 12px rgba(99, 102, 241, 0.2)' 
-                            : '0 1px 3px rgba(0, 0, 0, 0.1)',
-                          border: expandedStages[group.stage] ? '1px solid rgba(255,255,255,0.2)' : `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`
+                          width: '100%', textAlign: 'left',
+                          padding: '10px 12px', borderRadius: '10px', marginBottom: '4px',
+                          background: isActive ? 'linear-gradient(135deg, #060030 0%, #3b0080 100%)' : 'transparent',
+                          border: isActive ? '1px solid rgba(255,255,255,0.1)' : `1px solid transparent`,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          gap: '8px', transition: 'all .18s ease'
                         }}
-                        onMouseEnter={(e) => {
-                          if (expandedStages[group.stage]) {
-                            e.currentTarget.style.boxShadow = '0 6px 16px rgba(99,102,241,0.3)';
-                          } else {
-                            e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg, #ECECF1 0%, #E0E7FF 100%)';
-                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (expandedStages[group.stage]) {
-                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.2)';
-                            e.currentTarget.style.background = 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)';
-                          } else {
-                            e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)';
-                            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-                          }
-                        }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.05)' : '#F1F5F9'; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
                       >
-                        <h3 style={{
-                          fontSize: '15px',
-                          fontWeight: '700',
-                          color: expandedStages[group.stage] ? 'white' : (dark ? 'var(--cl-text)' : '#111827'),
-                          margin: 0,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          transition: 'all 0.3s ease'
-                        }}>
-                          <BookOpen 
-                            size={20} 
-                            style={{
-                              transition: 'all 0.3s ease',
-                              filter: expandedStages[group.stage] ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' : 'none'
-                            }}
-                          /> 
-                          {group.stage}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <BookOpen size={14} color={isActive ? 'rgba(255,255,255,0.7)' : textMuted} style={{ flexShrink: 0 }} />
                           <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            minWidth: '28px',
-                            height: '28px',
-                            backgroundColor: expandedStages[group.stage]
-                              ? 'rgba(255,255,255,0.3)'
-                              : (dark ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.1)'),
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            fontWeight: '600',
-                            color: expandedStages[group.stage] ? 'rgba(255,255,255,0.95)' : (dark ? '#818CF8' : '#090083'),
-                            marginLeft: '8px',
-                            transition: 'all 0.3s ease'
+                            fontSize: '12.5px', fontWeight: isActive ? '700' : '500',
+                            color: isActive ? '#fff' : textPrimary,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                          }}>
+                            {group.stage}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                          <span style={{
+                            fontSize: '11px', fontWeight: '700',
+                            color: isActive ? 'rgba(255,255,255,0.9)' : (dark ? '#818CF8' : '#4F46E5'),
+                            background: isActive ? 'rgba(255,255,255,0.15)' : (dark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)'),
+                            padding: '2px 7px', borderRadius: '20px'
                           }}>
                             {group.pathways.length}
                           </span>
-                        </h3>
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          color: expandedStages[group.stage] ? 'rgba(255, 255, 255, 0.9)' : '#666',
-                          transition: 'all 0.3s ease'
-                        }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRenameModal({ isOpen: true, stageName: group.stage, newName: group.stage, isLoading: false });
-                            }}
-                            title="Rename pathway"
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: '32px',
-                              height: '32px',
-                              background: expandedStages[group.stage]
-                                ? 'rgba(255, 255, 255, 0.2)'
-                                : 'rgba(99, 102, 241, 0.08)',
-                              border: expandedStages[group.stage]
-                                ? '1px solid rgba(255, 255, 255, 0.3)'
-                                : '1px solid rgba(99, 102, 241, 0.15)',
-                              borderRadius: '8px',
-                              cursor: 'pointer',
-                              color: expandedStages[group.stage] ? 'white' : '#4F46E5',
-                              transition: 'all 0.2s ease',
-                              flexShrink: 0
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = expandedStages[group.stage]
-                                ? 'rgba(255, 255, 255, 0.35)'
-                                : 'rgba(99, 102, 241, 0.18)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = expandedStages[group.stage]
-                                ? 'rgba(255, 255, 255, 0.2)'
-                                : 'rgba(99, 102, 241, 0.08)';
-                            }}
-                          >
-                            <SquarePen size={15} />
-                          </button>
+                          {isActive && (
+                            <button
+                              onClick={e => { e.stopPropagation(); setRenameModal({ isOpen: true, stageName: group.stage, newName: group.stage, isLoading: false }); }}
+                              title="Rename"
+                              style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '5px', padding: '2px 4px', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'rgba(255,255,255,0.8)' }}
+                            >
+                              <SquarePen size={11} />
+                            </button>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Stats footer */}
+              <div style={{ padding: '10px 14px', borderTop: `1px solid ${border}`, flexShrink: 0, display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '15px', fontWeight: '800', color: textPrimary, margin: 0 }}>{stats.stages}</p>
+                  <p style={{ fontSize: '10px', color: textMuted, margin: 0, textTransform: 'uppercase', letterSpacing: '.5px' }}>Paths</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '15px', fontWeight: '800', color: textPrimary, margin: 0 }}>{stats.total}</p>
+                  <p style={{ fontSize: '10px', color: textMuted, margin: 0, textTransform: 'uppercase', letterSpacing: '.5px' }}>Sessions</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '15px', fontWeight: '800', color: textPrimary, margin: 0 }}>{(stats.totalPoints / 1000).toFixed(1)}k</p>
+                  <p style={{ fontSize: '10px', color: textMuted, margin: 0, textTransform: 'uppercase', letterSpacing: '.5px' }}>Points</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── RIGHT: Sessions list ── */}
+            <div style={{
+              flex: 1, minWidth: 0,
+              background: surface, border: `1px solid ${border}`,
+              borderRadius: '14px', display: 'flex', flexDirection: 'column',
+              overflow: 'hidden'
+            }}>
+              {/* Panel header */}
+              {selectedGroup ? (
+                <>
+                  <div style={{
+                    padding: '14px 20px', borderBottom: `1px solid ${border}`, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #060030, #3b0080)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <BookOpen size={16} color="#fff" />
+                      </div>
+                      <div>
+                        <h2 style={{ fontSize: '15px', fontWeight: '700', color: textPrimary, margin: 0 }}>{selectedGroup.stage}</h2>
+                        <p style={{ fontSize: '11.5px', color: textMuted, margin: 0 }}>{selectedGroup.pathways.length} sessions</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Session rows - scrollable */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {selectedGroup.pathways.map((pathway, idx) => {
+                      const stage = getStageColor(pathway.session);
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '14px',
+                            padding: '12px 14px', borderRadius: '10px',
+                            border: `1px solid ${border}`,
+                            background: dark ? 'rgba(255,255,255,0.025)' : '#FAFBFC',
+                            transition: 'all .18s ease'
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.06)' : '#F1F5F9'; e.currentTarget.style.borderColor = dark ? 'rgba(255,255,255,0.12)' : '#D1D5DB'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.025)' : '#FAFBFC'; e.currentTarget.style.borderColor = border; }}
+                        >
+                          {/* Session number badge */}
                           <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '32px',
-                            height: '32px',
-                            backgroundColor: expandedStages[group.stage]
-                              ? 'rgba(255, 255, 255, 0.2)'
-                              : 'rgba(99, 102, 241, 0.05)',
-                            borderRadius: '8px',
-                            transition: 'all 0.3s ease',
-                            transform: expandedStages[group.stage] ? 'rotate(180deg)' : 'rotate(0deg)'
+                            width: '42px', height: '42px', borderRadius: '10px', flexShrink: 0,
+                            background: stage.bg, border: `1.5px solid ${stage.text}30`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                           }}>
-                            <ChevronDown size={20} style={{ transition: 'all 0.3s ease' }} />
+                            <span style={{ fontSize: '16px', fontWeight: '800', color: stage.text, lineHeight: 1 }}>{pathway.session}</span>
+                          </div>
+
+                          {/* Content */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '13.5px', fontWeight: '700', color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {pathway.Topic}
+                              </span>
+                              <span style={{ fontSize: '10px', fontWeight: '600', color: stage.text, background: stage.bg, padding: '1px 7px', borderRadius: '20px', flexShrink: 0 }}>
+                                {stage.label}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: '11.5px', color: textSecondary, margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {pathway.Objective || '—'}
+                            </p>
+                            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>
+                                <span style={{ fontWeight: '700', color: textSecondary }}>{pathway.activities?.length || 0}</span> activities
+                              </span>
+                              <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>
+                                <span style={{ fontWeight: '700', color: textSecondary }}>{pathway.totalPoints || 0}</span> pts
+                              </span>
+                              {pathway.SessionType && (
+                                <span style={{ fontSize: '11px', color: textMuted }}>{pathway.SessionType}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                            <button
+                              onClick={() => navigate(`/admin/learning-pathway/${encodeURIComponent(pathway.mongoId || pathway._id || `${pathway.session}-${pathway.Topic}`)}/view`)}
+                              title="View"
+                              style={{ padding: '7px 12px', background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.25)', color: dark ? '#C4B5FD' : '#7C3AED', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(139,92,246,0.22)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(139,92,246,0.12)'}
+                            >
+                              <Eye size={13} /> View
+                            </button>
+                            <button
+                              onClick={() => navigate(`/admin/learning-pathway/${encodeURIComponent(pathway.mongoId || pathway._id || `${pathway.session}-${pathway.Topic}`)}/edit`)}
+                              title="Edit"
+                              style={{ padding: '7px 12px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', color: dark ? '#93C5FD' : '#2563EB', borderRadius: '7px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all .15s' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.22)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(59,130,246,0.12)'}
+                            >
+                              <SquarePen size={13} /> Edit
+                            </button>
+                            <button
+                              onClick={() => { setPathwayToDelete(pathway); setDeleteConfirmOpen(true); }}
+                              title="Delete"
+                              style={{ padding: '7px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: dark ? '#F87171' : '#DC2626', borderRadius: '7px', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .15s' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+                            >
+                              <Trash size={13} />
+                            </button>
                           </div>
                         </div>
-                      </div>
-
-                      {expandedStages[group.stage] && (
-                        <div style={{
-                          display: 'grid',
-                          gap: '12px',
-                          padding: '16px',
-                          background: dark ? 'var(--cl-surface)' : 'white',
-                          borderRadius: '0 0 12px 12px',
-                          border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
-                          borderTop: 'none',
-                          animation: 'slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          boxShadow: '0 4px 12px rgba(99,102,241,0.08)'
-                        }}
-                        >
-                          <style>{`
-                            @keyframes slideDown {
-                              from {
-                                opacity: 0;
-                                transform: translateY(-8px);
-                                max-height: 0;
-                              }
-                              to {
-                                opacity: 1;
-                                transform: translateY(0);
-                                max-height: 5000px;
-                              }
-                            }
-                          `}</style>
-                          {group.pathways.map((pathway, idx) => (
-                            <div key={idx} style={{
-                              padding: '16px',
-                              border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
-                              borderRadius: '8px',
-                              background: dark ? 'rgba(255,255,255,0.03)' : 'white',
-                              transition: 'all 0.3s'
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                              e.currentTarget.style.borderColor = dark ? 'rgba(255,255,255,0.2)' : '#D1D5DB';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.boxShadow = 'none';
-                              e.currentTarget.style.borderColor = dark ? 'var(--cl-border)' : '#E5E7EB';
-                            }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '16px', alignItems: 'start' }}>
-                                <div>
-                                  <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '700', color: dark ? 'var(--cl-text)' : '#111827' }}>
-                                    Session {pathway.session}: {pathway.Topic}
-                                  </h4>
-                                  <p style={{ margin: '0 0 12px 0', fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#666', lineHeight: '1.5' }}>
-                                    {pathway.Objective}
-                                  </p>
-                                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                                    <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Pathway: </span>
-                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.LearningPathway}</span>
-                                    </div>
-                                    <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Type: </span>
-                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.SessionType}</span>
-                                    </div>
-                                    <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Activities: </span>
-                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.activities?.length || 0}</span>
-                                    </div>
-                                    <div>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-3)' : '#666', textTransform: 'uppercase' }}>Points: </span>
-                                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '500' }}>{pathway.totalPoints || 0}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
-                                  <button
-                                    onClick={() => {
-                                      const pathwayId = pathway.mongoId || pathway._id || `${pathway.session}-${pathway.Topic}`;
-                                      navigate(`/admin/learning-pathway/${encodeURIComponent(pathwayId)}/view`);
-                                    }}
-                                    style={{
-                                      padding: '8px 12px',
-                                      backgroundColor: '#8B5CF6',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      fontSize: '12px',
-                                      fontWeight: '600',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.3s',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      justifyContent: 'center'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#7C3AED';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#8B5CF6';
-                                    }}
-                                  >
-                                    <Eye size={14} /> View
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const pathwayId = pathway.mongoId || pathway._id || `${pathway.session}-${pathway.Topic}`;
-                                      navigate(`/admin/learning-pathway/${encodeURIComponent(pathwayId)}/edit`);
-                                    }}
-                                    style={{
-                                      padding: '8px 12px',
-                                      backgroundColor: '#3B82F6',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      fontSize: '12px',
-                                      fontWeight: '600',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.3s',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      justifyContent: 'center'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#2563EB';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#3B82F6';
-                                    }}
-                                  >
-                                    <SquarePen size={14} /> Edit
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setPathwayToDelete(pathway);
-                                      setDeleteConfirmOpen(true);
-                                    }}
-                                    style={{
-                                      padding: '8px 12px',
-                                      backgroundColor: '#EF4444',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      fontSize: '12px',
-                                      fontWeight: '600',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.3s',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      justifyContent: 'center'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#DC2626';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#EF4444';
-                                    }}
-                                  >
-                                    <Trash size={14} /> Delete
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      );
+                    })}
+                  </div>
+                </>
               ) : (
-                <div style={{ padding: '60px 32px', textAlign: 'center' }}>
-                  <BookOpen size={48} style={{ color: '#ccc', margin: '0 auto 16px' }} />
-                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#666', margin: 0 }}>No pathways found</p>
-                  <p style={{ fontSize: '13px', color: '#999', margin: '8px 0 0 0' }}>Try adjusting your search or create a new pathway</p>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: textMuted }}>
+                  <BookOpen size={40} />
+                  <p style={{ fontSize: '14px', fontWeight: '500', margin: 0 }}>Select a pathway to view sessions</p>
                 </div>
               )}
-            </Card>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
-        {/* Delete Confirmation Modal */}
+        {/* ── Delete Modal ── */}
         {deleteConfirmOpen && (
-          <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '32px',
-              maxWidth: '400px',
-              width: '90%',
-              boxShadow: '0 20px 25px rgba(0, 0, 0, 0.15)'
-            }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#111827', margin: '0 0 12px 0' }}>
-                Delete Pathway?
-              </h2>
-              <p style={{ fontSize: '13px', color: '#666', margin: '0 0 24px 0', lineHeight: '1.5' }}>
-                Are you sure you want to delete "{pathwayToDelete?.Topic}"? This action cannot be undone.
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', borderRadius: '16px', padding: '28px', maxWidth: '380px', width: '90%', boxShadow: '0 24px 48px rgba(0,0,0,0.25)', border: `1px solid ${border}` }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '14px' }}>
+                <Trash size={20} color={dark ? '#F87171' : '#DC2626'} />
+              </div>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: '0 0 8px' }}>Delete Session?</h2>
+              <p style={{ fontSize: '13px', color: textSecondary, margin: '0 0 22px', lineHeight: '1.5' }}>
+                Are you sure you want to delete <strong>"{pathwayToDelete?.Topic}"</strong>? This cannot be undone.
               </p>
-
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => {
-                    setDeleteConfirmOpen(false);
-                    setPathwayToDelete(null);
-                  }}
-                  disabled={deleting}
-                  style={{
-                    padding: '10px 24px',
-                    backgroundColor: '#f3f4f6',
-                    color: '#111827',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: deleting ? 'not-allowed' : 'pointer',
-                    opacity: deleting ? 0.6 : 1
-                  }}
-                >
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button onClick={() => { setDeleteConfirmOpen(false); setPathwayToDelete(null); }} disabled={deleting}
+                  style={{ padding: '9px 20px', background: surface2, color: textPrimary, border: `1px solid ${border}`, borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.6 : 1 }}>
                   Cancel
                 </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  style={{
-                    padding: '10px 24px',
-                    backgroundColor: deleting ? '#999' : '#EF4444',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: deleting ? 'not-allowed' : 'pointer'
-                  }}
-                >
+                <button onClick={handleDelete} disabled={deleting}
+                  style={{ padding: '9px 20px', background: deleting ? '#94A3B8' : '#EF4444', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: deleting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {deleting && <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />}
                   {deleting ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
@@ -973,127 +470,50 @@ const LearningPathwayBuilder = () => {
           </div>
         )}
 
-        {/* Rename Pathway Modal */}
+        {/* ── Rename Modal ── */}
         {renameModal.isOpen && (
-          <div style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '14px',
-              padding: '32px',
-              maxWidth: '440px',
-              width: '90%',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.18)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                <div style={{
-                  width: '36px', height: '36px',
-                  background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-                  borderRadius: '8px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0
-                }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', borderRadius: '16px', padding: '28px', maxWidth: '420px', width: '90%', boxShadow: '0 24px 48px rgba(0,0,0,0.25)', border: `1px solid ${border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ width: '36px', height: '36px', background: 'linear-gradient(135deg, #060030, #000)', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <SquarePen size={16} color="white" />
                 </div>
-                <h2 style={{ fontSize: '17px', fontWeight: '700', color: '#111827', margin: 0 }}>
-                  Rename Learning Pathway
-                </h2>
+                <div>
+                  <h2 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>Rename Pathway</h2>
+                  <p style={{ fontSize: '11.5px', color: textMuted, margin: 0 }}>Updates name across all sessions</p>
+                </div>
               </div>
-              <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 24px 48px' }}>
-                This will update the name across all sessions in this pathway.
-              </p>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ fontSize: '12px', fontWeight: '600', color: '#374151', display: 'block', marginBottom: '8px' }}>
-                  New Pathway Name
-                </label>
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: textSecondary, display: 'block', marginBottom: '7px', textTransform: 'uppercase', letterSpacing: '.4px' }}>New Name</label>
                 <input
                   type="text"
                   value={renameModal.newName}
-                  onChange={(e) => setRenameModal(prev => ({ ...prev, newName: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleRenamePathway(); }}
-                  placeholder="Enter new pathway name..."
+                  onChange={e => setRenameModal(prev => ({ ...prev, newName: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleRenamePathway(); }}
                   autoFocus
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    border: '1.5px solid #E5E7EB',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: '#111827',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = '#060030ff';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(6, 0, 48, 0.1)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = '#E5E7EB';
-                    e.target.style.boxShadow = 'none';
-                  }}
+                  style={{ width: '100%', padding: '10px 12px', border: `1.5px solid ${border}`, borderRadius: '8px', fontSize: '14px', color: textPrimary, outline: 'none', boxSizing: 'border-box', background: surface2 }}
+                  onFocus={e => { e.target.style.borderColor = '#6366F1'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.15)'; }}
+                  onBlur={e => { e.target.style.borderColor = border; e.target.style.boxShadow = 'none'; }}
                 />
               </div>
-
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setRenameModal({ isOpen: false, stageName: '', newName: '', isLoading: false })}
-                  disabled={renameModal.isLoading}
-                  style={{
-                    padding: '10px 24px',
-                    background: '#F3F4F6',
-                    color: '#374151',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: renameModal.isLoading ? 'not-allowed' : 'pointer',
-                    opacity: renameModal.isLoading ? 0.6 : 1
-                  }}
-                >
+                <button onClick={() => setRenameModal({ isOpen: false, stageName: '', newName: '', isLoading: false })} disabled={renameModal.isLoading}
+                  style={{ padding: '9px 20px', background: surface2, color: textPrimary, border: `1px solid ${border}`, borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: renameModal.isLoading ? 'not-allowed' : 'pointer', opacity: renameModal.isLoading ? 0.6 : 1 }}>
                   Cancel
                 </button>
                 <button
                   onClick={handleRenamePathway}
                   disabled={renameModal.isLoading || !renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase()}
-                  style={{
-                    padding: '10px 24px',
-                    background: renameModal.isLoading
-                      ? '#94A3B8'
-                      : 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    cursor: (renameModal.isLoading || !renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase())
-                      ? 'not-allowed'
-                      : 'pointer',
-                    opacity: (!renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase()) ? 0.5 : 1,
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  {renameModal.isLoading ? 'Updating...' : 'Update'}
+                  style={{ padding: '9px 20px', background: 'linear-gradient(135deg, #060030, #000)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', opacity: (!renameModal.newName.trim() || renameModal.newName.trim().toLowerCase() === renameModal.stageName.toLowerCase()) ? 0.5 : 1 }}>
+                  {renameModal.isLoading && <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />}
+                  {renameModal.isLoading ? 'Updating...' : 'Rename'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       </div>
     </Layout>
   );

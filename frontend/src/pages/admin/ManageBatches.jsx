@@ -7,8 +7,10 @@ import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import {
-  Layers, Plus, Trash2, X, Users, UserCheck, ChevronLeft, Loader, Search, UserPlus
+  Layers, Plus, Trash2, X, Users, UserCheck, ChevronLeft, Loader, Search, UserPlus, Clock, Calendar
 } from 'lucide-react';
+
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const BRAND = '#060030ff';
 const CL_GET_BATCHES_URL  = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
@@ -67,7 +69,7 @@ export default function ManageBatches() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchModalMode, setBatchModalMode] = useState('create');
   const [selectedManageBatchId, setSelectedManageBatchId] = useState('');
-  const [batchForm, setBatchForm] = useState({ batchName: '', playerIds: [] });
+  const [batchForm, setBatchForm] = useState({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '' });
   const [batchSaving, setBatchSaving] = useState(false);
   const [playerSearch, setPlayerSearch] = useState('');
 
@@ -76,7 +78,6 @@ export default function ManageBatches() {
   const headers = useMemo(() => ({
     'Content-Type': 'application/json',
     userToken,
-    usertoken: userToken,
   }), [userToken]);
 
   const showToast = (message, type = 'success') => {
@@ -198,7 +199,7 @@ export default function ManageBatches() {
   const openCreateModal = () => {
     setBatchModalMode('create');
     setSelectedManageBatchId('');
-    setBatchForm({ batchName: '', playerIds: [] });
+    setBatchForm({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '' });
     setPlayerSearch('');
     setShowBatchModal(true);
   };
@@ -209,6 +210,9 @@ export default function ManageBatches() {
     setBatchForm({
       batchName: batch.batchName || '',
       playerIds: (batch.playerIds || []).map(String),
+      days: batch.days || [],
+      startTime: batch.startTime || '',
+      endTime: batch.endTime || '',
     });
     setPlayerSearch('');
     setShowBatchModal(true);
@@ -216,9 +220,16 @@ export default function ManageBatches() {
 
   const closeBatchModal = () => {
     setShowBatchModal(false);
-    setBatchForm({ batchName: '', playerIds: [] });
+    setBatchForm({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '' });
     setSelectedManageBatchId('');
     setPlayerSearch('');
+  };
+
+  const toggleDay = (day) => {
+    setBatchForm(prev => ({
+      ...prev,
+      days: prev.days.includes(day) ? prev.days.filter(d => d !== day) : [...prev.days, day],
+    }));
   };
 
   const togglePlayer = (pid) => {
@@ -238,14 +249,21 @@ export default function ManageBatches() {
     }
     setBatchSaving(true);
     try {
+      const scheduleFields = {
+        days: batchForm.days,
+        startTime: batchForm.startTime || null,
+        endTime: batchForm.endTime || null,
+      };
       if (batchModalMode === 'update') {
         await axios.post(CL_MANAGE_BATCH_URL, {
           action: 'update', batchId: selectedManageBatchId,
           batchName: batchForm.batchName.trim(), playerIds: batchForm.playerIds,
+          ...scheduleFields,
         }, { headers });
       } else {
         await axios.post(CL_MANAGE_BATCH_URL, {
           action: 'create', batchName: batchForm.batchName.trim(), playerIds: batchForm.playerIds,
+          ...scheduleFields,
         }, { headers });
       }
       await loadBatches();
@@ -332,29 +350,62 @@ export default function ManageBatches() {
                 <p style={{ fontSize: '13px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>{batches.length} batch{batches.length === 1 ? '' : 'es'}</p>
               </div>
               <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                {batches.length > 0 ? batches.map(batch => (
+                {batches.length > 0 ? batches.map(batch => {
+                  const [c1, c2] = pal(batch.batchName);
+                  const isSelected = selectedBatchId === batch.batchId;
+                  return (
                   <div
                     key={batch.batchId}
                     onClick={() => setSelectedBatchId(batch.batchId)}
                     style={{
-                      padding: '14px 16px', borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`, cursor: 'pointer',
-                      background: selectedBatchId === batch.batchId
-                        ? (dark ? 'rgba(99,102,241,0.15)' : 'linear-gradient(135deg, #E0E7FF 0%, #EDE9FE 100%)')
+                      padding: '14px 16px 14px 14px',
+                      borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
+                      cursor: 'pointer',
+                      background: isSelected
+                        ? (dark ? `${c1}20` : `${c1}0F`)
                         : (dark ? 'transparent' : '#FFFFFF'),
-                      borderLeft: selectedBatchId === batch.batchId ? `4px solid ${pal(batch.batchName)[0]}` : '4px solid transparent',
+                      borderLeft: `4px solid ${isSelected ? c1 : `${c1}55`}`,
+                      transition: 'all 0.15s ease',
                     }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = dark ? `${c1}12` : `${c1}08`; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = dark ? 'transparent' : '#FFFFFF'; }}
                   >
-                    <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: dark ? 'var(--cl-text)' : '#111827' }}>{batch.batchName}</p>
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <Users size={13} /> {batch.players?.length ?? batch.playerIds?.length ?? 0}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                      <div style={{
+                        width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
+                        background: `linear-gradient(135deg, ${c1}, ${c2})`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '12px', fontWeight: '800', color: 'white',
+                        boxShadow: `0 2px 8px ${c1}44`,
+                      }}>
+                        {batch.batchName.charAt(0).toUpperCase()}
+                      </div>
+                      <p style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: dark ? 'var(--cl-text)' : '#111827', flex: 1 }}>{batch.batchName}</p>
+                      {isSelected && (
+                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: c1, boxShadow: `0 0 6px ${c1}` }} />
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', paddingLeft: '40px' }}>
+                      <span style={{ fontSize: '11.5px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        <Users size={11} /> {batch.players?.length ?? batch.playerIds?.length ?? 0}
                       </span>
-                      <span style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <UserCheck size={13} /> {batch.coachIds?.length ?? 0} coach{(batch.coachIds?.length ?? 0) === 1 ? '' : 'es'}
+                      <span style={{ fontSize: '11.5px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                        <UserCheck size={11} /> {batch.coachIds?.length ?? 0}
                       </span>
+                      {batch.days?.length > 0 && (
+                        <span style={{ fontSize: '10.5px', color: c1, display: 'inline-flex', alignItems: 'center', gap: '3px', background: `${c1}18`, padding: '1px 7px', borderRadius: '10px', fontWeight: '600' }}>
+                          <Calendar size={10} /> {batch.days.join(' · ')}
+                        </span>
+                      )}
+                      {batch.startTime && (
+                        <span style={{ fontSize: '10.5px', color: c2, display: 'inline-flex', alignItems: 'center', gap: '3px', background: `${c2}18`, padding: '1px 7px', borderRadius: '10px', fontWeight: '600' }}>
+                          <Clock size={10} /> {batch.startTime}{batch.endTime ? `–${batch.endTime}` : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
-                )) : (
+                  );
+                }) : (
                   <div style={{ padding: '40px 20px', textAlign: 'center' }}>
                     <Layers size={32} style={{ color: '#7C3AED', opacity: 0.5, marginBottom: '8px' }} />
                     <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '600', margin: '0 0 4px 0' }}>No batches yet</p>
@@ -366,16 +417,30 @@ export default function ManageBatches() {
 
             {/* Batch detail */}
             {selectedBatch ? (
-              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${pal(selectedBatch.batchName)[0]}44`, borderRadius: '16px', overflow: 'hidden', boxShadow: `0 4px 20px ${pal(selectedBatch.batchName)[0]}22` }}>
                 <div style={{
-                  padding: '20px 24px', background: `linear-gradient(135deg, ${BRAND} 0%, #000000 100%)`, color: 'white',
+                  padding: '20px 24px', background: `linear-gradient(135deg, ${pal(selectedBatch.batchName)[0]} 0%, ${pal(selectedBatch.batchName)[1]} 100%)`, color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap'
                 }}>
                   <div>
                     <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px 0' }}>{selectedBatch.batchName}</h2>
-                    <p style={{ fontSize: '13px', opacity: 0.9, margin: 0 }}>
+                    <p style={{ fontSize: '13px', opacity: 0.9, margin: '0 0 6px' }}>
                       {selectedBatch.players?.length ?? 0} players · {selectedBatch.coachIds?.length ?? 0} coaches
                     </p>
+                    {(selectedBatch.days?.length > 0 || selectedBatch.startTime) && (
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {selectedBatch.days?.length > 0 && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.12)', padding: '3px 10px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.2)' }}>
+                            <Calendar size={11} /> {selectedBatch.days.join(' · ')}
+                          </span>
+                        )}
+                        {selectedBatch.startTime && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.12)', padding: '3px 10px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.2)' }}>
+                            <Clock size={11} /> {selectedBatch.startTime}{selectedBatch.endTime ? ` – ${selectedBatch.endTime}` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
@@ -532,6 +597,53 @@ export default function ManageBatches() {
               onFocus={(e) => e.target.style.borderColor = BRAND}
               onBlur={(e) => e.target.style.borderColor = '#E5E7EB'}
             />
+          </div>
+
+          {/* Schedule: days */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Calendar size={14} color={BRAND} /> Session Days
+            </label>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {DAYS.map(day => {
+                const active = batchForm.days.includes(day);
+                return (
+                  <button key={day} type="button" onClick={() => toggleDay(day)} style={{
+                    padding: '6px 14px', borderRadius: '20px', border: `1.5px solid ${active ? BRAND : '#E5E7EB'}`,
+                    background: active ? BRAND : '#fff', color: active ? '#fff' : '#374151',
+                    fontSize: '12.5px', fontWeight: '700', cursor: 'pointer', transition: 'all .15s',
+                  }}>
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Schedule: time range */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Clock size={14} color={BRAND} /> Start Time
+              </label>
+              <input type="time" value={batchForm.startTime}
+                onChange={e => setBatchForm(prev => ({ ...prev, startTime: e.target.value }))}
+                style={{ width: '100%', padding: '10px 12px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', cursor: 'pointer' }}
+                onFocus={e => e.target.style.borderColor = BRAND}
+                onBlur={e => e.target.style.borderColor = '#E5E7EB'}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Clock size={14} color="#10B981" /> End Time
+              </label>
+              <input type="time" value={batchForm.endTime}
+                onChange={e => setBatchForm(prev => ({ ...prev, endTime: e.target.value }))}
+                style={{ width: '100%', padding: '10px 12px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', cursor: 'pointer' }}
+                onFocus={e => e.target.style.borderColor = '#10B981'}
+                onBlur={e => e.target.style.borderColor = '#E5E7EB'}
+              />
+            </div>
           </div>
 
           <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

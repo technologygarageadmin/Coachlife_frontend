@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
@@ -14,6 +15,9 @@ const CustomCardGenerate = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const fetchedOnce = useRef(false);
 
   const playerId = location.state?.playerId;
   const playerName = location.state?.playerName;
@@ -50,10 +54,12 @@ const CustomCardGenerate = () => {
   const [sessionTakeaways, setSessionTakeaways] = useState([]);
   const [newTakeaway, setNewTakeaway] = useState('');
 
-  // Fetch learning pathways on mount
+  // Fetch learning pathways once on mount
   useEffect(() => {
+    if (fetchedOnce.current) return;
+    fetchedOnce.current = true;
     fetchPathways();
-  }, [userToken]);
+  }, []);
 
   // Hide footer on scroll
   useEffect(() => {
@@ -241,18 +247,6 @@ const CustomCardGenerate = () => {
       return;
     }
 
-    if (!formData.objective.trim()) {
-      setToastMessage('Please enter an objective');
-      setToastType('error');
-      return;
-    }
-
-    if (sessionTakeaways.length === 0) {
-      setToastMessage('Please add at least one session takeaway');
-      setToastType('error');
-      return;
-    }
-
     setLoading(true);
     try {
       if (batchMode) {
@@ -282,7 +276,7 @@ const CustomCardGenerate = () => {
       LearningPathway: targetPathway,
       Topic: formData.topic,
       typeOfSessioncard: 'Custom',
-      Objective: formData.objective,
+      Objective: formData.objective.trim() || 'No objective',
       activities: draggedActivities.map((activity, index) => ({
         activitySequence: index + 1,
         activityTitle: activity.name || activity.activityTitle,
@@ -302,7 +296,7 @@ const CustomCardGenerate = () => {
         const dur = activity.duration || activity.Duration || 0;
         return typeof dur === 'number' ? sum + dur : sum;
       }, 0),
-      sessionTakeaways: sessionTakeaways.length > 0 ? sessionTakeaways : [],
+      sessionTakeaways: sessionTakeaways.length > 0 ? sessionTakeaways : ['No session takeaway'],
       status: 'upcoming',
       rating: 0,
       feedback: null
@@ -510,146 +504,85 @@ const CustomCardGenerate = () => {
     }
   };
 
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E5E7EB';
+  const textPrimary = dark ? 'var(--cl-text)' : '#111827';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
   return (
     <Layout>
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes slideIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes gradientShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        @keyframes badgePulse {
-          0%, 100% {
-            box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.4);
-          }
-          50% {
-            box-shadow: 0 0 0 6px rgba(255, 255, 255, 0);
-          }
-        }
-        * {
-          box-sizing: border-box;
-        }
+        @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
+        @keyframes slideIn { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+        * { box-sizing: border-box; }
       `}</style>
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px 32px 40px' }}>
-        {/* Header Section */}
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px 40px' }}>
+
+        {/* ── Header ── */}
         <div style={{
-          background: 'linear-gradient(135deg, #060030 0%, #000000 100%)',
-          borderRadius: '16px',
-          padding: '32px',
-          marginBottom: '40px',
-          color: 'white',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0 10px 30px rgba(124, 58, 237, 0.15)',
-          animation: 'fadeInUp 0.6s ease-out'
+          background: 'linear-gradient(135deg, #060030 0%, #1a0060 50%, #3b0080 100%)',
+          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
+          position: 'relative', overflow: 'hidden',
+          boxShadow: '0 12px 40px rgba(6,0,48,.4)'
         }}>
-          <div style={{ position: 'relative', zIndex: 2 }}>
+          {/* Decorative circles */}
+          <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', top: '20px', right: '80px', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(139,92,246,0.2)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', bottom: '-30px', right: '200px', width: '140px', height: '140px', borderRadius: '50%', background: 'rgba(99,102,241,0.12)', pointerEvents: 'none' }} />
+
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            {/* Back button */}
             <button
               onClick={() => navigate('/admin/session-card')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '10px 16px',
-                background: 'rgba(255, 255, 255, 0.15)',
-                color: 'white',
-                border: '1.5px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '10px',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                marginBottom: '16px',
-                backdropFilter: 'blur(10px)',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                animation: 'slideIn 0.5s ease-out'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                e.currentTarget.style.transform = 'translateX(-4px)';
-                e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                e.currentTarget.style.transform = 'translateX(0)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
-              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', transition: 'all .18s', marginBottom: '20px' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'translateX(-2px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; e.currentTarget.style.transform = 'none'; }}
             >
-             Back to Session Cards
+              <ArrowLeft size={13} /> Session Cards
             </button>
-            <h1 style={{ 
-              fontSize: '32px', 
-              fontWeight: '800', 
-              margin: '12px 0 16px 0', 
-              letterSpacing: '-0.5px',
-              animation: 'fadeInUp 0.7s ease-out'
-            }}>
-              Custom Session Card
-            </h1>
-            <p style={{ 
-              fontSize: '15px', 
-              margin: '0', 
-              opacity: 0.95, 
-              fontWeight: '500',
-              lineHeight: '1.6',
-              animation: 'fadeInUp 0.8s ease-out',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              flexWrap: 'wrap'
-            }}>
-              Create a personalized learning experience for{' '}
-              <span style={{
-                fontWeight: '700',
-                color: 'white',
-                backgroundColor: 'rgba(255, 255, 255, 0.34)',
-                padding: '8px 16px',
-                borderRadius: '8px',
-                display: 'inline-block',
-                backdropFilter: 'blur(10px)',
-                border: '2px solid rgba(255, 255, 255, 0.5)',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
-                transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                animation: 'badgePulse 3s ease-in-out infinite',
-                whiteSpace: 'nowrap'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.45)';
-                e.currentTarget.style.transform = 'scale(1.05)';
-                e.currentTarget.style.boxShadow = '0 12px 40px rgba(0, 0, 0, 0.2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.34)';
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.15)';
-              }}
-              title={batchMode ? batchName : playerName}
-              >
-                {batchMode ? `${batchName} · ${batchPlayers.length} player${batchPlayers.length === 1 ? '' : 's'}` : playerName}
-              </span>
-            </p>
+
+            {/* Main content row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+              {/* Icon */}
+              <div style={{ width: '56px', height: '56px', borderRadius: '16px', background: 'rgba(255,255,255,0.1)', border: '1.5px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}>
+                <Sparkles size={26} color="#fff" />
+              </div>
+
+              {/* Title + subtitle */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h1 style={{ fontSize: '26px', fontWeight: '800', color: '#fff', margin: '0 0 6px', letterSpacing: '-.6px', lineHeight: 1.1 }}>
+                  Custom Session Card
+                </h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.55)', fontWeight: '500' }}>
+                    {batchMode ? 'Batch generation for' : 'Personalized session for'}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '700', color: 'white', background: 'rgba(255,255,255,0.15)', padding: '4px 14px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.25)', fontSize: '13px', backdropFilter: 'blur(8px)' }}>
+                    {batchMode ? `${batchName} · ${batchPlayers.length} player${batchPlayers.length !== 1 ? 's' : ''}` : playerName}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right: step indicator */}
+              <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                {[
+                  { label: 'Details', done: !!formData.topic.trim() },
+                  { label: 'Activities', done: draggedActivities.length > 0 },
+                ].map((step, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '20px', background: step.done ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.08)', border: `1px solid ${step.done ? 'rgba(16,185,129,0.4)' : 'rgba(255,255,255,0.15)'}`, transition: 'all .3s' }}>
+                    <div style={{ width: '16px', height: '16px', borderRadius: '50%', background: step.done ? '#10B981' : 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {step.done
+                        ? <CheckCircle2 size={11} color="#fff" />
+                        : <span style={{ fontSize: '9px', fontWeight: '800', color: 'rgba(255,255,255,0.6)' }}>{i + 1}</span>
+                      }
+                    </div>
+                    <span style={{ fontSize: '11.5px', fontWeight: '600', color: step.done ? 'rgba(52,211,153,0.9)' : 'rgba(255,255,255,0.5)' }}>{step.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
         </div>
 
         {toastMessage && (
@@ -1258,7 +1191,7 @@ const CustomCardGenerate = () => {
 
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{ fontSize: '12px', fontWeight: '600', color: '#111827', marginBottom: '8px', display: 'block' }}>
-                    Objective <span style={{ color: '#DC2626' }}>*</span>
+                    Objective
                   </label>
                   <textarea
                     name="objective"
@@ -1290,7 +1223,7 @@ const CustomCardGenerate = () => {
 
                 <div style={{ marginBottom: '24px' }}>
                   <label style={{ fontSize: '12px', fontWeight: '600', color: '#111827', marginBottom: '8px', display: 'block' }}>
-                    Session Takeaways <span style={{ color: '#DC2626' }}>*</span>
+                    Session Takeaways
                   </label>
                   <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                     <input
@@ -1689,103 +1622,46 @@ const CustomCardGenerate = () => {
             )}
           </div>
       </div>
-      {/* Helpful Tips */}
-        <div style={{
-          padding: '32px 0',
-          marginBottom: '40px'
-        }}>
-          <div style={{
-            maxWidth: '1400px',
-            margin: '0 auto',
-            padding: '32px',
-            background: 'linear-gradient(135deg, #ffffff 0%, #FAFBFC 100%)',
-            border: '2px solid #E5E7EB',
-            borderRadius: '16px',
-            boxShadow: '0 4px 12px rgba(124, 58, 237, 0.08)'
-          }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-            <h2 style={{ margin: '0', fontWeight: '800', color: '#111827', fontSize: '18px', letterSpacing: '-0.5px' }}>
-              Quick Guide
-            </h2>
+      {/* ── Quick Guide ── */}
+        <div style={{ marginTop: '28px', padding: '28px', background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(6,0,48,0.03)', border: `1px solid ${border}`, borderRadius: '16px' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'linear-gradient(135deg, #060030, #3b0080)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Sparkles size={14} color="#fff" />
+              </div>
+              <h2 style={{ margin: 0, fontWeight: '800', color: textPrimary, fontSize: '16px', letterSpacing: '-.3px' }}>Quick Guide</h2>
+            </div>
+            <p style={{ margin: '0 0 0 38px', color: textMuted, fontSize: '13px' }}>Follow these steps to build your custom session card</p>
           </div>
-          <p style={{ margin: '0 0 24px 0', color: '#6B7280', fontSize: '14px', lineHeight: '1.6' }}>
-            Follow these steps to create a personalized custom session card for your students:
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
             {[
-              {
-                step: 1,
-                icon: BookOpen,
-                title: 'Fill Session Details',
-                description: 'Enter the session topic, objective, and any key takeaways. These will help structure your session and guide the learning experience.'
-              },
-              {
-                step: 2,
-                icon: Blocks,
-                title: 'Select Learning Pathway',
-                description: 'Choose a learning pathway from the available options. This determines which activities and sessions you can select from.'
-              },
-              {
-                step: 3,
-                icon: Zap,
-                title: 'Pick a Session',
-                description: 'Select a specific session from your chosen pathway to access all its available activities.'
-              },
-              {
-                step: 4,
-                icon: GripHorizontal,
-                title: 'Arrange Activities',
-                description: 'Drag your desired activities from the right panel to the left arrangement area to build your session.'
-              },
-              {
-                step: 5,
-                icon: ArrowUpDown,
-                title: 'Organize Order',
-                description: 'Use the up/down arrows to reorder activities. The sequence number automatically updates based on the arrangement.'
-              },
-              {
-                step: 6,
-                icon: CheckCircle2,
-                title: 'Pro Tip: Review & Finalize',
-                description: 'Click "View Details" on any activity to see complete information including story, code samples, instructions, and evaluation criteria before adding it to your session.'
-              }
-            ].map((item) => (
-              <div
-                key={item.step}
-                style={{
-                  padding: '20px',
-                  background: 'white',
-                  border: '1px solid #E5E7EB',
-                  borderRadius: '12px',
-                  transition: 'all 0.3s',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-                  cursor: 'default'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(6, 0, 48, 0.12)';
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.borderColor = '#060030';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.04)';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.borderColor = '#E5E7EB';
-                }}
+              { step: 1, icon: BookOpen, title: 'Fill Session Details', description: 'Enter the topic, objective, and key takeaways to structure the learning experience.', accent: '#6366F1' },
+              { step: 2, icon: Blocks, title: 'Select Learning Pathway', description: 'Choose a pathway to determine which sessions and activities are available.', accent: '#8B5CF6' },
+              { step: 3, icon: Zap, title: 'Pick a Session', description: 'Select a specific session from your chosen pathway to access all its activities.', accent: '#A855F7' },
+              { step: 4, icon: GripHorizontal, title: 'Drag Activities', description: 'Drag activities from the right panel into the left area to build your session.', accent: '#EC4899' },
+              { step: 5, icon: ArrowUpDown, title: 'Organize Order', description: 'Use the up/down arrows to reorder. Sequence numbers update automatically.', accent: '#F59E0B' },
+              { step: 6, icon: CheckCircle2, title: 'Review & Finalize', description: 'Click "View Details" on any activity to inspect story, code, and criteria first.', accent: '#10B981' }
+            ].map(item => (
+              <div key={item.step}
+                style={{ padding: '16px', background: surface, border: `1px solid ${border}`, borderRadius: '12px', transition: 'all .18s', cursor: 'default', display: 'flex', gap: '12px', alignItems: 'flex-start' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = dark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 8px 24px rgba(6,0,48,0.1)'; e.currentTarget.style.borderColor = item.accent; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = border; }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
-                  <item.icon size={20} style={{ color: '#060030', marginTop: '6px', minWidth: '20px' }} />
+                <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: dark ? `${item.accent}22` : `${item.accent}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '1px' }}>
+                  <item.icon size={16} color={item.accent} />
                 </div>
-                <h3 style={{ margin: '0 0 8px 0', fontWeight: '700', color: '#111827', fontSize: '14px' }}>
-                  {item.title}
-                </h3>
-                <p style={{ margin: '0', color: '#6B7280', fontSize: '13px', lineHeight: '1.6' }}>
-                  {item.description}
-                </p>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: '800', color: item.accent, background: dark ? `${item.accent}22` : `${item.accent}15`, padding: '1px 7px', borderRadius: '20px' }}>{item.step}</span>
+                    <h3 style={{ margin: 0, fontWeight: '700', color: textPrimary, fontSize: '13px' }}>{item.title}</h3>
+                  </div>
+                  <p style={{ margin: 0, color: textMuted, fontSize: '12px', lineHeight: '1.6' }}>{item.description}</p>
+                </div>
               </div>
             ))}
           </div>
-          </div>
         </div>
+      </div>
     </Layout>
   );
 };

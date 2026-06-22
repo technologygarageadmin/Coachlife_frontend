@@ -13,10 +13,15 @@ const SessionDetail = () => {
   const { userToken, currentUser } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E5E7EB';
+  const textPrimary = dark ? 'var(--cl-text)' : '#111827';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#64748B';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#6B7280';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F9FAFB';
 
   const getToken = () => {
-    const fresh = useStore.getState().userToken;
-    if (fresh) return fresh;
+    if (userToken) return userToken;
     try {
       return JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken || null;
     } catch { return null; }
@@ -184,7 +189,8 @@ const SessionDetail = () => {
     };
 
     fetchSessionDetails();
-  }, [sessionId, userToken, location]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, userToken]);
 
   // Helper function to calculate progress based on completed activities
   const calculateProgress = () => {
@@ -286,7 +292,7 @@ const SessionDetail = () => {
           // Update session status
           setSessionData(prev => ({
             ...prev,
-            status: result.status === 'in_progress' ? 'in_progress' : 'in_progress',
+            status: result.status || 'in_progress',
             _id: result._id || prev._id
           }));
           
@@ -346,6 +352,7 @@ const SessionDetail = () => {
       setSessionData(prev => {
         const updated = { ...prev };
         if (updated.activities && updated.activities[activityIndex]) {
+          updated.activities = [...updated.activities];
           updated.activities[activityIndex] = {
             ...updated.activities[activityIndex],
             feedback: feedbackData
@@ -425,7 +432,7 @@ const SessionDetail = () => {
     try {
       // Check if overall rating is provided
       if (!sessionFeedback.rating || sessionFeedback.rating === 0) {
-        alert('Please provide an overall rating before saving draft.');
+        setToast({ isVisible: true, message: 'Please provide an overall rating before saving draft.', type: 'error' });
         return;
       }
 
@@ -440,10 +447,10 @@ const SessionDetail = () => {
       };
 
       localStorage.setItem(`session_draft_${sessionData._id}`, JSON.stringify(draftData));
-      alert('Session draft saved! You can resume editing later.');
+      setToast({ isVisible: true, message: 'Session draft saved! You can resume editing later.', type: 'success' });
     } catch (error) {
       console.error('Error saving draft:', error);
-      alert(`Error saving draft: ${error.message}`);
+      setToast({ isVisible: true, message: `Error saving draft: ${error.message}`, type: 'error' });
     }
   };
 
@@ -846,10 +853,10 @@ const SessionDetail = () => {
             <div>
               {[1, 2, 3].map((i) => (
                 <div key={i} style={{
-                  background: 'white',
+                  background: surface,
                   borderRadius: '8px',
                   padding: '20px',
-                  border: '1px solid #E2E8F0',
+                  border: `1px solid ${border}`,
                   marginBottom: '20px',
                   animation: `pulse 2s ease-in-out infinite ${i * 0.1}s`
                 }}>
@@ -876,10 +883,10 @@ const SessionDetail = () => {
             {/* Sidebar */}
             <div>
               <div style={{
-                background: 'white',
+                background: surface,
                 borderRadius: '8px',
                 padding: '20px',
-                border: '1px solid #E2E8F0',
+                border: `1px solid ${border}`,
                 animation: 'pulse 2s ease-in-out infinite 0.2s'
               }}>
                 {[1, 2, 3, 4].map((i) => (
@@ -1140,9 +1147,9 @@ const SessionDetail = () => {
                 }}>
                   {sessionData.LearningPathway && (
                     <div style={{
-                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
-                      border: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
+                      border: `1px solid ${border}`,
                       padding: '16px 20px',
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -1151,20 +1158,20 @@ const SessionDetail = () => {
                     }}>
                       <BookOpen size={24} color="var(--cl-primary)" style={{ marginTop: '4px' }} />
                       <div>
-                        <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                        <p style={{ fontSize: '12px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                           Learning Pathway
                         </p>
-                        <p style={{ fontSize: '14px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                        <p style={{ fontSize: '14px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                           {sessionData.LearningPathway}
                         </p>
                       </div>
                     </div>
                   )}
-                  {sessionData.totalPoints && (
+                  {sessionData.totalPoints > 0 && (
                     <div style={{
-                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
-                      border: '1px solid #E5E7EB',
+                      border: `1px solid ${border}`,
                       padding: '16px 20px',
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -1173,19 +1180,19 @@ const SessionDetail = () => {
                     }}>
                       <Clock size={24} color="var(--cl-primary)" style={{ marginTop: '4px' }} />
                       <div>
-                        <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                        <p style={{ fontSize: '12px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                           Total Points
                         </p>
-                        <p style={{ fontSize: '16px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                        <p style={{ fontSize: '16px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                           {sessionData.totalPoints}
                         </p>
                       </div>
                     </div>
                   )}
                   <div style={{
-                    background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                    background: surface,
                     borderRadius: '12px',
-                    border: '1px solid #E5E7EB',
+                    border: `1px solid ${border}`,
                     padding: '16px 20px',
                     display: 'flex',
                     alignItems: 'flex-start',
@@ -1194,10 +1201,10 @@ const SessionDetail = () => {
                   }}>
                     <BookOpen size={24} color="var(--cl-primary)" style={{ marginTop: '4px' }} />
                     <div>
-                      <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                      <p style={{ fontSize: '12px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                         Activities
                       </p>
-                      <p style={{ fontSize: '16px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <p style={{ fontSize: '16px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                         {sessionData.activities.length}
                       </p>
                     </div>
@@ -1229,7 +1236,7 @@ const SessionDetail = () => {
                         <div
                           key={index}
                           style={{
-                            borderBottom: index < sessionData.activities.length - 1 ? '1px solid #E5E7EB' : 'none',
+                            borderBottom: index < sessionData.activities.length - 1 ? `1px solid ${border}` : 'none',
                             padding: '16px 20px'
                           }}
                         >
@@ -1242,7 +1249,7 @@ const SessionDetail = () => {
                             cursor: 'pointer',
                             padding: '12px',
                             borderRadius: '8px',
-                            background: expandedActivities[index] ? '#F0F9FF' : 'transparent',
+                            background: expandedActivities[index] ? (dark ? 'rgba(6,0,48,0.2)' : '#F0F9FF') : 'transparent',
                             transition: 'all 0.2s ease'
                           }}
                           onClick={() => setExpandedActivities(prev => ({
@@ -1251,7 +1258,7 @@ const SessionDetail = () => {
                           }))}
                           onMouseEnter={(e) => {
                             if (!expandedActivities[index]) {
-                              e.currentTarget.style.background = '#F8FAFC';
+                              e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.04)' : '#F8FAFC';
                             }
                           }}
                           onMouseLeave={(e) => {
@@ -1303,7 +1310,7 @@ const SessionDetail = () => {
                             </div>
                             <div style={{ flex: 1 }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                                <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                                <h3 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>
                                   {activity.activityTitle || activity.title}
                                 </h3>
                                 {activity.feedback && (activity.feedback.rating || activity.feedback.coachComment) && (
@@ -1381,13 +1388,13 @@ const SessionDetail = () => {
                                 background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                                 borderRadius: '12px',
                                 padding: '16px',
-                                border: '1px solid #E5E7EB',
+                                border: `1px solid ${border}`,
                                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                               }}>
                                 <p style={{
                                   fontSize: '12px',
                                   fontWeight: '700',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: '0 0 8px 0',
                                   textTransform: 'uppercase'
                                 }}>
@@ -1396,7 +1403,7 @@ const SessionDetail = () => {
                                 {activity.objectives.map((obj, idx) => (
                                   <div key={idx} style={{
                                     fontSize: '12px',
-                                    color: '#475569',
+                                    color: textSecondary,
                                     marginBottom: idx < activity.objectives.length - 1 ? '6px' : 0,
                                     display: 'flex',
                                     gap: '8px',
@@ -1415,13 +1422,13 @@ const SessionDetail = () => {
                                 background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                                 borderRadius: '12px',
                                 padding: '16px',
-                                border: '1px solid #E5E7EB',
+                                border: `1px solid ${border}`,
                                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                               }}>
                                 <p style={{
                                   fontSize: '12px',
                                   fontWeight: '700',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: '0 0 8px 0',
                                   textTransform: 'uppercase'
                                 }}>
@@ -1430,7 +1437,7 @@ const SessionDetail = () => {
                                 {activity.resources.map((res, idx) => (
                                   <div key={idx} style={{
                                     fontSize: '12px',
-                                    color: '#475569',
+                                    color: textSecondary,
                                     marginBottom: idx < activity.resources.length - 1 ? '6px' : 0,
                                     display: 'flex',
                                     gap: '8px',
@@ -1449,13 +1456,13 @@ const SessionDetail = () => {
                                 background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                                 borderRadius: '12px',
                                 padding: '16px',
-                                border: '1px solid #E5E7EB',
+                                border: `1px solid ${border}`,
                                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                               }}>
                                 <p style={{
                                   fontSize: '12px',
                                   fontWeight: '700',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: '0 0 8px 0',
                                   textTransform: 'uppercase'
                                 }}>
@@ -1463,7 +1470,7 @@ const SessionDetail = () => {
                                 </p>
                                 <p style={{
                                   fontSize: '12px',
-                                  color: '#475569',
+                                  color: textSecondary,
                                   margin: 0,
                                   lineHeight: '1.5'
                                 }}>
@@ -1478,17 +1485,17 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                              background: surface,
                               borderRadius: '12px',
                               padding: '16px',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${border}`,
                               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                                 <p style={{
                                   fontSize: '14px',
                                   fontWeight: '600',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: 0
                                 }}>
                                   Instructions to Coach
@@ -1520,13 +1527,13 @@ const SessionDetail = () => {
                               {activity.instructionsToCoach.map((instruction, idx) => (
                                 <div key={idx} style={{
                                   fontSize: '12px',
-                                  color: '#000000',
+                                  color: textSecondary,
                                   marginBottom: idx < activity.instructionsToCoach.length - 1 ? '6px' : 0,
                                   display: 'flex',
                                   gap: '8px',
                                   alignItems: 'flex-start'
                                 }}>
-                                  <ArrowRight size={14} style={{ marginTop: '2px', flexShrink: 0, color: '#000000' }} />
+                                  <ArrowRight size={14} style={{ marginTop: '2px', flexShrink: 0, color: 'var(--cl-primary)' }} />
                                   <div dangerouslySetInnerHTML={{ __html: instruction }} />
                                 </div>
                               ))}
@@ -1538,19 +1545,19 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                              background: surface,
                               borderRadius: '12px',
                               padding: '16px',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${border}`,
                               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  
+
                                   <p style={{
                                     fontSize: '14px',
                                     fontWeight: '600',
-                                    color: '#111827',
+                                    color: textPrimary,
                                     margin: 0
                                   }}>
                                     Story/Narrative
@@ -1593,7 +1600,7 @@ const SessionDetail = () => {
                                       <h4 style={{
                                         fontSize: '12px',
                                         fontWeight: '700',
-                                        color: '#000000',
+                                        color: textPrimary,
                                         margin: '0 0 6px 0'
                                       }}>
                                         {storyTitle}
@@ -1602,7 +1609,7 @@ const SessionDetail = () => {
                                     {storyContent && (
                                       <div style={{
                                         fontSize: '12px',
-                                        color: '#000000',
+                                        color: textSecondary,
                                         margin: 0,
                                         lineHeight: '1.6',
                                         textAlign: 'justify',
@@ -1620,10 +1627,10 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                              background: surface,
                               borderRadius: '12px',
                               padding: '16px',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${border}`,
                               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                             }}>
                               <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
@@ -1631,7 +1638,7 @@ const SessionDetail = () => {
                                   <p style={{
                                     fontSize: '11px',
                                     fontWeight: '700',
-                                    color: '#000000',
+                                    color: textMuted,
                                     margin: '0 0 4px 0',
                                     textTransform: 'uppercase'
                                   }}>
@@ -1640,7 +1647,7 @@ const SessionDetail = () => {
                                   <p style={{
                                     fontSize: '20px',
                                     fontWeight: '700',
-                                    color: '#000000',
+                                    color: textPrimary,
                                     margin: 0
                                   }}>
                                     {activity.points.total}
@@ -1652,7 +1659,7 @@ const SessionDetail = () => {
                                   <p style={{
                                     fontSize: '13px',
                                     fontWeight: '700',
-                                    color: '#000000',
+                                    color: textMuted,
                                     margin: '0 0 6px 0',
                                     textTransform: 'uppercase'
                                   }}>
@@ -1661,13 +1668,13 @@ const SessionDetail = () => {
                                   {activity.points.evaluationCriteria.map((criteria, idx) => (
                                     <div key={idx} style={{
                                       fontSize: '13px',
-                                      color: '#000000',
+                                      color: textSecondary,
                                       marginBottom: idx < activity.points.evaluationCriteria.length - 1 ? '4px' : 0,
                                       display: 'flex',
                                       gap: '6px',
                                       alignItems: 'flex-start'
                                     }}>
-                                      <span style={{ color: '#166534' }}>•</span>
+                                      <span style={{ color: '#10B981' }}>•</span>
                                       <span>{criteria}</span>
                                     </div>
                                   ))}
@@ -1681,18 +1688,17 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                              background: surface,
                               borderRadius: '12px',
                               padding: '16px',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${border}`,
                               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                                
                                 <p style={{
                                   fontSize: '14px',
                                   fontWeight: '600',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: 0
                                 }}>
                                   AI Tools & Resources
@@ -1701,15 +1707,15 @@ const SessionDetail = () => {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 {activity.aiTools.map((tool, idx) => (
                                   <div key={idx} style={{
-                                    background: 'rgb(255, 255, 255)',
+                                    background: dark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
                                     padding: '10px',
                                     borderRadius: '8px',
-                                    borderLeft: '2px solid #000000'
+                                    borderLeft: '2px solid var(--cl-primary)'
                                   }}>
                                     <div style={{
                                       fontSize: '12px',
                                       fontWeight: '700',
-                                      color: '#000000',
+                                      color: textPrimary,
                                       marginBottom: '4px'
                                     }}>
                                       {tool.toolName || tool.name}
@@ -1717,7 +1723,7 @@ const SessionDetail = () => {
                                     {tool.usagePurpose && (
                                       <p style={{
                                         fontSize: '11px',
-                                        color: '#000000',
+                                        color: textSecondary,
                                         margin: '0 0 4px 0'
                                       }}>
                                         {tool.usagePurpose}
@@ -1754,16 +1760,16 @@ const SessionDetail = () => {
                             <div style={{
                               marginLeft: '56px',
                               marginTop: '16px',
-                              background: '#ffffff',
+                              background: surface,
                               borderRadius: '10px',
                               padding: '14px',
-                              border: '1.5px solid #000000'
+                              border: `1.5px solid ${border}`
                             }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                                 <p style={{
                                   fontSize: '12px',
                                   fontWeight: '700',
-                                  color: '#000000',
+                                  color: textMuted,
                                   margin: 0,
                                   textTransform: 'uppercase'
                                 }}>
@@ -1774,7 +1780,7 @@ const SessionDetail = () => {
                                 <p style={{
                                   fontSize: '13px',
                                   fontWeight: '600',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: '0 0 8px 0'
                                 }}>
                                   {activity.project.title}
@@ -1783,7 +1789,7 @@ const SessionDetail = () => {
                               {activity.project.description && (
                                 <div style={{
                                   fontSize: '12px',
-                                  color: '#666666',
+                                  color: textSecondary,
                                   margin: '0 0 8px 0',
                                   lineHeight: '1.5'
                                 }} dangerouslySetInnerHTML={{ __html: activity.project.description }} />
@@ -1793,7 +1799,7 @@ const SessionDetail = () => {
                                   <p style={{
                                     fontSize: '11px',
                                     fontWeight: '600',
-                                    color: '#000000',
+                                    color: textPrimary,
                                     margin: '8px 0 6px 0',
                                     textTransform: 'uppercase'
                                   }}>
@@ -1803,7 +1809,7 @@ const SessionDetail = () => {
                                     margin: '0',
                                     paddingLeft: '20px',
                                     fontSize: '12px',
-                                    color: '#666666'
+                                    color: textSecondary
                                   }}>
                                     {activity.project.workflow.map((step, i) => (
                                       <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: step }}></li>
@@ -1872,7 +1878,7 @@ const SessionDetail = () => {
                                     <button
                                       onClick={() => {
                                         navigator.clipboard.writeText(codeContent);
-                                        alert('Code copied to clipboard!');
+                                        setToast({ isVisible: true, message: 'Code copied to clipboard!', type: 'success' });
                                       }}
                                       style={{
                                         background: '#ffffff4f',
@@ -1917,19 +1923,18 @@ const SessionDetail = () => {
                           <div style={{
                             marginLeft: '56px',
                             marginTop: '16px',
-                            background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                            background: surface,
                             borderRadius: '12px',
                             padding: '16px',
-                            border: '1px solid #E5E7EB',
+                            border: `1px solid ${border}`,
                             boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                
                                 <p style={{
                                   fontSize: '14px',
                                   fontWeight: '600',
-                                  color: '#111827',
+                                  color: textPrimary,
                                   margin: 0
                                 }}>
                                   Activity Feedback
@@ -1974,7 +1979,7 @@ const SessionDetail = () => {
                             {editingActivityId === index ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div>
-                                  <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0' }}>
+                                  <p style={{ fontSize: '11px', fontWeight: '600', color: textPrimary, margin: '0 0 6px 0' }}>
                                     Rating (1-5 stars)
                                   </p>
                                   <div style={{ display: 'flex', gap: '6px' }}>
@@ -1988,7 +1993,7 @@ const SessionDetail = () => {
                                             width: '28px',
                                             height: '28px',
                                             border: 'none',
-                                            background: '#FFF',
+                                            background: dark ? 'rgba(255,255,255,0.06)' : '#FFF',
                                             borderRadius: '6px',
                                             cursor: 'pointer',
                                             fontSize: '18px',
@@ -2011,7 +2016,7 @@ const SessionDetail = () => {
                                 </div>
 
                                 <div>
-                                  <p style={{ fontSize: '11px', fontWeight: '600', color: '', margin: '0 0 6px 0' }}>
+                                  <p style={{ fontSize: '11px', fontWeight: '600', color: textPrimary, margin: '0 0 6px 0' }}>
                                     Coach Comment
                                   </p>
                                   <textarea
@@ -2025,10 +2030,11 @@ const SessionDetail = () => {
                                       width: '100%',
                                       padding: '8px',
                                       borderRadius: '6px',
-                                      border: '1px solid #E5E7EB',
+                                      border: `1px solid ${border}`,
                                       fontFamily: 'inherit',
                                       fontSize: '12px',
-                                      color: '#475569',
+                                      color: textSecondary,
+                                      background: surface2,
                                       minHeight: '80px',
                                       resize: 'vertical',
                                       boxSizing: 'border-box'
@@ -2066,6 +2072,7 @@ const SessionDetail = () => {
                                         updated[index] = { rating: 0, coachComment: '' };
                                         return updated;
                                       });
+                                      saveActivityFeedback(index, { rating: 0, coachComment: '' });
                                     }}
                                     style={{
                                       flex: 1,
@@ -2116,7 +2123,7 @@ const SessionDetail = () => {
                               <>
                                 {activity.feedback.rating > 0 && (
                                   <div style={{ marginBottom: '10px' }}>
-                                    <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0' }}>
+                                    <p style={{ fontSize: '11px', fontWeight: '600', color: textMuted, margin: '0 0 6px 0' }}>
                                       Rating
                                     </p>
                                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -2125,13 +2132,13 @@ const SessionDetail = () => {
                                           key={i}
                                           style={{
                                             fontSize: '18px',
-                                            color: i < activity.feedback.rating ? '#FCD34D' : '#E5E7EB'
+                                            color: i < activity.feedback.rating ? '#FCD34D' : (dark ? 'rgba(255,255,255,0.15)' : '#E5E7EB')
                                           }}
                                         >
                                           ★
                                         </div>
                                       ))}
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: '#000000', marginLeft: '6px' }}>
+                                      <span style={{ fontSize: '11px', fontWeight: '600', color: textPrimary, marginLeft: '6px' }}>
                                         {activity.feedback.rating}/5
                                       </span>
                                     </div>
@@ -2139,10 +2146,10 @@ const SessionDetail = () => {
                                 )}
                                 {activity.feedback.coachComment && (
                                   <div>
-                                    <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0' }}>
+                                    <p style={{ fontSize: '11px', fontWeight: '600', color: textMuted, margin: '0 0 6px 0' }}>
                                       Comment
                                     </p>
-                                    <p style={{ fontSize: '12px', color: '#000000', margin: 0, lineHeight: '1.5', backgroundColor:'#f1f1f1', padding:'10px', borderRadius:'6px' }}>
+                                    <p style={{ fontSize: '12px', color: textSecondary, margin: 0, lineHeight: '1.5', backgroundColor: dark ? 'rgba(255,255,255,0.05)' : '#f1f1f1', padding: '10px', borderRadius: '6px' }}>
                                       {activity.feedback.coachComment}
                                     </p>
                                   </div>
@@ -2176,16 +2183,16 @@ const SessionDetail = () => {
                 }}>
                   {sessionData.completedAt && (
                     <div style={{
-                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
-                      border: '1px solid #E5E7EB',
+                      border: `1px solid ${border}`,
                       padding: '16px 20px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                     }}>
-                      <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                      <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                         Completed At
                       </p>
-                      <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                         {new Date(sessionData.completedAt).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
@@ -2199,16 +2206,16 @@ const SessionDetail = () => {
 
                   {sessionData.regeneratedCount !== undefined && (
                     <div style={{
-                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
-                      border: '1px solid #E5E7EB',
+                      border: `1px solid ${border}`,
                       padding: '16px 20px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                     }}>
-                      <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                      <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                         Regenerated
                       </p>
-                      <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                         {sessionData.regeneratedCount} time{sessionData.regeneratedCount !== 1 ? 's' : ''}
                       </p>
                     </div>
@@ -2216,16 +2223,16 @@ const SessionDetail = () => {
 
                   {sessionData.lastRegeneratedAt && (
                     <div style={{
-                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
-                      border: '1px solid #E5E7EB',
+                      border: `1px solid ${border}`,
                       padding: '16px 20px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                     }}>
-                      <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                      <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                         Last Regenerated
                       </p>
-                      <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                         {new Date(sessionData.lastRegeneratedAt).toLocaleDateString('en-US', {
                           month: 'short',
                           day: 'numeric',
@@ -2238,16 +2245,16 @@ const SessionDetail = () => {
 
                   {sessionData.createdByCoach && (
                     <div style={{
-                      background: dark ? 'var(--cl-surface)' : '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
-                      border: '1px solid #E5E7EB',
+                      border: `1px solid ${border}`,
                       padding: '16px 20px',
                       boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)'
                     }}>
-                      <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 4px 0', fontWeight: '600' }}>
+                      <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 4px 0', fontWeight: '600' }}>
                         Created By
                       </p>
-                      <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: '600', color: textPrimary, margin: 0 }}>
                         {sessionData.createdByCoach.coachName || sessionData.createdByCoach.name || 'Coach'}
                       </p>
                     </div>
@@ -2328,13 +2335,13 @@ const SessionDetail = () => {
                             key={i}
                             style={{
                               fontSize: '20px',
-                              color: (sessionData.feedback?.rating && i < sessionData.feedback.rating) ? '#FCD34D' : '#E5E7EB'
+                              color: (sessionData.feedback?.rating && i < sessionData.feedback.rating) ? '#FCD34D' : (dark ? 'rgba(255,255,255,0.15)' : '#E5E7EB')
                             }}
                           >
                             ★
                           </div>
                         ))}
-                        <span style={{ fontSize: '13px', fontWeight: '600', color: dark ? 'var(--cl-text)' : '#000000', marginLeft: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: textPrimary, marginLeft: '8px' }}>
                           {sessionData.feedback?.rating || 0}/5
                         </span>
                       </div>
@@ -2372,7 +2379,7 @@ const SessionDetail = () => {
                     {editingSessionFeedback ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div>
-                          <p style={{ fontSize: '12px', fontWeight: '600', color: '#000000', margin: '0 0 8px 0' }}>
+                          <p style={{ fontSize: '12px', fontWeight: '600', color: textPrimary, margin: '0 0 8px 0' }}>
                             Session Rating (1-5 stars)
                           </p>
                           <div style={{ display: 'flex', gap: '6px' }}>
@@ -2406,7 +2413,7 @@ const SessionDetail = () => {
                         </div>
 
                         <div>
-                          <p style={{ fontSize: '12px', fontWeight: '600', color: '#000000', margin: '0 0 8px 0' }}>
+                          <p style={{ fontSize: '12px', fontWeight: '600', color: textPrimary, margin: '0 0 8px 0' }}>
                             Session Comment
                           </p>
                           <textarea
@@ -2417,10 +2424,11 @@ const SessionDetail = () => {
                               width: '100%',
                               padding: '10px',
                               borderRadius: '6px',
-                              border: '1.5px solid #E5E7EB',
+                              border: `1.5px solid ${border}`,
                               fontFamily: 'inherit',
                               fontSize: '13px',
-                              color: '#475569',
+                              color: textSecondary,
+                              background: surface,
                               minHeight: '100px',
                               resize: 'vertical',
                               boxSizing: 'border-box'
@@ -2490,7 +2498,7 @@ const SessionDetail = () => {
                               flex: 1,
                               background: '#F3F4F6',
                               color: '#6B7280',
-                              border: '1px solid #E5E7EB',
+                              border: `1px solid ${border}`,
                               borderRadius: '6px',
                               padding: '10px 14px',
                               fontSize: '13px',
@@ -2509,10 +2517,10 @@ const SessionDetail = () => {
                       <>
                         {sessionData.feedback.coachComment && (
                           <div>
-                            <p style={{ fontSize: '12px', fontWeight: '600', color: '#64748B', margin: '0 0 8px 0' }}>
+                            <p style={{ fontSize: '12px', fontWeight: '600', color: textMuted, margin: '0 0 8px 0' }}>
                               Comment
                             </p>
-                            <p style={{ fontSize: '14px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
+                            <p style={{ fontSize: '14px', color: textSecondary, margin: 0, lineHeight: '1.5' }}>
                               {sessionData.feedback.coachComment}
                             </p>
                           </div>
@@ -2570,8 +2578,8 @@ const SessionDetail = () => {
                     <h4 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 4px 0', color: dark ? 'var(--cl-text)' : '#111827' }}>
                       {playerData?.name || playerData?.playerName || 'Unknown Player'}
                     </h4>
-                    <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>
-                      {playerData?.email || 'N/A'}
+                    <p style={{ fontSize: '12px', color: textMuted, margin: 0 }}>
+                      {playerData?.phone || playerData?.email || 'N/A'}
                     </p>
                   </div>
 
@@ -2590,10 +2598,10 @@ const SessionDetail = () => {
                     
                     return playerData?.dateOfBirth && (
                       <div style={{ marginBottom: '16px' }}>
-                        <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                        <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 8px 0', fontWeight: '600' }}>
                           Birthday
                         </p>
-                        <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: '#111827' }}>
+                        <p style={{ fontSize: '14px', fontWeight: '600', margin: 0, color: textPrimary }}>
                           {new Date(playerData.dateOfBirth).toLocaleDateString('en-US', {
                             month: 'short',
                             day: 'numeric',
@@ -2641,12 +2649,18 @@ const SessionDetail = () => {
                   })()}
 
                   <div style={{ marginBottom: '16px' }}>
-                    <p style={{ fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                    <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 8px 0', fontWeight: '600' }}>
                       Total Points
                     </p>
-                    <p style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: dark ? 'var(--cl-text)' : '#111827' }}>
-                      {playerData?.totalPoints || 0}
-                    </p>
+                    {(playerData?.totalPoints ?? 0) > 0 ? (
+                      <p style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: textPrimary }}>
+                        {playerData.totalPoints}
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: '13px', fontWeight: '500', margin: 0, color: textMuted, fontStyle: 'italic' }}>
+                        Points not available
+                      </p>
+                    )}
                   </div>
 
                   {/* Progress Bar */}
@@ -2663,7 +2677,7 @@ const SessionDetail = () => {
                     <div style={{
                       width: '100%',
                       height: '8px',
-                      background: '#E5E7EB',
+                      background: dark ? 'rgba(255,255,255,0.1)' : '#E5E7EB',
                       borderRadius: '4px',
                       overflow: 'hidden',
                       marginBottom: '4px'
@@ -2724,8 +2738,9 @@ const SessionDetail = () => {
 
                   {/* Status Badge */}
                   <div style={{
-                    background: '#DCFCE7',
-                    color: '#166534',
+                    background: dark ? 'rgba(16,185,129,0.12)' : '#DCFCE7',
+                    color: dark ? '#34D399' : '#166534',
+                    border: `1px solid ${dark ? 'rgba(16,185,129,0.25)' : '#BBF7D0'}`,
                     padding: '10px 12px',
                     borderRadius: '8px',
                     textAlign: 'center',
@@ -2899,7 +2914,7 @@ const SessionDetail = () => {
               <div id="whats-feedback-section" style={{
                 background: dark ? 'var(--cl-surface)' : '#FFFFFF',
                 borderRadius: '12px',
-                border: '1px solid #E5E7EB',
+                border: `1px solid ${border}`,
                 overflow: 'hidden',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.06)',
                 marginBottom: '32px'
@@ -2948,7 +2963,7 @@ const SessionDetail = () => {
                             padding: '8px 16px',
                             background: '#F3F4F6',
                             color: '#374151',
-                            border: '1px solid #E5E7EB',
+                            border: `1px solid ${border}`,
                             borderRadius: '6px',
                             fontSize: '12px',
                             fontWeight: '600',
@@ -2965,7 +2980,7 @@ const SessionDetail = () => {
                             padding: '8px 16px',
                             background: '#F3F4F6',
                             color: '#6B7280',
-                            border: '1px solid #E5E7EB',
+                            border: `1px solid ${border}`,
                             borderRadius: '6px',
                             fontSize: '12px',
                             fontWeight: '600',
@@ -3000,12 +3015,12 @@ const SessionDetail = () => {
                     <div>
                       <p style={{
                         fontSize: '13px',
-                        color: '#374151',
+                        color: dark ? '#6EE7B7' : '#374151',
                         margin: '0 0 16px 0',
                         lineHeight: '1.7',
                         whiteSpace: 'pre-wrap',
-                        background: '#F0FDF4',
-                        border: '1px solid #BBF7D0',
+                        background: dark ? 'rgba(16,185,129,0.08)' : '#F0FDF4',
+                        border: `1px solid ${dark ? 'rgba(16,185,129,0.2)' : '#BBF7D0'}`,
                         borderRadius: '8px',
                         padding: '16px'
                       }}>
@@ -3052,7 +3067,7 @@ const SessionDetail = () => {
                 zIndex: 1100
               }}>
                 <div style={{
-                  background: 'white',
+                  background: surface,
                   borderRadius: '16px',
                   padding: '32px',
                   maxWidth: '540px',
@@ -3070,10 +3085,10 @@ const SessionDetail = () => {
                       <MessageSquare size={20} color="white" />
                     </div>
                     <div>
-                      <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                      <h3 style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: 0 }}>
                         WhatsApp Feedback
                       </h3>
-                      <p style={{ fontSize: '12px', color: '#6B7280', margin: '2px 0 0 0' }}>
+                      <p style={{ fontSize: '12px', color: textMuted, margin: '2px 0 0 0' }}>
                         Generating parent message before completing session
                       </p>
                     </div>
@@ -3092,13 +3107,13 @@ const SessionDetail = () => {
                         borderRadius: '50%',
                         animation: 'spin 0.8s linear infinite'
                       }} />
-                      <p style={{ fontSize: '14px', color: '#6B7280', margin: 0 }}>
+                      <p style={{ fontSize: '14px', color: textMuted, margin: 0 }}>
                         Generating WhatsApp feedback...
                       </p>
                     </div>
                   ) : (
                     <>
-                      <p style={{ fontSize: '13px', color: '#374151', margin: '0 0 12px 0' }}>
+                      <p style={{ fontSize: '13px', color: textSecondary, margin: '0 0 12px 0' }}>
                         WhatsApp feedback has been generated. Copy it and then complete the session.
                       </p>
                       <textarea
@@ -3109,14 +3124,14 @@ const SessionDetail = () => {
                           minHeight: '180px',
                           padding: '12px',
                           borderRadius: '10px',
-                          border: '1.5px solid #BBF7D0',
+                          border: `1.5px solid ${dark ? 'rgba(16,185,129,0.2)' : '#BBF7D0'}`,
                           fontFamily: 'inherit',
                           fontSize: '13px',
-                          color: '#374151',
+                          color: dark ? '#6EE7B7' : '#374151',
                           lineHeight: '1.6',
                           resize: 'vertical',
                           boxSizing: 'border-box',
-                          background: '#F0FDF4',
+                          background: dark ? 'rgba(16,185,129,0.08)' : '#F0FDF4',
                           cursor: 'text',
                           marginBottom: '16px'
                         }}
@@ -3150,17 +3165,17 @@ const SessionDetail = () => {
                           style={{
                             flex: 1,
                             padding: '11px 0',
-                            background: '#F3F4F6',
-                            color: '#374151',
-                            border: '1px solid #E5E7EB',
+                            background: surface2,
+                            color: textSecondary,
+                            border: `1px solid ${border}`,
                             borderRadius: '8px',
                             fontSize: '13px',
                             fontWeight: '600',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease'
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
-                          onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
+                          onMouseEnter={(e) => e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = surface2}
                         >
                           Close
                         </button>
@@ -3204,47 +3219,47 @@ const SessionDetail = () => {
                 zIndex: 1000
               }}>
                 <div style={{
-                  background: 'white',
+                  background: surface,
                   borderRadius: '12px',
                   padding: '32px',
                   maxWidth: '500px',
                   width: '90%',
-                  boxShadow: '0 20px 25px rgba(0, 0, 0, 0.15)',
+                  boxShadow: '0 20px 25px rgba(0, 0, 0, 0.25)',
                   animation: 'slideIn 0.3s ease'
                 }}>
-                  <h3 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: '0 0 24px 0' }}>
+                  <h3 style={{ fontSize: '20px', fontWeight: '700', color: textPrimary, margin: '0 0 24px 0' }}>
                     Regenerate Content
                   </h3>
 
                   <div style={{ marginBottom: '20px' }}>
-                    <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 8px 0' }}>
+                    <p style={{ fontSize: '12px', fontWeight: '600', color: textMuted, margin: '0 0 8px 0' }}>
                       Activity Sequence
                     </p>
-                    <p style={{ fontSize: '16px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                    <p style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>
                       {sessionData?.activities[regenerateModal.activityIndex]?.activitySequence || 'N/A'}
                     </p>
                   </div>
 
                   <div style={{ marginBottom: '20px' }}>
-                    <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 8px 0' }}>
+                    <p style={{ fontSize: '12px', fontWeight: '600', color: textMuted, margin: '0 0 8px 0' }}>
                       Activity Name
                     </p>
-                    <p style={{ fontSize: '16px', fontWeight: '700', color: '#111827', margin: 0 }}>
+                    <p style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>
                       {sessionData?.activities[regenerateModal.activityIndex]?.activityTitle || 'N/A'}
                     </p>
                   </div>
 
                   <div style={{ marginBottom: '24px' }}>
-                    <p style={{ fontSize: '12px', fontWeight: '600', color: '#666', margin: '0 0 8px 0' }}>
+                    <p style={{ fontSize: '12px', fontWeight: '600', color: textMuted, margin: '0 0 8px 0' }}>
                       Section Type
                     </p>
-                    <p style={{ fontSize: '14px', fontWeight: '600', color: '#111827', margin: 0, textTransform: 'capitalize' }}>
+                    <p style={{ fontSize: '14px', fontWeight: '600', color: textPrimary, margin: 0, textTransform: 'capitalize' }}>
                       {regenerateModal.sectionType === 'instructions' ? 'Instructions to Coach' : regenerateModal.sectionType === 'story' ? 'Story/Narrative' : 'Code'}
                     </p>
                   </div>
 
                   <div style={{ marginBottom: '24px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '600', color: '#666', display: 'block', margin: '0 0 8px 0' }}>
+                    <label style={{ fontSize: '12px', fontWeight: '600', color: textMuted, display: 'block', margin: '0 0 8px 0' }}>
                       Reason for Regenerate *
                     </label>
                     <textarea
@@ -3255,10 +3270,11 @@ const SessionDetail = () => {
                         width: '100%',
                         padding: '12px',
                         borderRadius: '8px',
-                        border: '1.5px solid #E2E8F0',
+                        border: `1.5px solid ${border}`,
                         fontFamily: 'inherit',
                         fontSize: '13px',
-                        color: '#475569',
+                        color: textSecondary,
+                        background: surface2,
                         minHeight: '100px',
                         resize: 'vertical',
                         boxSizing: 'border-box',
@@ -3269,7 +3285,7 @@ const SessionDetail = () => {
                         e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
                       }}
                       onBlur={(e) => {
-                        e.target.style.borderColor = '#E2E8F0';
+                        e.target.style.borderColor = border;
                         e.target.style.boxShadow = 'none';
                       }}
                     />
@@ -3280,17 +3296,17 @@ const SessionDetail = () => {
                       onClick={() => setRegenerateModal({ isOpen: false, activityIndex: null, sectionType: null, reason: '' })}
                       style={{
                         padding: '10px 24px',
-                        background: '#E5E7EB',
-                        color: '#475569',
-                        border: 'none',
+                        background: surface2,
+                        color: textSecondary,
+                        border: `1px solid ${border}`,
                         borderRadius: '8px',
                         fontSize: '13px',
                         fontWeight: '600',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#D1D5DB'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = '#E5E7EB'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.1)' : '#D1D5DB'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = surface2}
                     >
                       Cancel
                     </button>
@@ -3298,7 +3314,7 @@ const SessionDetail = () => {
                       disabled={isRegenerating}
                       onClick={async () => {
                         if (!regenerateModal.reason.trim()) {
-                          alert('Please enter a reason for regenerating this content.');
+                          setToast({ isVisible: true, message: 'Please enter a reason for regenerating this content.', type: 'error' });
                           return;
                         }
 
@@ -3306,7 +3322,7 @@ const SessionDetail = () => {
                         try {
                           const activity = sessionData?.activities[regenerateModal.activityIndex];
                           if (!activity) {
-                            alert('Activity not found');
+                            setToast({ isVisible: true, message: 'Activity not found', type: 'error' });
                             return;
                           }
 
@@ -3535,7 +3551,7 @@ const SessionDetail = () => {
                 zIndex: 1000
               }}>
                 <div style={{
-                  background: 'white',
+                  background: surface,
                   borderRadius: '16px',
                   padding: '32px',
                   maxWidth: '540px',
@@ -3674,7 +3690,7 @@ const SessionDetail = () => {
                             padding: '11px 0',
                             background: '#F3F4F6',
                             color: '#374151',
-                            border: '1px solid #E5E7EB',
+                            border: `1px solid ${border}`,
                             borderRadius: '8px',
                             fontSize: '13px',
                             fontWeight: '600',

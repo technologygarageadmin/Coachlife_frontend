@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Users, Star, Search, Filter, GridIcon, ListIcon, ChevronRight, CheckCircle2, Trophy } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -15,11 +16,11 @@ const Sk = ({ w, h, r = 8 }) => (
   <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
 );
 
-const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
+const SummaryCard = ({ label, value, icon: SIcon, accent, surface, border }) => {
   const [hov, setHov] = React.useState(false);
   return (
     <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
-      background: '#fff', border: `1.5px solid ${hov ? accent + '44' : '#E2E8F0'}`,
+      background: surface, border: `1.5px solid ${hov ? accent + '44' : border}`,
       borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px',
       boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
       transition: 'all .2s', flex: 1, minWidth: '140px',
@@ -37,6 +38,15 @@ const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
 
 const MyPlayers = () => {
   const { currentUser, fetchAssignedPlayersForCoach } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+  const surface = dark ? 'var(--cl-surface)' : '#fff';
+  const border = dark ? 'var(--cl-border)' : '#E2E8F0';
+  const textPrimary = dark ? 'var(--cl-text)' : '#0F172A';
+  const textSecondary = dark ? 'var(--cl-text-2)' : '#475569';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPathway, setFilterPathway] = useState('all');
   const [viewMode, setViewMode] = useState('grid');
@@ -211,7 +221,7 @@ const MyPlayers = () => {
         {isLoading ? (
           <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
             {[1, 2, 3, 4].map(i => (
-              <div key={i} style={{ flex: 1, minWidth: '140px', background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div key={i} style={{ flex: 1, minWidth: '140px', background: surface, border: `1.5px solid ${border}`, borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <Sk w="46px" h="46px" r={12} />
                 <div style={{ flex: 1 }}>
                   <Sk w="70%" h="11px" r={4} />
@@ -222,17 +232,17 @@ const MyPlayers = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-            <SummaryCard label="Total Players" value={myplayers.length} icon={Users} accent="#6366F1" />
-            <SummaryCard label="Active Players" value={myplayers.filter(p => p.status === 'active').length} icon={CheckCircle2} accent="#10B981" />
-            <SummaryCard label="Total Points" value={totalPoints.toLocaleString()} icon={Trophy} accent="#F59E0B" />
-            <SummaryCard label="Avg Points" value={avgPoints.toLocaleString()} icon={Star} accent="#8B5CF6" />
+            <SummaryCard label="Total Players" value={myplayers.length} icon={Users} accent="#6366F1" surface={surface} border={border} />
+            <SummaryCard label="Active Players" value={myplayers.filter(p => p.status === 'active').length} icon={CheckCircle2} accent="#10B981" surface={surface} border={border} />
+            <SummaryCard label="Total Points" value={totalPoints.toLocaleString()} icon={Trophy} accent="#F59E0B" surface={surface} border={border} />
+            <SummaryCard label="Avg Points" value={avgPoints.toLocaleString()} icon={Star} accent="#8B5CF6" surface={surface} border={border} />
           </div>
         )}
 
         {/* Search and Filter Bar */}
         <div style={{
-          background: '#FFFFFF', borderRadius: '14px',
-          border: '1.5px solid #E2E8F0', padding: '20px',
+          background: surface, borderRadius: '14px',
+          border: `1.5px solid ${border}`, padding: '20px',
           marginBottom: '24px', boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
         }}>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -245,7 +255,7 @@ const MyPlayers = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
                   flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  fontSize: '14px', color: '#0F172A', fontWeight: '500'
+                  fontSize: '14px', color: textPrimary, fontWeight: '500'
                 }}
               />
             </div>
@@ -256,7 +266,7 @@ const MyPlayers = () => {
                 onChange={(e) => setFilterPathway(e.target.value)}
                 style={{
                   background: 'transparent', border: 'none', outline: 'none',
-                  cursor: 'pointer', fontSize: '14px', color: '#0F172A',
+                  cursor: 'pointer', fontSize: '14px', color: textPrimary,
                   fontWeight: '500', minWidth: '180px'
                 }}
               >
@@ -274,9 +284,9 @@ const MyPlayers = () => {
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} style={{ background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                  <div style={{ height: '4px', background: '#EEF2F7' }} />
-                  <div style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: '1px solid #E2E8F0' }}>
+                <div key={i} style={{ background: surface, border: `1.5px solid ${border}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                  <div style={{ height: '4px', background: surface2 }} />
+                  <div style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: `1px solid ${border}` }}>
                     <Sk w="48px" h="48px" r={24} />
                     <div style={{ flex: 1 }}>
                       <Sk w="60%" h="16px" r={4} />
@@ -286,7 +296,7 @@ const MyPlayers = () => {
                   <div style={{ padding: '16px 20px' }}>
                     <Sk w="50%" h="26px" r={8} />
                   </div>
-                  <div style={{ padding: '12px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderBottom: '1px solid #E2E8F0' }}>
+                  <div style={{ padding: '12px 20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderBottom: `1px solid ${border}` }}>
                     <Sk w="100%" h="60px" r={10} />
                     <Sk w="100%" h="60px" r={10} />
                   </div>
@@ -306,7 +316,7 @@ const MyPlayers = () => {
                   <div
                     key={player.playerId}
                     style={{
-                      background: '#fff', border: '1.5px solid #E2E8F0',
+                      background: surface, border: `1.5px solid ${border}`,
                       borderRadius: '16px', overflow: 'hidden',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                       transition: 'all .2s', cursor: 'pointer'
@@ -318,7 +328,7 @@ const MyPlayers = () => {
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                      e.currentTarget.style.borderColor = '#E2E8F0';
+                      e.currentTarget.style.borderColor = border;
                       e.currentTarget.style.transform = 'translateY(0)';
                     }}
                   >
@@ -326,7 +336,7 @@ const MyPlayers = () => {
                     <div style={{ height: '4px', background: accent }} />
 
                     {/* Player header */}
-                    <div style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: '1px solid #E2E8F0' }}>
+                    <div style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderBottom: `1px solid ${border}` }}>
                       <div style={{
                         width: '48px', height: '48px', borderRadius: '50%', flexShrink: 0,
                         background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -335,8 +345,8 @@ const MyPlayers = () => {
                         {player.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#0F172A', margin: '0 0 3px' }}>{player.name}</h3>
-                        <p style={{ fontSize: '12px', color: '#94A3B8', margin: 0 }}>{player.email}</p>
+                        <h3 style={{ fontSize: '15px', fontWeight: '700', color: textPrimary, margin: '0 0 3px' }}>{player.name}</h3>
+                        <p style={{ fontSize: '12px', color: textMuted, margin: 0 }}>{player.email}</p>
                       </div>
                     </div>
 
@@ -354,14 +364,14 @@ const MyPlayers = () => {
                     <div style={{
                       padding: '0 20px 16px',
                       display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px',
-                      borderBottom: '1.5px solid #E2E8F0'
+                      borderBottom: `1.5px solid ${border}`
                     }}>
-                      <div style={{ background: '#F8FAFC', padding: '14px', borderRadius: '10px', textAlign: 'center' }}>
-                        <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 6px', fontWeight: '600' }}>Points</p>
+                      <div style={{ background: surface2, padding: '14px', borderRadius: '10px', textAlign: 'center' }}>
+                        <p style={{ fontSize: '12px', color: textSecondary, margin: '0 0 6px', fontWeight: '600' }}>Points</p>
                         <p style={{ fontSize: '20px', fontWeight: '800', color: '#6366F1', margin: 0 }}>{player.totalPoints}</p>
                       </div>
-                      <div style={{ background: '#F8FAFC', padding: '14px', borderRadius: '10px', textAlign: 'center' }}>
-                        <p style={{ fontSize: '12px', color: '#475569', margin: '0 0 6px', fontWeight: '600' }}>Sessions</p>
+                      <div style={{ background: surface2, padding: '14px', borderRadius: '10px', textAlign: 'center' }}>
+                        <p style={{ fontSize: '12px', color: textSecondary, margin: '0 0 6px', fontWeight: '600' }}>Sessions</p>
                         <p style={{ fontSize: '20px', fontWeight: '800', color: '#6366F1', margin: 0 }}>{getplayersessionCount(player.playerId)}</p>
                       </div>
                     </div>
@@ -390,12 +400,12 @@ const MyPlayers = () => {
             </div>
           ) : (
             // List View
-            <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1.5px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+            <div style={{ background: surface, borderRadius: '14px', border: `1.5px solid ${border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
               <div style={{
                 display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 1fr 0.8fr',
                 gap: '16px', padding: '16px 20px',
-                background: '#F8FAFC', borderBottom: '2px solid #E2E8F0',
-                fontWeight: '700', fontSize: '12px', color: '#475569',
+                background: surface2, borderBottom: `2px solid ${border}`,
+                fontWeight: '700', fontSize: '12px', color: textSecondary,
                 textTransform: 'uppercase', letterSpacing: '0.5px'
               }}>
                 <div>Name</div>
@@ -415,11 +425,11 @@ const MyPlayers = () => {
                     style={{
                       display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr 1fr 1fr 0.8fr',
                       gap: '16px', padding: '16px 20px',
-                      borderBottom: idx < filteredplayers.length - 1 ? '1px solid #E2E8F0' : 'none',
+                      borderBottom: idx < filteredplayers.length - 1 ? `1px solid ${border}` : 'none',
                       alignItems: 'center', transition: 'background-color 0.2s ease'
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#FFFFFF'}
+                    onMouseEnter={(e) => e.currentTarget.style.background = surface2}
+                    onMouseLeave={(e) => e.currentTarget.style.background = surface}
                   >
                     {/* Name */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -431,8 +441,8 @@ const MyPlayers = () => {
                         {player.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p style={{ fontWeight: '700', color: '#0F172A', fontSize: '13px', margin: 0 }}>{player.name}</p>
-                        <p style={{ fontSize: '11px', color: '#475569', margin: '3px 0 0 0' }}>{player.email}</p>
+                        <p style={{ fontWeight: '700', color: textPrimary, fontSize: '13px', margin: 0 }}>{player.name}</p>
+                        <p style={{ fontSize: '11px', color: textSecondary, margin: '3px 0 0 0' }}>{player.email}</p>
                       </div>
                     </div>
 
@@ -452,10 +462,10 @@ const MyPlayers = () => {
                     {/* Progress */}
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ flex: 1, height: '6px', background: '#E2E8F0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ flex: 1, height: '6px', background: border, borderRadius: '3px', overflow: 'hidden' }}>
                           <div style={{ height: '100%', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', width: `${player.progress}%` }} />
                         </div>
-                        <span style={{ fontSize: '12px', fontWeight: '700', color: '#0F172A', minWidth: '35px', textAlign: 'right' }}>{player.progress}%</span>
+                        <span style={{ fontSize: '12px', fontWeight: '700', color: textPrimary, minWidth: '35px', textAlign: 'right' }}>{player.progress}%</span>
                       </div>
                     </div>
 
@@ -478,7 +488,7 @@ const MyPlayers = () => {
 
                     {/* Indicator */}
                     <div style={{ textAlign: 'center' }}>
-                      <ChevronRight size={18} color="#E2E8F0" />
+                      <ChevronRight size={18} color={border} />
                     </div>
                   </div>
                 );
@@ -487,27 +497,27 @@ const MyPlayers = () => {
           )
         ) : (
           <div style={{
-            background: '#FFFFFF', borderRadius: '14px',
-            border: '1.5px solid #E2E8F0', padding: '48px 32px',
+            background: surface, borderRadius: '14px',
+            border: `1.5px solid ${border}`, padding: '48px 32px',
             textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
             {myplayers.length === 0 ? (
               <>
                 <Users size={56} style={{ margin: '0 auto 16px', opacity: 0.3, color: '#CBD5E1', display: 'block' }} />
-                <p style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>
+                <p style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: '0 0 8px' }}>
                   No players assigned yet
                 </p>
-                <p style={{ fontSize: '14px', color: '#475569', margin: 0 }}>
+                <p style={{ fontSize: '14px', color: textSecondary, margin: 0 }}>
                   Players will appear here once they are assigned to you
                 </p>
               </>
             ) : (
               <>
                 <Search size={56} style={{ margin: '0 auto 16px', opacity: 0.3, color: '#CBD5E1', display: 'block' }} />
-                <p style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: '0 0 8px' }}>
+                <p style={{ fontSize: '18px', fontWeight: '700', color: textPrimary, margin: '0 0 8px' }}>
                   No players match your search
                 </p>
-                <p style={{ fontSize: '14px', color: '#475569', margin: 0 }}>
+                <p style={{ fontSize: '14px', color: textSecondary, margin: 0 }}>
                   Try adjusting your search or filter criteria
                 </p>
               </>

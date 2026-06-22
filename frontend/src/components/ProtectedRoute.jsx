@@ -1,29 +1,17 @@
 import { Navigate } from 'react-router-dom';
 import { useStore } from '../context/store';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export const ProtectedRoute = ({ children, requiredRole, requiredRoles }) => {
   const { isAuthenticated, hasRole, hasAnyRole } = useStore();
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(useStore.persist?.hasHydrated() ?? true);
 
   useEffect(() => {
-    // Check if localStorage has persisted auth data
-    const checkHydration = () => {
-      try {
-        localStorage.getItem('coachlife-store');
-        setIsReady(true);
-      } catch (error) {
-        console.error('Error checking hydration:', error);
-        setIsReady(true);
-      }
-    };
+    if (isReady) return;
+    const unsub = useStore.persist.onFinishHydration(() => setIsReady(true));
+    return () => unsub();
+  }, [isReady]);
 
-    // Use a small delay to ensure Zustand persist middleware has run
-    const timer = setTimeout(checkHydration, 10);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Wait for Zustand to finish hydrating from localStorage
   if (!isReady) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><p>Loading...</p></div>;
   }
