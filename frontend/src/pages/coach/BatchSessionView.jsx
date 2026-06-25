@@ -20,13 +20,10 @@ const Sk = ({ w, h, r = 8 }) => (
   <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
 );
 
-const STATUS_OPTIONS = ['Present', 'Absent', 'Late', 'Excused'];
+const STATUS_OPTIONS = ['Present', 'Absent'];
 const STATUS_CONFIG = {
   Present: { bg: '#dcfce7', color: '#16a34a', border: '#bbf7d0' },
   Absent:  { bg: '#fee2e2', color: '#dc2626', border: '#fecaca' },
-  Late:    { bg: '#fef3c7', color: '#d97706', border: '#fde68a' },
-  Excused: { bg: '#ede9fe', color: '#7c3aed', border: '#ddd6fe' },
-  '':      { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
 };
 
 function toDateStr(date) {
@@ -54,6 +51,9 @@ const BatchSessionView = () => {
   const [statuses, setStatuses]               = useState({}); // { [playerId]: 'Present' | ... | '' }
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [attendanceSaving, setAttendanceSaving]   = useState(false);
+  const [alreadyMarked, setAlreadyMarked]         = useState(false);
+  const [fetchKey, setFetchKey]                   = useState(0);
+  const [cardRefreshKey, setCardRefreshKey] = useState(0);
   const [toastMsg, setToastMsg]   = useState('');
   const [toastType, setToastType] = useState('success');
 
@@ -70,6 +70,7 @@ const BatchSessionView = () => {
   useEffect(() => {
     if (!batch?.batchId || !userToken) return;
     const controller = new AbortController();
+    setAlreadyMarked(false);
     (async () => {
       setAttendanceLoading(true);
       try {
@@ -84,9 +85,10 @@ const BatchSessionView = () => {
         const records = data.records || [];
         const next = {};
         records.forEach(r => {
-          if (r.playerId != null) next[String(r.playerId)] = r.attendanceStatus || '';
+          if (r.playerId != null) next[String(r.playerId)] = r.attendanceStatus || 'Present';
         });
         setStatuses(next);
+        if (records.length > 0 && attendanceDate === today) setAlreadyMarked(true);
       } catch (e) {
         if (e.name !== 'AbortError') console.error('Failed to load attendance', e);
       } finally {
@@ -94,7 +96,7 @@ const BatchSessionView = () => {
       }
     })();
     return () => controller.abort();
-  }, [batch?.batchId, attendanceDate, userToken]);
+  }, [batch?.batchId, attendanceDate, userToken, fetchKey]);
 
   function setStatus(playerId, value) {
     setStatuses(prev => ({ ...prev, [String(playerId)]: value }));
@@ -112,9 +114,9 @@ const BatchSessionView = () => {
     setAttendanceSaving(true);
     try {
       await Promise.all(batchPlayers.map(p => {
-        const sessionNumber = Array.isArray(p.sessionCardIds) && p.sessionCardIds.length > 0
-          ? p.sessionCardIds.length
-          : null;
+        const ids = Array.isArray(p.sessionCardIds) ? p.sessionCardIds : [];
+        const sessionNumber = ids.length > 0 ? ids.length : null;
+        const sessionCardId = ids.length > 0 ? ids[ids.length - 1] : '';
         return fetch(CL_MARK_ATTENDANCE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', userToken },
@@ -124,13 +126,16 @@ const BatchSessionView = () => {
             batchId: batch.batchId,
             batchName: batch.batchName,
             sessionNumber,
+            sessionCardId,
             sessionDate: attendanceDate,
-            attendanceStatus: statuses[String(p.playerId)] || '',
+            attendanceStatus: statuses[String(p.playerId)] || 'Present',
             notes: '',
           }),
         });
       }));
       toast(`Attendance saved for ${batchPlayers.length} player${batchPlayers.length === 1 ? '' : 's'}`);
+      setFetchKey(prev => prev + 1);
+      setCardRefreshKey(prev => prev + 1);
     } catch (e) {
       console.error('Failed to save attendance', e);
       toast('Failed to save attendance', 'error');
@@ -139,6 +144,7 @@ const BatchSessionView = () => {
     }
   }
 
+  // Effect 1: load batch players once on mount
   useEffect(() => {
     if (!currentUser?.id || !batch) return;
     const controller = new AbortController();
@@ -160,57 +166,65 @@ const BatchSessionView = () => {
             return full || { playerId: bp.playerId, name: bp.playerName, sessionCardIds: [] };
           });
           setBatchPlayers(enriched);
-          setInitialLoading(false);
-
-          // For each player fetch their last card to check if it's active or completed
-          await Promise.all(enriched.map(async (player) => {
-            const { playerId, sessionCardIds } = player;
-            if (!sessionCardIds || sessionCardIds.length === 0) {
-              setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true } }));
-              return;
-            }
-            setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: true, checked: false } }));
-            const lastId = sessionCardIds[sessionCardIds.length - 1];
-            try {
-              const res = await fetch(VIEW_SESSIONCARD_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'userToken': userToken },
-                body: JSON.stringify({ sessionCardId: lastId })
-              });
-              if (res.ok) {
-                const data = await res.json();
-                const card = data.sessionCard || data.data || data;
-                const cardId = card?._id || card?.sessionCardId || lastId;
-                const rawStatus = (card?.status || '').toLowerCase().replace(' ', '_');
-                const isCompleted = rawStatus === 'completed';
-                const isPending = rawStatus === 'pending';
-                setCardStatus(prev => ({
-                  ...prev,
-                  [playerId]: {
-                    activeCardId: (isCompleted || isPending) ? null : cardId,
-                    loading: false,
-                    checked: true,
-                    isPending,
-                  }
-                }));
-              } else {
-                setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
-              }
-            } catch (e) {
-              console.error('Card status fetch failed', playerId, e);
-              setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
-            }
-          }));
-        } else {
-          setInitialLoading(false);
         }
       } catch (e) {
         if (e.name !== 'AbortError') console.error('Failed to fetch players', e);
+      } finally {
         setInitialLoading(false);
       }
     })();
     return () => controller.abort();
   }, [currentUser?.id, batch, fetchAssignedPlayersForCoach, userToken]);
+
+  // Effect 2: fetch card statuses — re-runs after attendance submit (cardRefreshKey)
+  useEffect(() => {
+    if (batchPlayers.length === 0) return;
+    const controller = new AbortController();
+
+    (async () => {
+      await Promise.all(batchPlayers.map(async (player) => {
+        const { playerId, sessionCardIds } = player;
+        if (!sessionCardIds || sessionCardIds.length === 0) {
+          setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
+          return;
+        }
+        setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: true, checked: false, isPending: false } }));
+        const lastId = sessionCardIds[sessionCardIds.length - 1];
+        try {
+          const res = await fetch(VIEW_SESSIONCARD_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'userToken': userToken },
+            body: JSON.stringify({ sessionCardId: lastId }),
+            signal: controller.signal,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const card = data.sessionCard || data.data || data;
+            const cardId = card?._id || card?.sessionCardId || lastId;
+            const rawStatus = (card?.status || '').toLowerCase().replace(/[\s_]/g, '');
+            const isCompleted = rawStatus === 'completed';
+            const isPending = rawStatus === 'pending';
+            setCardStatus(prev => ({
+              ...prev,
+              [playerId]: {
+                activeCardId: isCompleted ? null : cardId,
+                loading: false,
+                checked: true,
+                isPending,
+              }
+            }));
+          } else {
+            setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
+          }
+        } catch (e) {
+          if (e.name !== 'AbortError') console.error('Card status fetch failed', playerId, e);
+          setCardStatus(prev => ({ ...prev, [playerId]: { activeCardId: null, loading: false, checked: true, isPending: false } }));
+        }
+      }));
+    })();
+
+    return () => controller.abort();
+  }, [batchPlayers, userToken, cardRefreshKey]);
 
   if (!batch) return null;
 
@@ -323,20 +337,18 @@ const BatchSessionView = () => {
                         display: 'flex', alignItems: 'center', gap: '8px',
                         padding: '9px 18px 9px 10px', borderRadius: '24px', border: 'none',
                         background: isPending
-                          ? 'rgba(251,191,36,0.18)'
+                          ? 'rgba(251,191,36,0.22)'
                           : hasNew ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.07)',
-                        color: isPending
-                          ? 'rgba(255,255,255,0.85)'
-                          : hasNew ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)',
+                        color: (isPending || hasNew) ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.45)',
                         fontWeight: '600', fontSize: '14px',
-                        cursor: hasNew ? 'pointer' : 'default',
+                        cursor: (hasNew || isPending) ? 'pointer' : 'default',
                         transition: 'all 0.2s ease',
-                        boxShadow: hasNew ? '0 2px 10px rgba(0,0,0,0.2)' : 'none',
-                        outline: isPending ? '1px solid rgba(251,191,36,0.45)' : 'none',
+                        boxShadow: (hasNew || isPending) ? '0 2px 10px rgba(0,0,0,0.2)' : 'none',
+                        outline: isPending ? '1.5px solid rgba(251,191,36,0.6)' : 'none',
                       }}
-                      onMouseEnter={(e) => { if (hasNew) e.currentTarget.style.background = 'rgba(255,255,255,0.26)'; }}
+                      onMouseEnter={(e) => { if (hasNew || isPending) e.currentTarget.style.background = isPending ? 'rgba(251,191,36,0.32)' : 'rgba(255,255,255,0.26)'; }}
                       onMouseLeave={(e) => {
-                        if (hasNew) e.currentTarget.style.background = isPending ? 'rgba(251,191,36,0.18)' : 'rgba(255,255,255,0.16)';
+                        if (hasNew || isPending) e.currentTarget.style.background = isPending ? 'rgba(251,191,36,0.22)' : 'rgba(255,255,255,0.16)';
                       }}
                     >
                       <div style={{
@@ -360,8 +372,8 @@ const BatchSessionView = () => {
                       {isLoadingCard && (
                         <Loader size={13} style={{ animation: 'spin 1s linear infinite', opacity: 0.6, flexShrink: 0 }} />
                       )}
-                      {checked && !hasNew && !isPending && (
-                        <span title="No new session available" style={{ display: 'flex', alignItems: 'center' }}>
+                      {checked && !hasNew && !isPending && !cs?.activeCardId && (
+                        <span title="No active session card" style={{ display: 'flex', alignItems: 'center' }}>
                           <Info size={13} style={{ opacity: 0.65, flexShrink: 0 }} />
                         </span>
                       )}
@@ -436,6 +448,20 @@ const BatchSessionView = () => {
             </div>
           </div>
 
+          {/* Already marked banner */}
+          {alreadyMarked && attendanceDate === today && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '10px 24px', background: '#f0fdf4',
+              borderBottom: '1px solid #bbf7d0'
+            }}>
+              <CheckCircle size={15} color="#16a34a" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: '13px', fontWeight: '600', color: '#15803d' }}>
+                Attendance already marked for today
+              </span>
+            </div>
+          )}
+
           {/* Player rows */}
           {initialLoading || attendanceLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '20px 24px' }}>
@@ -451,7 +477,7 @@ const BatchSessionView = () => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {batchPlayers.map((player, idx) => {
-                const status = statuses[String(player.playerId)] || '';
+                const status = statuses[String(player.playerId)] || 'Present';
                 const [avatarColor] = pal(player.name || '');
                 return (
                   <div
@@ -477,11 +503,11 @@ const BatchSessionView = () => {
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
                         padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '600',
-                        background: (STATUS_CONFIG[status] || STATUS_CONFIG['']).bg,
-                        color: (STATUS_CONFIG[status] || STATUS_CONFIG['']).color,
-                        border: `1px solid ${(STATUS_CONFIG[status] || STATUS_CONFIG['']).border}`
+                        background: STATUS_CONFIG[status].bg,
+                        color: STATUS_CONFIG[status].color,
+                        border: `1px solid ${STATUS_CONFIG[status].border}`
                       }}>
-                        {status || 'In Progress'}
+                        {status}
                       </span>
                       <select
                         value={status}
@@ -489,12 +515,11 @@ const BatchSessionView = () => {
                         style={{
                           padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #E2E8F0',
                           fontSize: '13px', color: '#0F172A', outline: 'none', background: '#FFFFFF',
-                          cursor: 'pointer', minWidth: '130px'
+                          cursor: 'pointer', minWidth: '120px'
                         }}
                         onFocus={(e) => { e.target.style.borderColor = '#6366F1'; }}
                         onBlur={(e) => { e.target.style.borderColor = '#E2E8F0'; }}
                       >
-                        <option value="">In Progress</option>
                         {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>

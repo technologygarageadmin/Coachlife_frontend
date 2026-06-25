@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
+import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
-import { ChevronLeft, CheckCircle, Star, Clock, BookOpen, ArrowRight, Code, Wrench, Briefcase, BookMarked, MessageSquare } from 'lucide-react';
+import { ChevronLeft, CheckCircle, Star, Clock, BookOpen, ArrowRight, Code, Wrench, Briefcase, BookMarked } from 'lucide-react';
 
 const ViewSessionCard = () => {
   const { sessionId, id } = useParams();
   const cardId = sessionId || id; // Support both parameter names
   const navigate = useNavigate();
   const location = useLocation();
-  const { userToken, currentUser } = useStore();
+  const { userToken } = useStore();
+  const { theme } = useTheme();
+  const dark = theme === 'dark';
+
+  const surface   = dark ? 'var(--cl-surface)'   : '#FFFFFF';
+  const surface2  = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
+  const border    = dark ? 'var(--cl-border)'    : '#E2E8F0';
+  const textPri   = dark ? 'var(--cl-text)'      : '#0F172A';
+  const textSec   = dark ? 'var(--cl-text-2)'    : '#475569';
+  const textMuted = dark ? 'var(--cl-text-3)'    : '#64748B';
 
   const getToken = () => {
     const fresh = useStore.getState().userToken;
@@ -24,36 +34,28 @@ const ViewSessionCard = () => {
   const [expandedActivities, setExpandedActivities] = useState({});
   // eslint-disable-next-line no-unused-vars
   const [playerData, setPlayerData] = useState(null);
-  const [whatsappModal, setWhatsappModal] = useState({
-    isOpen: false,
-    isLoading: false,
-    message: '',
-    averageRating: 0
-  });
-  const [activityFeedbacks, setActivityFeedbacks] = useState([]);
   const [whatsFeedbackMessage, setWhatsFeedbackMessage] = useState('');
-  const [isLoadingWhatsFeedback, setIsLoadingWhatsFeedback] = useState(false);
   const [editingFeedbackId, setEditingFeedbackId] = useState(null);
   const [editingFeedbackText, setEditingFeedbackText] = useState('');
   const [isUpdatingFeedback, setIsUpdatingFeedback] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const sortActivities = (acts) =>
+      (acts || []).slice().sort((a, b) => (a.activitySequence || 0) - (b.activitySequence || 0));
+
     const fetchSessionDetails = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Session data should be passed through navigation state
+        // Fast path: session data passed through navigation state
         if (location.state?.session) {
           const sessionWithSortedActivities = {
             ...location.state.session,
-            activities: (location.state.session.activities || []).sort((a, b) => {
-              const seqA = a.activitySequence || 0;
-              const seqB = b.activitySequence || 0;
-              return seqA - seqB;
-            })
+            activities: sortActivities(location.state.session.activities),
           };
-
           setSessionData(sessionWithSortedActivities);
           if (sessionWithSortedActivities.Whatsapp_message) {
             setWhatsFeedbackMessage(sessionWithSortedActivities.Whatsapp_message);
@@ -65,11 +67,40 @@ const ViewSessionCard = () => {
           return;
         }
 
-        // If no state data, show error - navigate back
-        setError('Session data not found. Please select a session from your sessions list.');
-        setLoading(false);
+        if (!cardId) {
+          setError('Session data not found. Please select a session from your sessions list.');
+          setLoading(false);
+          return;
+        }
 
+        // No navigation state (Past Sessions, deep link, or page reload): fetch by id.
+        const token = getToken();
+        const res = await fetch(
+          'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token && { userToken: token }) },
+            body: JSON.stringify({ sessionCardId: cardId }),
+          }
+        );
+        if (!res.ok) throw new Error(`Failed to load session: ${res.status}`);
+
+        let data = await res.json();
+        if (data?.body && typeof data.body === 'string') { try { data = JSON.parse(data.body); } catch { data = null; } }
+        const card = data && (data.sessionCard || data.data || data);
+        const isCard = card && typeof card === 'object' &&
+          (card.activities || card.Topic || card.status || card.session !== undefined || card.sessionCardId || card._id);
+
+        if (cancelled) return;
+        if (isCard) {
+          setSessionData({ ...card, activities: sortActivities(card.activities) });
+          if (card.Whatsapp_message) setWhatsFeedbackMessage(card.Whatsapp_message);
+        } else {
+          setError('Session data not found. Please select a session from your sessions list.');
+        }
+        setLoading(false);
       } catch (err) {
+        if (cancelled) return;
         console.error('Error processing session details:', err);
         setError(err.message);
         setLoading(false);
@@ -77,127 +108,8 @@ const ViewSessionCard = () => {
     };
 
     fetchSessionDetails();
+    return () => { cancelled = true; };
   }, [cardId, userToken, location]);
-
-  const handleGenerateWhatsAppFeedback = async () => {
-    const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
-      activitySequence: activity.activitySequence || (index + 1),
-      activityName: activity.activityTitle || `Activity ${index + 1}`,
-      rating: activity.rating || 0,
-      feedback: activity.feedback || ''
-    }));
-
-    setWhatsappModal({ isOpen: true, isLoading: true, message: '', averageRating: 0 });
-
-    try {
-      const token = getToken();
-      const player = location.state?.player;
-      const requestBody = {
-        sessionCardId: sessionData._id || cardId,
-        playerName: player?.name || player?.playerName || 'Player',
-        sessionTopic: sessionData.Topic || '',
-        sessionNumber: sessionData.session || 0,
-        coachName: currentUser?.name || 'Coach',
-        activities_feedback: activitiesFeedback,
-        overallRating: sessionData.rating || 0,
-        overallComment: sessionData.feedback || ''
-      };
-
-      const res = await fetch(
-        'https://zf94z67dy2.execute-api.ap-south-1.amazonaws.com/default/CL_Generate_WhatsApp_Feedback',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'userToken': token,
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify(requestBody)
-        }
-      );
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed to generate feedback: ${res.status}`);
-      }
-
-      const result = await res.json();
-      setWhatsappModal({
-        isOpen: true,
-        isLoading: false,
-        message: result.whatsappMessage || result.message || '',
-        averageRating: result.averageRating || 0
-      });
-    } catch (error) {
-      setWhatsappModal({ isOpen: false, isLoading: false, message: '', averageRating: 0 });
-      alert(`Error: ${error.message}`);
-    }
-  };
-
-  const handleWhatsFeedback = async () => {
-    const sessionCardId = sessionData._id || cardId;
-    const player = location.state?.player;
-    const activitiesFeedback = (sessionData?.activities || []).map((activity, index) => ({
-      activitySequence: activity.activitySequence || (index + 1),
-      activityTitle: activity.activityTitle || `Activity ${index + 1}`,
-      rating: activity.rating || 0,
-      feedback: activity.feedback || ''
-    }));
-
-    setIsLoadingWhatsFeedback(true);
-    try {
-      const token = getToken();
-      const response = await fetch(
-        'https://zf94z67dy2.execute-api.ap-south-1.amazonaws.com/default/CL_Generate_WhatsApp_Feedback',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            sessionCardId,
-            activities_feedback: activitiesFeedback,
-            playerName: player?.name || player?.playerName || 'Student',
-            sessionTopic: sessionData.Topic || '',
-            sessionNumber: sessionData.session || '',
-            coachName: currentUser?.name || 'Coach',
-            overallRating: sessionData.rating || 0,
-            overallComment: sessionData.feedback || ''
-          })
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Failed: ${response.status}`);
-      }
-
-      const result = await response.json();
-      setActivityFeedbacks(result.feedbacks || activitiesFeedback);
-      if (result.whatsappMessage) setWhatsFeedbackMessage(result.whatsappMessage);
-
-      const refreshToken = getToken();
-      const refreshRes = await fetch(
-        'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'userToken': refreshToken, 'Authorization': `Bearer ${refreshToken}` },
-          body: JSON.stringify({ sessionCardId })
-        }
-      ).catch(() => null);
-      if (refreshRes?.ok) {
-        const refreshData = await refreshRes.json().catch(() => null);
-        const fresh = refreshData?.sessionCard || refreshData?.data || refreshData;
-        if (fresh?._id) setSessionData(fresh);
-      }
-
-      setTimeout(() => {
-        document.getElementById('whats-feedback-section-view')?.scrollIntoView({ behavior: 'smooth' });
-      }, 300);
-    } catch (error) {
-      alert(`Error: ${error.message}`);
-    } finally {
-      setIsLoadingWhatsFeedback(false);
-    }
-  };
 
   const handleUpdateWhatsappMessage = async (updatedMessage) => {
     setIsUpdatingFeedback(true);
@@ -278,9 +190,6 @@ const ViewSessionCard = () => {
     <Layout>
       <style>{`
         @keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }
-        @keyframes wa-spin {
-          to { transform: rotate(360deg); }
-        }
       `}</style>
       <div>
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px' }}>
@@ -396,7 +305,7 @@ const ViewSessionCard = () => {
                   <div
                     key={index}
                     style={{
-                      background: '#FFFFFF',
+                      background: surface,
                       borderRadius: '12px',
                       border: '1.5px solid #E2E8F0',
                       padding: '20px',
@@ -441,21 +350,27 @@ const ViewSessionCard = () => {
                       }}>
                         {index + 1}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <h3 style={{ fontSize: '15px', fontWeight: '600', color: '#0F172A', margin: '0 0 4px 0' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h3 style={{ fontSize: '15px', fontWeight: '600', color: textPri, margin: '0 0 4px 0' }}>
                           {activity.activityTitle}
                         </h3>
-                        <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
+                        <p style={{
+                          fontSize: '13px', color: textSec, margin: 0, lineHeight: '1.5',
+                          display: expandedActivities[index] ? 'block' : '-webkit-box',
+                          WebkitLineClamp: expandedActivities[index] ? 'unset' : 2,
+                          WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        }}>
                           {(activity.description || '').replace(/<[^>]+>/g, '')}
                         </p>
                       </div>
                       <span style={{
-                        background: '#FDF2F8',
-                        color: '#000000',
+                        background: dark ? 'rgba(99,102,241,0.18)' : '#EEF2FF',
+                        color: dark ? '#A5B4FC' : '#4338CA',
                         padding: '4px 8px',
                         borderRadius: '6px',
                         fontSize: '11px',
-                        fontWeight: '600'
+                        fontWeight: '700',
+                        flexShrink: 0
                       }}>
                         {activity.points?.total || 0} pts
                       </span>
@@ -471,17 +386,17 @@ const ViewSessionCard = () => {
                         {/* Story/Narrative Section */}
                         {activity.story && activity.story.length > 0 && (
                           <div style={{
-                            background: '#ffffff',
+                            background: surface2,
                             borderRadius: '8px',
                             padding: '12px',
-                            border: '1px solid #000000',
+                            border: `1px solid ${border}`,
                             marginBottom: '12px'
                           }}>
-                            <p style={{ fontSize: '11px', fontWeight: '700', color: '#000000', margin: '0 0 8px 0', textTransform: 'uppercase' }}>Story/Narrative</p>
+                            <p style={{ fontSize: '11px', fontWeight: '700', color: textPri, margin: '0 0 8px 0', textTransform: 'uppercase' }}>Story/Narrative</p>
                             {activity.story.map((storyItem, idx) => {
                               const storyContent = typeof storyItem === 'string' ? storyItem : (storyItem.narrative || storyItem.content || '');
                               return storyContent ? (
-                                <div key={idx} style={{ fontSize: '12px', color: '#000000', margin: idx < activity.story.length - 1 ? '0 0 8px 0' : 0, lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: storyContent }} />
+                                <div key={idx} style={{ fontSize: '12px', color: textPri, margin: idx < activity.story.length - 1 ? '0 0 8px 0' : 0, lineHeight: '1.5' }} dangerouslySetInnerHTML={{ __html: storyContent }} />
                               ) : null;
                             })}
                           </div>
@@ -490,16 +405,16 @@ const ViewSessionCard = () => {
                         {/* Points & Evaluation Criteria */}
                         {activity.points && (
                           <div style={{
-                            background: '#ffffff',
+                            background: surface2,
                             borderRadius: '8px',
                             padding: '12px',
-                            border: '1px solid #000000',
+                            border: `1px solid ${border}`,
                             marginBottom: '12px'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                              <p style={{ fontSize: '11px', fontWeight: '700', color: '#666666', margin: 0, textTransform: 'uppercase' }}>points earned</p>
+                              <p style={{ fontSize: '11px', fontWeight: '700', color: textSec, margin: 0, textTransform: 'uppercase' }}>points earned</p>
                               <div style={{
-                                background: 'linear-gradient(135deg, #000000 0%, #000000 100%)',
+                                background: 'linear-gradient(135deg, #060030, #1a0080)',
                                 borderRadius: '5px',
                                 padding: '5px',
                                 display: 'flex',
@@ -512,9 +427,9 @@ const ViewSessionCard = () => {
                             </div>
                             {activity.points.evaluationCriteria && activity.points.evaluationCriteria.length > 0 && (
                               <div>
-                                <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0', textTransform: 'uppercase' }}>Evaluation Criteria</p>
+                                <p style={{ fontSize: '11px', fontWeight: '600', color: textPri, margin: '0 0 6px 0', textTransform: 'uppercase' }}>Evaluation Criteria</p>
                                 {activity.points.evaluationCriteria.map((criteria, idx) => (
-                                  <div key={idx} style={{ fontSize: '12px', color: '#000000', marginBottom: idx < activity.points.evaluationCriteria.length - 1 ? '4px' : 0, display: 'flex', gap: '6px' }}>
+                                  <div key={idx} style={{ fontSize: '12px', color: textPri, marginBottom: idx < activity.points.evaluationCriteria.length - 1 ? '4px' : 0, display: 'flex', gap: '6px' }}>
                                     <span>✓</span>
                                     <span>{criteria}</span>
                                   </div>
@@ -581,15 +496,15 @@ const ViewSessionCard = () => {
                         {/* Instructions to Coach */}
                         {activity.instructionsToCoach && activity.instructionsToCoach.length > 0 && (
                           <div style={{
-                            background: '#ffffff',
+                            background: surface2,
                             borderRadius: '8px',
                             padding: '12px',
-                            border: '1px solid #000000',
+                            border: `1px solid ${border}`,
                             marginBottom: '12px'
                           }}>
-                            <p style={{ fontSize: '11px', fontWeight: '700', color: '#000000', margin: '0 0 6px 0', textTransform: 'uppercase' }}>Instructions to Coach</p>
+                            <p style={{ fontSize: '11px', fontWeight: '700', color: textPri, margin: '0 0 6px 0', textTransform: 'uppercase' }}>Instructions to Coach</p>
                             {activity.instructionsToCoach.map((instr, idx) => (
-                              <div key={idx} style={{ fontSize: '12px', color: '#000000', marginBottom: '4px', display: 'flex', gap: '6px' }}>
+                              <div key={idx} style={{ fontSize: '12px', color: textPri, marginBottom: '4px', display: 'flex', gap: '6px' }}>
                                 <ArrowRight size={12} style={{ marginTop: '2px' }} />
                                 <div dangerouslySetInnerHTML={{ __html: instr }} />
                               </div>
@@ -600,15 +515,15 @@ const ViewSessionCard = () => {
                         {/* Project Section */}
                         {activity.project && typeof activity.project === 'object' && (activity.project.title || activity.project.description || activity.project.workflow) && (
                           <div style={{
-                            background: '#ffffff',
+                            background: surface2,
                             borderRadius: '8px',
                             padding: '12px',
-                            border: '1px solid #000000',
+                            border: `1px solid ${border}`,
                             marginBottom: '12px'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                              <Briefcase size={14} color="#000000" />
-                              <p style={{ fontSize: '11px', fontWeight: '700', color: '#000000', margin: 0, textTransform: 'uppercase' }}>Project</p>
+                              <Briefcase size={14} color={textPri} />
+                              <p style={{ fontSize: '11px', fontWeight: '700', color: textPri, margin: 0, textTransform: 'uppercase' }}>Project</p>
                             </div>
                             {activity.project.title && (
                               <p style={{ fontSize: '13px', fontWeight: '600', color: '#0F172A', margin: '0 0 6px 0' }}>
@@ -616,12 +531,12 @@ const ViewSessionCard = () => {
                               </p>
                             )}
                             {activity.project.description && (
-                              <div style={{ fontSize: '12px', color: '#666666', margin: '0 0 8px 0', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: activity.project.description }} />
+                              <div style={{ fontSize: '12px', color: textSec, margin: '0 0 8px 0', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: activity.project.description }} />
                             )}
                             {activity.project.workflow && activity.project.workflow.length > 0 && (
                               <div>
-                                <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0' }}>Workflow Steps</p>
-                                <ol style={{ margin: '0', paddingLeft: '16px', fontSize: '12px', color: '#666666' }}>
+                                <p style={{ fontSize: '11px', fontWeight: '600', color: textPri, margin: '0 0 6px 0' }}>Workflow Steps</p>
+                                <ol style={{ margin: '0', paddingLeft: '16px', fontSize: '12px', color: textSec }}>
                                   {activity.project.workflow.map((step, i) => (
                                     <li key={i} style={{ marginBottom: '4px', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: step }}></li>
                                   ))}
@@ -634,18 +549,18 @@ const ViewSessionCard = () => {
                         {/* AI Tools */}
                         {activity.aiTools && activity.aiTools.length > 0 && (
                           <div style={{
-                            background: '#ffffff',
+                            background: surface2,
                             borderRadius: '8px',
                             padding: '12px',
-                            border: '1px solid #000000',
+                            border: `1px solid ${border}`,
                             marginBottom: '12px'
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                              <Wrench size={14} color="#000000" />
-                              <p style={{ fontSize: '11px', fontWeight: '700', color: '#000000', margin: 0, textTransform: 'uppercase' }}>AI Tools</p>
+                              <Wrench size={14} color={textPri} />
+                              <p style={{ fontSize: '11px', fontWeight: '700', color: textPri, margin: 0, textTransform: 'uppercase' }}>AI Tools</p>
                             </div>
                             {activity.aiTools.map((tool, idx) => (
-                              <div key={idx} style={{ fontSize: '12px', color: '#000000', marginBottom: '6px' }}>
+                              <div key={idx} style={{ fontSize: '12px', color: textPri, marginBottom: '6px' }}>
                                 <strong>{tool.toolName}</strong> - {tool.usagePurpose}
                               </div>
                             ))}
@@ -686,27 +601,27 @@ const ViewSessionCard = () => {
 
                     {/* Activity Feedback - DISPLAY ONLY (no edit button) */}
                     <div style={{
-                      background: '#ffffff',
+                      background: surface2,
                       borderRadius: '8px',
                       padding: '12px',
-                      border: '1px solid #000000',
+                      border: `1px solid ${border}`,
                       marginTop: '12px'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-                        <Clock size={14} color="#000000" />
-                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#000000', margin: 0, textTransform: 'uppercase' }}>Feedback</p>
+                        <Clock size={14} color={textPri} />
+                        <p style={{ fontSize: '11px', fontWeight: '700', color: textPri, margin: 0, textTransform: 'uppercase' }}>Feedback</p>
                       </div>
 
                       {activity.feedback || activity.rating ? (
                         <>
                           {activity.rating && (
                             <div style={{ marginBottom: '10px' }}>
-                              <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0' }}>Rating</p>
+                              <p style={{ fontSize: '11px', fontWeight: '600', color: textPri, margin: '0 0 6px 0' }}>Rating</p>
                               <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
                                 {[...Array(5)].map((_, i) => (
                                   <span key={i} style={{ fontSize: '16px', color: i < activity.rating ? '#FCD34D' : '#E5E7EB' }}>★</span>
                                 ))}
-                                <span style={{ fontSize: '11px', fontWeight: '600', color: '#000000', marginLeft: '6px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: '600', color: textPri, marginLeft: '6px' }}>
                                   {activity.rating}/5
                                 </span>
                               </div>
@@ -714,7 +629,7 @@ const ViewSessionCard = () => {
                           )}
                           {activity.feedback && (
                             <div>
-                              <p style={{ fontSize: '11px', fontWeight: '600', color: '#000000', margin: '0 0 6px 0' }}>Comment</p>
+                              <p style={{ fontSize: '11px', fontWeight: '600', color: textPri, margin: '0 0 6px 0' }}>Comment</p>
                               <p style={{ fontSize: '12px', color: '#475569', margin: 0, lineHeight: '1.5' }}>
                                 {activity.feedback}
                               </p>
@@ -722,7 +637,7 @@ const ViewSessionCard = () => {
                           )}
                         </>
                       ) : (
-                        <p style={{ fontSize: '12px', color: '#A78BBA', margin: 0, fontStyle: 'italic' }}>No feedback added</p>
+                        <p style={{ fontSize: '12px', color: textMuted, margin: 0, fontStyle: 'italic' }}>No feedback added</p>
                       )}
                     </div>
                   </div>
@@ -742,7 +657,7 @@ const ViewSessionCard = () => {
                 Overall Session Feedback
               </h2>
               <div style={{
-                background: '#FFFFFF',
+                background: surface,
                 borderRadius: '12px',
                 border: '1.5px solid #E2E8F0',
                 padding: '20px',
@@ -750,7 +665,7 @@ const ViewSessionCard = () => {
               }}>
                 {sessionData.rating && (
                   <div style={{ marginBottom: '16px' }}>
-                    <p style={{ fontSize: '13px', fontWeight: '600', color: '#000000', margin: '0 0 8px 0' }}>
+                    <p style={{ fontSize: '13px', fontWeight: '600', color: textPri, margin: '0 0 8px 0' }}>
                       Rating
                     </p>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -772,7 +687,7 @@ const ViewSessionCard = () => {
                 )}
                 {sessionData.feedback && (
                   <div>
-                    <p style={{ fontSize: '13px', fontWeight: '600', color: '#000000', margin: '0 0 8px 0' }}>
+                    <p style={{ fontSize: '13px', fontWeight: '600', color: textPri, margin: '0 0 8px 0' }}>
                       Feedback
                     </p>
                     <p style={{ fontSize: '14px', color: '#475569', margin: 0, lineHeight: '1.6' }}>
@@ -791,9 +706,9 @@ const ViewSessionCard = () => {
                 Key Takeaways
               </h2>
               <div style={{
-                background: '#ffffff',
+                background: surface2,
                 borderRadius: '12px',
-                border: '1.5px solid #000000',
+                border: `1.5px solid ${border}`,
                 padding: '16px'
               }}>
                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
@@ -808,7 +723,7 @@ const ViewSessionCard = () => {
           {/* What's Feedback Section */}
           {whatsFeedbackMessage && (
             <div id="whats-feedback-section-view" style={{
-              background: '#FFFFFF',
+              background: surface,
               borderRadius: '12px',
               border: '1px solid #E2E8F0',
               overflow: 'hidden',
@@ -987,171 +902,6 @@ const ViewSessionCard = () => {
           </div>
         </div>
       </div>
-
-      {/* WhatsApp Feedback Modal */}
-      {whatsappModal.isOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: '16px',
-            padding: '32px',
-            maxWidth: '540px',
-            width: '90%',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-              <div style={{
-                width: '40px', height: '40px',
-                background: '#25D366',
-                borderRadius: '10px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <MessageSquare size={20} color="white" />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0F172A', margin: 0 }}>
-                  WhatsApp Feedback
-                </h3>
-                <p style={{ fontSize: '12px', color: '#475569', margin: '2px 0 0 0' }}>
-                  AI-generated parent message
-                </p>
-              </div>
-            </div>
-
-            {whatsappModal.isLoading ? (
-              <div style={{
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                padding: '40px 0', gap: '16px'
-              }}>
-                <div style={{
-                  width: '40px', height: '40px',
-                  border: '3px solid #E5E7EB',
-                  borderTopColor: '#25D366',
-                  borderRadius: '50%',
-                  animation: 'wa-spin 0.8s linear infinite'
-                }} />
-                <p style={{ fontSize: '14px', color: '#475569', margin: 0 }}>
-                  Generating AI feedback...
-                </p>
-              </div>
-            ) : (
-              <>
-                {whatsappModal.averageRating > 0 && (
-                  <div style={{
-                    background: '#F0FDF4',
-                    border: '1px solid #BBF7D0',
-                    borderRadius: '10px',
-                    padding: '12px 16px',
-                    marginBottom: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px'
-                  }}>
-                    <div style={{ display: 'flex', gap: '3px' }}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <span key={star} style={{
-                          fontSize: '18px',
-                          color: star <= Math.round(whatsappModal.averageRating) ? '#FCD34D' : '#D1D5DB'
-                        }}>★</span>
-                      ))}
-                    </div>
-                    <span style={{ fontSize: '14px', fontWeight: '700', color: '#166534' }}>
-                      {whatsappModal.averageRating.toFixed(1)} / 5
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#166534', marginLeft: 'auto' }}>
-                      Average Rating
-                    </span>
-                  </div>
-                )}
-
-                <div style={{ marginBottom: '20px' }}>
-                  <p style={{ fontSize: '12px', fontWeight: '600', color: '#374151', margin: '0 0 8px 0' }}>
-                    Message for Parents
-                  </p>
-                  <textarea
-                    readOnly
-                    value={whatsappModal.message}
-                    style={{
-                      width: '100%',
-                      minHeight: '200px',
-                      padding: '14px',
-                      borderRadius: '10px',
-                      border: '1.5px solid #E5E7EB',
-                      fontFamily: 'inherit',
-                      fontSize: '13px',
-                      color: '#374151',
-                      lineHeight: '1.6',
-                      resize: 'vertical',
-                      boxSizing: 'border-box',
-                      background: '#FAFAFA',
-                      cursor: 'text'
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(whatsappModal.message);
-                      alert('Message copied to clipboard!');
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '11px 0',
-                      background: '#25D366',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#1ebe5d'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#25D366'}
-                  >
-                    <MessageSquare size={14} />
-                    Copy Message
-                  </button>
-                  <button
-                    onClick={() => setWhatsappModal({ isOpen: false, isLoading: false, message: '', averageRating: 0 })}
-                    style={{
-                      flex: 1,
-                      padding: '11px 0',
-                      background: '#F3F4F6',
-                      color: '#374151',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = '#E5E7EB'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = '#F3F4F6'}
-                  >
-                    Close
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </Layout>
   );
 };

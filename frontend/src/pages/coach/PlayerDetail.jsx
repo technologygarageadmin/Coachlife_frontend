@@ -70,6 +70,7 @@ const PlayerDetail = () => {
 
   const isInProgress = (status) => normalizeStatus(status) === 'inprogress';
   const isCompleted = (status) => normalizeStatus(status) === 'completed';
+  const isPending = (status) => normalizeStatus(status) === 'pending';
 
   useEffect(() => {
     const loadPlayerDetails = async () => {
@@ -583,19 +584,68 @@ const PlayerDetail = () => {
                 </div>
               )}
 
+              {/* Pending Sessions */}
+              {sessions.filter(s => isPending(s.status)).length > 0 && (
+                <div style={{ marginBottom: '40px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '2px solid #FCD34D', marginBottom: '24px' }}>
+                    <Clock size={20} color="#D97706" />
+                    <h4 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>Pending Sessions</h4>
+                    <span style={{ marginLeft: 'auto', padding: '4px 12px', background: '#FEF3C7', color: '#92400E', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
+                      {sessions.filter(s => isPending(s.status)).length}
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+                    {sessions.filter(s => isPending(s.status)).map((session) => (
+                      <div key={session._id} style={{ background: surface2, border: '2px solid #FCD34D', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(217,119,6,0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#D97706'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#FCD34D'; }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
+                          <div style={{ padding: '8px', background: '#FEF3C7', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Clock size={18} color="#D97706" />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
+                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {session.Description || `Session ${session.session || 'N/A'}`}
+                        </p>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>Pending</span>
+                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
+                          <span style={{ padding: '5px 11px', background: '#F0FDF4', color: '#166534', borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Zap size={12} />{session.totalPoints || 0}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => navigate(`/coach/session/${session._id}`, { state: { session, player } })}
+                          style={{ width: '100%', padding: '10px 12px', background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.transform = 'scale(1.02)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #D97706 0%, #B45309 100%)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                        >
+                          View Details <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Upcoming Sessions */}
-              {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status)).length > 0 && (
+              {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status) && !isPending(s.status)).length > 0 && (
                 <div style={{ marginBottom: '40px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '2px solid #E2E8F0', marginBottom: '24px' }}>
                     <Clock size={20} color="#94A3B8" />
                     <h4 style={{ fontSize: '16px', fontWeight: '700', color: textPrimary, margin: 0 }}>Upcoming Sessions</h4>
                     <span style={{ marginLeft: 'auto', padding: '4px 12px', background: surface2, color: textSecondary, borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>
-                      {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status)).length}
+                      {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status) && !isPending(s.status)).length}
                     </span>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                    {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status)).map((session) => (
+                    {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status) && !isPending(s.status)).map((session) => (
                       <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
                         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
@@ -618,7 +668,7 @@ const PlayerDetail = () => {
 
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
                           <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>
-                            {session.status === 'in_progress' ? 'In Progress' : 'Upcoming'}
+                            {session.status === 'in_progress' ? 'In Progress' : session.status || 'Upcoming'}
                           </span>
                           <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
                           <span style={{ padding: '5px 11px', background: '#F0FDF4', color: '#166534', borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>

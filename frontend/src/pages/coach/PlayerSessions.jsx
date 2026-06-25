@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
@@ -8,8 +7,6 @@ import {
   Calendar, Award, ArrowLeft, BookOpen, TrendingUp, Target,
   ChevronRight, CheckCircle, Clock, AlertCircle,
 } from 'lucide-react';
-
-const VIEW_SESSION_CARD_URL = 'https://y6agq7hb3l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -45,7 +42,8 @@ const SummaryCard = ({ label, value, icon: SIcon, accent, surface, border }) => 
 const PlayerSessions = () => {
   const { playerId } = useParams();
   const navigate = useNavigate();
-  const { players, fetchPlayers, userToken } = useStore();
+  const location = useLocation();
+  const { currentUser, fetchAssignedPlayersForCoach, userToken } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
 
@@ -55,59 +53,89 @@ const PlayerSessions = () => {
   const textSecondary = dark ? 'var(--cl-text-2)' : '#475569';
   const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
 
+  const [player, setPlayer] = useState(null);
+  const [sessionCardIds, setSessionCardIds] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const player = players.find(p => p.playerId === playerId);
-
+  // Effect 1: resolve player info + sessionCardIds
   useEffect(() => {
-    if (players.length === 0) fetchPlayers();
-  }, []);
+    const navIds = location.state?.sessionCardIds;
+    const navName = location.state?.playerName;
 
-  useEffect(() => {
-    if (!player) return;
-    const controller = new AbortController();
+    // Fast path: navigation state already has the data
+    if (Array.isArray(navIds) && navIds.length > 0) {
+      setPlayer({ playerId, playerName: navName || '', name: navName || '' });
+      setSessionCardIds(navIds);
+      return;
+    }
 
-    const loadSessions = async () => {
-      setLoading(true);
-      setError(null);
+    if (!currentUser?.id || !playerId) return;
+
+    (async () => {
       try {
-        const ids = player.sessionCardIds || [];
-        if (ids.length === 0) {
-          setSessions([]);
-          setLoading(false);
-          return;
-        }
-        const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
-        const results = await Promise.all(
-          ids.map(id =>
-            axios.post(VIEW_SESSION_CARD_URL, { sessionCardId: id }, { headers, signal: controller.signal })
-              .then(r => {
-                const d = r.data;
-                if (d?.sessionCard) return d.sessionCard;
-                if (d?.data) return d.data;
-                if (d?.session) return d.session;
-                if (d && !d.message) return d;
-                return null;
-              })
-              .catch(() => null)
-          )
-        );
-        if (!controller.signal.aborted) {
-          setSessions(results.filter(Boolean));
-          setLoading(false);
-        }
-      } catch (err) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
-        setError('Failed to load sessions');
+        const result = await fetchAssignedPlayersForCoach(currentUser.id);
+        if (!result.success) throw new Error('Failed to load player data');
+
+        const matched = (result.players || []).find(item => {
+          const p = item.player || item;
+          return String(p._id || p.id || p.playerId) === String(playerId);
+        });
+
+        if (!matched) { setPlayer(null); setSessionCardIds([]); setLoading(false); return; }
+
+        const p = matched.player || matched;
+        setPlayer({ playerId: p._id || p.id || p.playerId, playerName: p.playerName || p.name || '', name: p.playerName || p.name || '' });
+        setSessionCardIds(matched.sessionCardIds || p.sessionCardIds || []);
+      } catch {
+        setError('Failed to load player data');
         setLoading(false);
       }
-    };
+    })();
+  }, [playerId, currentUser?.id, location.state]);
 
-    loadSessions();
+  // Effect 2: fetch sessions once sessionCardIds is known
+  useEffect(() => {
+    if (sessionCardIds.length === 0) {
+      setSessions([]);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    const token = userToken || JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken;
+    const headers = { 'Content-Type': 'application/json', ...(token && { userToken: token }) };
+
+    Promise.all(
+      sessionCardIds.map(id =>
+        fetch('https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ sessionCardId: id }),
+          signal: controller.signal,
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (!d) return null;
+            const card = d.sessionCard || d.data || d;
+            return card && !card.message ? { _id: id, ...card } : null;
+          })
+          .catch(() => null)
+      )
+    ).then(results => {
+      if (!controller.signal.aborted) {
+        setSessions(results.filter(Boolean));
+        setLoading(false);
+      }
+    }).catch(err => {
+      if (err.name !== 'AbortError') { setError('Failed to load sessions'); setLoading(false); }
+    });
+
     return () => controller.abort();
-  }, [player?.playerId, player?.sessionCardIds?.length, userToken]);
+  }, [sessionCardIds, userToken]);
 
   if (!loading && !player) {
     return (

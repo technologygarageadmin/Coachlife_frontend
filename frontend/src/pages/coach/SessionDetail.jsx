@@ -39,7 +39,7 @@ const SessionDetail = () => {
     coachComment: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [attendanceStatus, setAttendanceStatus] = useState(null); // null | 'Present' | 'Absent'
+  const [attendanceStatus, setAttendanceStatus] = useState(null);
   const [isMarkingAttendance, setIsMarkingAttendance] = useState(false);
   const [regenerateModal, setRegenerateModal] = useState({
     isOpen: false,
@@ -454,81 +454,38 @@ const SessionDetail = () => {
     }
   };
 
-  const markAttendancePresent = async ({ source = 'session_card_mark', attendanceStatusOverride = null } = {}) => {
-    const token = getToken();
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const attendancePlayerId = playerData?._id || playerData?.playerId || playerData?.id;
-    if (!attendancePlayerId) {
-      throw new Error('Player ID not found for attendance');
-    }
-
-    const resolvedSessionNumber =
-      sessionData?.session ??
-      sessionData?.sessionNumber ??
-      sessionData?.sessionNo ??
-      location.state?.session?.session ??
-      location.state?.session?.sessionNumber ??
-      null;
-
-    const resolvedBatchId =
-      location.state?.batch?._id ||
-      location.state?.batch?.batchId ||
-      sessionData?.batchId ||
-      sessionData?.BatchId ||
-      location.state?.batchId ||
-      location.state?.session?.batchId ||
-      playerData?.batchId ||
-      '';
-
-    const resolvedBatchName =
-      location.state?.batch?.batchName ||
-      sessionData?.batchName ||
-      sessionData?.BatchName ||
-      location.state?.batchName ||
-      location.state?.session?.batchName ||
-      playerData?.batchName ||
-      '';
-
-    const now = new Date();
-    const sessionDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-    const attendanceResponse = await fetch('https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', userToken: token },
-      body: JSON.stringify({
-        playerId: attendancePlayerId,
-        playerName: playerData?.playerName || playerData?.name || '',
-        batchId: resolvedBatchId,
-        batchName: resolvedBatchName,
-        sessionNumber: resolvedSessionNumber,
-        sessionDate,
-        attendanceStatus: source === 'session_complete' ? 'Present' : (attendanceStatusOverride || 'Present'),
-        sessionCardId: sessionData?._id || sessionData?.cardId || sessionId || '',
-        override: true,
-        source,
-      }),
-    });
-
-    if (!attendanceResponse.ok) {
-      const errorData = await attendanceResponse.json().catch(() => ({}));
-      throw new Error(errorData.message || `Failed to mark attendance: ${attendanceResponse.status}`);
-    }
-
-    return attendanceResponse.json().catch(() => ({}));
-  };
-
   const handleMarkAttendance = async (status) => {
     if (isMarkingAttendance) return;
+    const token = userToken;
+    const attendancePlayerId = playerData?._id || playerData?.playerId || playerData?.id;
+    if (!token || !attendancePlayerId) {
+      setToast({ isVisible: true, message: 'Unable to mark attendance', type: 'error' });
+      return;
+    }
+    const now = new Date();
+    const sessionDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     try {
       setIsMarkingAttendance(true);
-      await markAttendancePresent({ source: 'session_card_mark', attendanceStatusOverride: status });
+      const res = await fetch('https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', userToken: token },
+        body: JSON.stringify({
+          playerId: attendancePlayerId,
+          playerName: playerData?.playerName || playerData?.name || '',
+          batchId: location.state?.batch?._id || location.state?.batch?.batchId || sessionData?.batchId || '',
+          batchName: location.state?.batch?.batchName || sessionData?.batchName || '',
+          sessionNumber: sessionData?.session ?? sessionData?.sessionNumber ?? null,
+          sessionDate,
+          attendanceStatus: status,
+          sessionCardId: sessionData?._id || sessionId || '',
+          override: true,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setAttendanceStatus(status);
-      setToast({ isVisible: true, message: `Attendance marked ${status}`, type: 'success' });
-    } catch (error) {
-      setToast({ isVisible: true, message: `Error: ${error.message}`, type: 'error' });
+      setToast({ isVisible: true, message: `Attendance marked as ${status}`, type: 'success' });
+    } catch (e) {
+      setToast({ isVisible: true, message: `Failed to mark attendance: ${e.message}`, type: 'error' });
     } finally {
       setIsMarkingAttendance(false);
     }
@@ -611,16 +568,6 @@ const SessionDetail = () => {
 
       if (sessionData._id) {
         localStorage.removeItem(`session_draft_${sessionData._id}`);
-      }
-
-      // Auto-mark attendance as Present after completion - but don't clobber an
-      // explicit mark the coach already made in this view (e.g. Late/Excused).
-      if (!attendanceStatus) {
-        try {
-          await markAttendancePresent({ source: 'session_complete' });
-        } catch (attendanceErr) {
-          console.error('Auto attendance mark failed:', attendanceErr);
-        }
       }
 
       setWhatsappPromptModal({ isOpen: false, isGenerating: false, message: '' });
@@ -2693,48 +2640,50 @@ const SessionDetail = () => {
                     </p>
                   </div>
 
-                  {/* Attendance buttons */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <p style={{ fontSize: '11px', color: '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
-                      ATTENDANCE
-                    </p>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => handleMarkAttendance('Present')}
-                        disabled={isMarkingAttendance}
-                        style={{
-                          flex: 1, padding: '9px 6px', borderRadius: '8px', border: '1.5px solid',
-                          fontSize: '12px', fontWeight: '700', cursor: isMarkingAttendance ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.2s ease',
-                          borderColor: attendanceStatus === 'Present' ? '#16A34A' : '#D1FAE5',
-                          background: attendanceStatus === 'Present' ? '#16A34A' : '#F0FDF4',
-                          color: attendanceStatus === 'Present' ? 'white' : '#16A34A',
-                          boxShadow: attendanceStatus === 'Present' ? '0 2px 8px rgba(22,163,74,0.3)' : 'none'
-                        }}
-                        onMouseEnter={(e) => { if (attendanceStatus !== 'Present' && !isMarkingAttendance) { e.currentTarget.style.background = '#DCFCE7'; e.currentTarget.style.borderColor = '#16A34A'; } }}
-                        onMouseLeave={(e) => { if (attendanceStatus !== 'Present') { e.currentTarget.style.background = '#F0FDF4'; e.currentTarget.style.borderColor = '#D1FAE5'; } }}
-                      >
-                        {isMarkingAttendance && attendanceStatus !== 'Present' ? '...' : '✓ Present'}
-                      </button>
-                      <button
-                        onClick={() => handleMarkAttendance('Absent')}
-                        disabled={isMarkingAttendance}
-                        style={{
-                          flex: 1, padding: '9px 6px', borderRadius: '8px', border: '1.5px solid',
-                          fontSize: '12px', fontWeight: '700', cursor: isMarkingAttendance ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.2s ease',
-                          borderColor: attendanceStatus === 'Absent' ? '#DC2626' : '#FEE2E2',
-                          background: attendanceStatus === 'Absent' ? '#DC2626' : '#FFF5F5',
-                          color: attendanceStatus === 'Absent' ? 'white' : '#DC2626',
-                          boxShadow: attendanceStatus === 'Absent' ? '0 2px 8px rgba(220,38,38,0.3)' : 'none'
-                        }}
-                        onMouseEnter={(e) => { if (attendanceStatus !== 'Absent' && !isMarkingAttendance) { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.borderColor = '#DC2626'; } }}
-                        onMouseLeave={(e) => { if (attendanceStatus !== 'Absent') { e.currentTarget.style.background = '#FFF5F5'; e.currentTarget.style.borderColor = '#FEE2E2'; } }}
-                      >
-                        {isMarkingAttendance && attendanceStatus !== 'Absent' ? '...' : '✗ Absent'}
-                      </button>
+                  {/* Attendance buttons — only for pending session cards */}
+                  {sessionData.status === 'pending' && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <p style={{ fontSize: '11px', color: dark ? '#9CA3AF' : '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                        ATTENDANCE
+                      </p>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleMarkAttendance('Present')}
+                          disabled={isMarkingAttendance}
+                          style={{
+                            flex: 1, padding: '9px 6px', borderRadius: '8px', border: '1.5px solid',
+                            fontSize: '12px', fontWeight: '700',
+                            cursor: isMarkingAttendance ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s ease',
+                            borderColor: attendanceStatus === 'Present' ? '#16A34A' : '#D1FAE5',
+                            background: attendanceStatus === 'Present' ? '#16A34A' : '#F0FDF4',
+                            color: attendanceStatus === 'Present' ? 'white' : '#16A34A',
+                            boxShadow: attendanceStatus === 'Present' ? '0 2px 8px rgba(22,163,74,0.3)' : 'none',
+                            opacity: isMarkingAttendance ? 0.7 : 1,
+                          }}
+                        >
+                          {isMarkingAttendance && attendanceStatus !== 'Present' ? '…' : '✓ Present'}
+                        </button>
+                        <button
+                          onClick={() => handleMarkAttendance('Absent')}
+                          disabled={isMarkingAttendance}
+                          style={{
+                            flex: 1, padding: '9px 6px', borderRadius: '8px', border: '1.5px solid',
+                            fontSize: '12px', fontWeight: '700',
+                            cursor: isMarkingAttendance ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s ease',
+                            borderColor: attendanceStatus === 'Absent' ? '#DC2626' : '#FEE2E2',
+                            background: attendanceStatus === 'Absent' ? '#DC2626' : '#FFF5F5',
+                            color: attendanceStatus === 'Absent' ? 'white' : '#DC2626',
+                            boxShadow: attendanceStatus === 'Absent' ? '0 2px 8px rgba(220,38,38,0.3)' : 'none',
+                            opacity: isMarkingAttendance ? 0.7 : 1,
+                          }}
+                        >
+                          {isMarkingAttendance && attendanceStatus !== 'Absent' ? '…' : '✗ Absent'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Status Badge */}
                   <div style={{

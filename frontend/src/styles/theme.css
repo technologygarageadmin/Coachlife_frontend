@@ -338,8 +338,18 @@ select:focus {
 [data-theme='dark'] .page-content [style*="background: rgb(254, 243, 199)"],
 [data-theme='dark'] .page-content [style*="background-color: rgb(254, 243, 199)"],
 [data-theme='dark'] .page-content [style*="background: #FEF3C7"],
-[data-theme='dark'] .page-content [style*="background-color: #FEF3C7"] {
+[data-theme='dark'] .page-content [style*="background-color: #FEF3C7"],
+[data-theme='dark'] .page-content [style*="background: rgb(255, 251, 235)"],
+[data-theme='dark'] .page-content [style*="background-color: rgb(255, 251, 235)"],
+[data-theme='dark'] .page-content [style*="background: #FFFBEB"],
+[data-theme='dark'] .page-content [style*="background-color: #FFFBEB"] {
   background: var(--cl-yellow-tint) !important;
+}
+/* soft-amber border (#FDE68A) used on pending panels */
+[data-theme='dark'] .page-content [style*="rgb(253, 230, 138)"],
+[data-theme='dark'] .page-content [style*="#FDE68A"],
+[data-theme='dark'] .page-content [style*="#fde68a"] {
+  border-color: var(--cl-warning) !important;
 }
 [data-theme='dark'] .page-content [style*="background: rgb(254, 226, 226)"],
 [data-theme='dark'] .page-content [style*="background-color: rgb(254, 226, 226)"],

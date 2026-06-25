@@ -1,667 +1,705 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import {
-  Users, BookOpen, Target, Plus, Award,
-  Search, ChevronRight, AlertCircle, Loader, Layers,
-  X, ExternalLink, Calendar, Trophy,
+  Users, BookOpen, Plus, Award, Search, ChevronRight, ChevronLeft,
+  AlertCircle, Loader, Layers, X, ExternalLink, Calendar, Trophy,
+  Clock, CheckCircle, AlertTriangle, Play, BarChart2,
 } from 'lucide-react';
 
+/* ─── constants ─────────────────────────────────────────────────────── */
 const PALETTES = [
-  ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
-  ['#EC4899','#F472B6'], ['#3B82F6','#60A5FA'], ['#8B5CF6','#A78BFA'],
-  ['#EF4444','#F87171'], ['#06B6D4','#22D3EE'],
+  '#6366F1','#10B981','#F59E0B','#EC4899',
+  '#3B82F6','#8B5CF6','#EF4444','#06B6D4',
 ];
-const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
+const avatarColor = name => PALETTES[(name?.charCodeAt(0) || 0) % PALETTES.length];
 
-const Sk = ({ w, h, r = 8 }) => (
-  <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
-);
+const MONTHS = ['January','February','March','April','May','June',
+  'July','August','September','October','November','December'];
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
-  const [hov, setHov] = React.useState(false);
+const BATCHES_URL   = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
+const VIEW_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
+const ATTEND_URL    = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
+
+const ATT_CFG = {
+  Present: { bg:'#DCFCE7', color:'#16A34A', border:'#BBF7D0', dot:'#22C55E' },
+  Absent:  { bg:'#FEE2E2', color:'#DC2626', border:'#FECACA', dot:'#EF4444' },
+};
+
+const toDateStr = d => {
+  const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+};
+const getDaysInMonth = (y,m) => new Date(y,m+1,0).getDate();
+const getFirstWeekday = (y,m) => { const d=new Date(y,m,1).getDay(); return d===0?6:d-1; };
+const normStatus = s => (s||'').toLowerCase().replace(/[\s_]/g,'');
+const DONE_STATUSES = new Set(['completed', 'submitted']);
+const UPCOMING_STATUSES = new Set(['upcoming', 'draft']);
+const isDoneCard     = c => DONE_STATUSES.has(normStatus(c.status));
+const isUpcomingCard = c => UPCOMING_STATUSES.has(normStatus(c.status));
+// "Pending" = needs the coach's attention now (not completed, not just upcoming/scheduled)
+const isPendingCard  = c => !isDoneCard(c) && !isUpcomingCard(c);
+
+/* ─── PlayerRow ─────────────────────────────────────────────────────── */
+const PlayerRow = React.memo(({ player, selected, onClick }) => {
+  const [hov, setHov] = useState(false);
+  const color = avatarColor(player.name);
   return (
-    <div onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)} style={{
-      background: '#fff', border: `1.5px solid ${hov ? accent + '44' : '#E2E8F0'}`,
-      borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px',
-      boxShadow: hov ? `0 8px 24px ${accent}22` : '0 2px 8px rgba(0,0,0,0.04)',
-      transition: 'all .2s', flex: 1, minWidth: '140px',
-    }}>
-      <div style={{ width: '46px', height: '46px', borderRadius: '12px', background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {React.createElement(SIcon, { size: 22, color: accent })}
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        display:'flex', alignItems:'center', gap:'12px',
+        padding:'11px 14px', borderRadius:'12px', cursor:'pointer',
+        background: selected ? '#060030' : hov ? '#EEF2FF' : 'transparent',
+        border: `1.5px solid ${selected ? '#060030' : hov ? '#C7D2FE' : 'transparent'}`,
+        transition:'all .18s', marginBottom:'4px',
+      }}
+    >
+      <div style={{
+        width:'38px', height:'38px', borderRadius:'50%', flexShrink:0,
+        background: selected ? 'rgba(255,255,255,.18)' : color,
+        border: selected ? '2px solid rgba(255,255,255,.4)' : `2px solid ${color}22`,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        color:'#fff', fontWeight:'800', fontSize:'15px',
+      }}>
+        {player.name.charAt(0).toUpperCase()}
       </div>
-      <div>
-        <p style={{ fontSize: '10.5px', fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', margin: '0 0 4px', letterSpacing: '.5px' }}>{label}</p>
-        <p style={{ fontSize: '23px', fontWeight: '800', color: '#0F172A', margin: 0 }}>{value}</p>
+      <div style={{ flex:1, minWidth:0 }}>
+        <p style={{ fontSize:'13px', fontWeight:'700', margin:'0 0 1px',
+          color: selected?'#fff':'#0F172A',
+          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {player.name}
+        </p>
+        <p style={{ fontSize:'11px', margin:0,
+          color: selected?'rgba(255,255,255,.55)':'#64748B',
+          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {player.LearningPathway || 'No pathway'}
+        </p>
       </div>
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:'3px', flexShrink:0 }}>
+        <span style={{
+          fontSize:'10px', fontWeight:'700', padding:'2px 8px', borderRadius:'999px',
+          background: selected?'rgba(255,255,255,.15)':'rgba(99,102,241,.1)',
+          color: selected?'#fff':'#6366F1',
+        }}>
+          {player.sessionCardIds?.length||0} cards
+        </span>
+        <span style={{ fontSize:'10px', fontWeight:'600', color: selected?'rgba(255,255,255,.5)':'#94A3B8' }}>
+          {player.totalPoints||0} pts
+        </span>
+      </div>
+    </div>
+  );
+});
+
+/* ─── StatTile ──────────────────────────────────────────────────────── */
+const StatTile = ({ label, value, Icon, color, gradBg, onClick, active }) => {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        flex:1, minWidth:'160px', background:'#fff', borderRadius:'16px', padding:'20px',
+        border: `1px solid ${(hov||active) ? color+'40' : '#EEF2F7'}`,
+        boxShadow: (hov||active) ? `0 8px 24px ${color}20` : '0 2px 8px rgba(0,0,0,0.04)',
+        display:'flex', alignItems:'center', gap:'16px',
+        cursor: onClick ? 'pointer' : 'default',
+        transform: hov ? 'translateY(-2px)' : 'translateY(0)',
+        transition:'all .25s ease',
+      }}
+    >
+      <div style={{
+        width:'52px', height:'52px', borderRadius:'14px',
+        background: gradBg, flexShrink:0,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        boxShadow:`0 4px 12px ${color}30`,
+      }}>
+        <Icon size={22} color={color} />
+      </div>
+      <div style={{ flex:1 }}>
+        <p style={{ fontSize:'11px', fontWeight:'600', color:'#94A3B8', margin:0,
+          textTransform:'uppercase', letterSpacing:'.6px' }}>{label}</p>
+        <p style={{ fontSize:'26px', fontWeight:'800', color:'#1E293B', margin:'4px 0 0',
+          letterSpacing:'-.5px' }}>{value}</p>
+      </div>
+      {onClick && <ChevronRight size={14} color={active ? color : '#CBD5E1'} style={{ flexShrink:0 }} />}
     </div>
   );
 };
 
-const BATCHES_URL   = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
-const VIEW_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
-
-const CoachDashboard = () => {
+/* ─── main ──────────────────────────────────────────────────────────── */
+export default function CoachDashboard() {
   const { currentUser, fetchAssignedPlayersForCoach, userToken } = useStore();
   const navigate = useNavigate();
 
-  const [myPlayers, setMyPlayers]           = useState([]);
-  const [batchCount, setBatchCount]         = useState(0);
-  const [isLoading, setIsLoading]           = useState(true);
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [playerCards, setPlayerCards]       = useState([]);
-  const [loadingCards, setLoadingCards]     = useState(false);
-  const [searchPlayer, setSearchPlayer]     = useState('');
+  const [myPlayers,    setMyPlayers]    = useState([]);
+  const [batchCount,   setBatchCount]   = useState(0);
+  const [attRecs,      setAttRecs]      = useState([]);
+  const [cardsMap,     setCardsMap]     = useState({});
+  const [loading,      setLoading]      = useState(true);
+  const [cardsLoading, setCardsLoading] = useState(false);
 
-  // Fetch assigned players + batch count
+  const [selected,    setSelected]    = useState(null);
+  const [search,      setSearch]      = useState('');
+  const [showPending, setShowPending] = useState(false);
+
+  const [calNav,   setCalNav]   = useState(() => { const n=new Date(); return { month:n.getMonth(), year:n.getFullYear() }; });
+  const [selDate,  setSelDate]  = useState(null);
+
+  const axiosHeaders = useMemo(
+    () => ({ 'Content-Type':'application/json', 'userToken': userToken, 'usertoken': userToken }),
+    [userToken]
+  );
+  const cardAxiosHeaders = useMemo(
+    () => ({ 'Content-Type':'application/json', ...(userToken && { userToken }) }),
+    [userToken]
+  );
+
+  /* ── Effect 1: players first (unblocks UI), then batches + attendance in bg ── */
   useEffect(() => {
     if (!currentUser?.id || !userToken) return;
+    let cancelled = false;
+
     (async () => {
-      setIsLoading(true);
+      setLoading(true);
+      let list = [];
       try {
         const result = await fetchAssignedPlayersForCoach(currentUser.id);
-        if (result.success && result.players) {
-          const normalized = result.players.map(item => {
-            const p = item.player || item;
-            return {
-              playerId: p._id || p.id || p.playerId,
-              name: p.playerName || p.name || '',
-              LearningPathway: p.LearningPathway || '',
-              totalPoints: p.TotalPoints || p.totalPoints || 0,
-              PointBalance: p.PointBalance || 0,
-              sessionCardIds: item.sessionCardIds || p.sessionCardIds || [],
-              status: p.status || 'active',
-            };
-          });
-          setMyPlayers(normalized);
+        if (!result.success || !result.players || cancelled) return;
 
-          try {
-            const bRes = await fetch(BATCHES_URL, {
-              headers: { 'Content-Type': 'application/json', userToken }
-            });
-            if (bRes.ok) {
-              let bd = await bRes.json();
-              if (bd?.body && typeof bd.body === 'string') bd = JSON.parse(bd.body);
-              const batches = Array.isArray(bd) ? bd : (bd.batches || []);
-              const pids = new Set(normalized.map(p => String(p.playerId)));
-              const mine = batches.filter(b =>
-                (b.playerIds || (b.players || []).map(pl => pl.playerId || pl))
-                  .some(id => pids.has(String(id)))
-              );
-              setBatchCount(mine.length);
-            }
-          } catch { /* non-critical */ }
-        }
+        list = result.players.map(item => {
+          const p = item.player || item;
+          return {
+            playerId:        p._id||p.id||p.playerId,
+            name:            p.playerName||p.name||'',
+            LearningPathway: p.LearningPathway||'',
+            totalPoints:     p.TotalPoints||p.totalPoints||0,
+            sessionCardIds:  item.sessionCardIds||p.sessionCardIds||[],
+          };
+        });
+
+        // paint immediately — player list + card fetch (Effect 2) can start now
+        setMyPlayers(list);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setLoading(false);
+      }
+
+      // background: batches + attendance (don't block the page)
+      const pnames = new Set(list.map(p => (p.name||'').toLowerCase().trim()));
+      const [bRes, aRes] = await Promise.allSettled([
+        fetch(BATCHES_URL, { headers: { 'Content-Type':'application/json', 'userToken': userToken } })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null),
+        axios.post(ATTEND_URL, {}, { headers: axiosHeaders })
+          .then(r => r.data)
+          .catch(() => null),
+      ]);
+      if (cancelled) return;
+
+      if (bRes.status === 'fulfilled' && bRes.value) {
+        let bd = bRes.value;
+        if (bd?.body && typeof bd.body === 'string') bd = JSON.parse(bd.body);
+        const batches = Array.isArray(bd) ? bd : (bd.batches || []);
+        setBatchCount(batches.filter(b => b.coachIds && b.coachIds.includes(currentUser.id)).length);
+      }
+
+      if (aRes.status === 'fulfilled' && aRes.value) {
+        let ad = aRes.value;
+        if (ad?.body && typeof ad.body === 'string') ad = JSON.parse(ad.body);
+        setAttRecs((ad.records || []).filter(r => pnames.has((r.playerName||'').toLowerCase().trim())));
       }
     })();
+    return () => { cancelled = true; };
   }, [currentUser?.id, userToken]);
 
-  // Fetch session cards when a player is selected
+  /* ── Effect 2: session cards — runs after players load, non-blocking ── */
   useEffect(() => {
-    if (!selectedPlayer) { setPlayerCards([]); return; }
-    const ids = selectedPlayer.sessionCardIds || [];
-    if (!ids.length) { setPlayerCards([]); return; }
-    const controller = new AbortController();
-    (async () => {
-      setLoadingCards(true);
+    if (myPlayers.length === 0 || !userToken) return;
+    let cancelled = false;
+
+    const cardEntries = myPlayers.flatMap(p =>
+      (p.sessionCardIds||[]).map(id => ({ playerId: String(p.playerId), id }))
+    );
+    if (cardEntries.length === 0) return;
+
+    // Fetch one card; retry transient failures (the Lambda throttles request bursts).
+    const fetchCard = async (id, attempt = 0) => {
       try {
-        const cards = await Promise.all(ids.map(async id => {
-          try {
-            const res = await fetch(VIEW_CARD_URL, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', userToken },
-              body: JSON.stringify({ sessionCardId: id }),
-              signal: controller.signal,
-            });
-            if (!res.ok) return null;
-            const d = await res.json();
-            return d.sessionCard || d.data || d;
-          } catch { return null; }
-        }));
-        setPlayerCards(cards.filter(Boolean));
-      } catch (e) {
-        if (e.name !== 'AbortError') setPlayerCards([]);
+        const r = await axios.post(VIEW_CARD_URL, { sessionCardId: id }, { headers: cardAxiosHeaders });
+        let d = r.data;
+        if (d?.body && typeof d.body === 'string') { try { d = JSON.parse(d.body); } catch { return null; } }
+        if (!d) return null;
+        const card = d.sessionCard || d.data || d;
+        const isCard = card && typeof card === 'object' &&
+          (card.activities || card.Topic || card.status || card.session !== undefined || card.sessionCardId || card._id);
+        return isCard ? { sessionCardId: id, ...card } : null;
+      } catch {
+        if (attempt < 2 && !cancelled) {
+          await new Promise(res => setTimeout(res, 300 * (attempt + 1)));
+          return fetchCard(id, attempt + 1);
+        }
+        return null;
+      }
+    };
+
+    // Run with limited concurrency so we don't burst the API (firing every
+    // player's cards at once was throttling and silently dropping some).
+    const runPool = async (entries, limit) => {
+      const out = new Array(entries.length);
+      let idx = 0;
+      const worker = async () => {
+        while (idx < entries.length && !cancelled) {
+          const cur = idx++;
+          out[cur] = await fetchCard(entries[cur].id);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(limit, entries.length) }, worker));
+      return out;
+    };
+
+    (async () => {
+      setCardsLoading(true);
+      try {
+        const results = await runPool(cardEntries, 5);
+        if (cancelled) return;
+        const cMap = {};
+        myPlayers.forEach(p => { cMap[String(p.playerId)] = []; });
+        results.forEach((val, i) => {
+          if (val) {
+            const pid = cardEntries[i].playerId;
+            if (cMap[pid]) cMap[pid].push(val);
+          }
+        });
+        setCardsMap(cMap);
       } finally {
-        setLoadingCards(false);
+        if (!cancelled) setCardsLoading(false);
       }
     })();
-    return () => controller.abort();
-  }, [selectedPlayer?.playerId]);
+    return () => { cancelled = true; };
+  }, [myPlayers, userToken]);
 
-  const totalSessions = useMemo(
-    () => myPlayers.reduce((s, p) => s + (p.sessionCardIds?.length || 0), 0),
-    [myPlayers]
+  /* ── derived (all from already-loaded cardsMap, no extra fetches) ── */
+  const totalPoints = useMemo(() => myPlayers.reduce((s,p)=>s+(p.totalPoints||0),0), [myPlayers]);
+
+  const pendingMap = useMemo(() => {
+    const map = {};
+    myPlayers.forEach(p => {
+      const pCards = cardsMap[String(p.playerId)] || [];
+      map[String(p.playerId)] = { name: p.name, count: pCards.filter(isPendingCard).length };
+    });
+    return map;
+  }, [myPlayers, cardsMap]);
+
+  const totalPending = useMemo(
+    () => Object.values(pendingMap).reduce((s,v) => s + v.count, 0),
+    [pendingMap]
   );
 
-  const totalPoints = useMemo(
-    () => myPlayers.reduce((s, p) => s + (p.totalPoints || 0), 0),
-    [myPlayers]
+  const selectedCards = useMemo(
+    () => selected ? (cardsMap[String(selected.playerId)] || []) : [],
+    [selected, cardsMap]
   );
 
-  const playerStats = useMemo(() => {
-    if (!selectedPlayer) return null;
-    const norm = s => (s || '').toLowerCase().replace(' ', '_');
+  const cardStats = useMemo(() => {
+    if (!selected) return null;
     return {
-      total:     selectedPlayer.sessionCardIds?.length || 0,
-      completed: playerCards.filter(c => norm(c.status) === 'completed').length,
-      pending:   playerCards.filter(c => norm(c.status) === 'pending').length,
-      upcoming:  playerCards.filter(c => ['upcoming', 'in_progress'].includes(norm(c.status))).length,
+      total:     selectedCards.length,
+      completed: selectedCards.filter(isDoneCard).length,
+      pending:   selectedCards.filter(isPendingCard).length,
+      upcoming:  selectedCards.filter(isUpcomingCard).length,
     };
-  }, [selectedPlayer, playerCards]);
+  }, [selected, selectedCards]);
 
-  const filteredPlayers = useMemo(
-    () => myPlayers.filter(p => p.name.toLowerCase().includes(searchPlayer.toLowerCase())),
-    [myPlayers, searchPlayer]
+  const filtered = useMemo(
+    ()=>myPlayers.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())),
+    [myPlayers, search]
   );
 
-  const handleSelectPlayer = (player) => {
-    setSelectedPlayer(prev => prev?.playerId === player.playerId ? null : player);
-  };
+  /* ── calendar ───────────────────────────────────────────────────── */
+  const cells = useMemo(() => {
+    const {month,year}=calNav;
+    const blanks=getFirstWeekday(year,month), days=getDaysInMonth(year,month);
+    return [...Array(blanks).fill(null), ...Array.from({length:days},(_,i)=>i+1)];
+  }, [calNav]);
 
-  const handleClearSelection = () => {
-    setSelectedPlayer(null);
-    setPlayerCards([]);
-  };
+  const byDate = useMemo(() => {
+    const map={};
+    attRecs.forEach(r=>{ if (!r.sessionDate) return; if (!map[r.sessionDate]) map[r.sessionDate]=[]; map[r.sessionDate].push(r); });
+    return map;
+  }, [attRecs]);
 
-  const statsRow = selectedPlayer
-    ? [
-        { label: 'Total Sessions',    value: loadingCards ? '…' : playerStats?.total,     color: 'rgba(255,255,255,0.15)' },
-        { label: 'Completed',         value: loadingCards ? '…' : playerStats?.completed,  color: 'rgba(74,222,128,0.2)' },
-        { label: 'Pending (Absent)',  value: loadingCards ? '…' : playerStats?.pending,    color: 'rgba(251,191,36,0.2)' },
-        { label: 'Upcoming / Active', value: loadingCards ? '…' : playerStats?.upcoming,   color: 'rgba(96,165,250,0.2)' },
-      ]
-    : [
-        { label: 'My Players',        value: myPlayers.length,  color: 'rgba(255,255,255,0.15)' },
-        { label: 'Batches Assigned',  value: batchCount,        color: 'rgba(255,255,255,0.15)' },
-        { label: 'Total Sessions',    value: totalSessions,     color: 'rgba(255,255,255,0.15)' },
-        { label: 'Completed',         value: '-',               color: 'rgba(255,255,255,0.08)' },
-        { label: 'Pending',           value: '-',               color: 'rgba(255,255,255,0.08)' },
-      ];
+  const selDateRecs = useMemo(()=>selDate?(byDate[selDate]||[]):[], [byDate,selDate]);
+  const today = toDateStr(new Date());
 
-  if (isLoading) {
-    return (
-      <Layout>
-        <style>{`@keyframes skPulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
-          {/* Header skeleton */}
-          <div style={{
-            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-            borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
-            boxShadow: '0 12px 40px rgba(6,0,48,.3)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
-              <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', flexShrink: 0 }} />
-              <div>
-                <div style={{ width: '200px', height: '28px', background: 'rgba(255,255,255,.15)', borderRadius: '6px', marginBottom: '8px' }} />
-                <div style={{ width: '280px', height: '14px', background: 'rgba(255,255,255,.1)', borderRadius: '4px' }} />
-              </div>
-            </div>
-          </div>
-          {/* Summary cards skeleton */}
-          <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} style={{ flex: 1, minWidth: '140px', background: '#fff', border: '1.5px solid #E2E8F0', borderRadius: '16px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <Sk w="46px" h="46px" r={12} />
-                <div style={{ flex: 1 }}>
-                  <Sk w="70%" h="11px" r={4} />
-                  <div style={{ marginTop: '8px' }}><Sk w="50%" h="23px" r={4} /></div>
-                </div>
-              </div>
-            ))}
-          </div>
+  /* ── loading skeleton ───────────────────────────────────────────── */
+  if (loading) return (
+    <Layout>
+      <style>{`@keyframes skPulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
+      <div style={{ maxWidth:'1300px',margin:'0 auto',padding:'0 28px 40px' }}>
+        <div style={{ height:'90px',borderRadius:'18px',background:'linear-gradient(135deg,#060030,#3b0080)',marginBottom:'20px' }} />
+        <div style={{ display:'flex',gap:'14px',marginBottom:'20px' }}>
+          {[1,2,3,4].map(i=><div key={i} style={{ flex:1,height:'90px',borderRadius:'14px',background:'#F1F5F9',animation:'skPulse 1.6s infinite' }} />)}
         </div>
-      </Layout>
-    );
-  }
+      </div>
+    </Layout>
+  );
 
+  /* ── render ─────────────────────────────────────────────────────── */
   return (
     <Layout>
       <style>{`
-        @keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }
-        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes skPulse{0%,100%{opacity:.5}50%{opacity:1}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 32px' }}>
 
-        {/* Standard Header Banner */}
+      <div style={{ maxWidth:'1300px',margin:'0 auto',padding:'0 28px 48px' }}>
+
+        {/* ── Banner ─────────────────────────────────────────────── */}
         <div style={{
-          background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-          borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
-          boxShadow: '0 12px 40px rgba(6,0,48,.3)', flexWrap: 'wrap',
+          background:'linear-gradient(135deg,#060030 0%,#1a0060 60%,#3b0080 100%)',
+          borderRadius:'18px', padding:'22px 28px', marginBottom:'20px',
+          display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
+          boxShadow:'0 10px 36px rgba(6,0,48,.32)', flexWrap:'wrap',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <BookOpen size={24} color="#fff" />
+          <div style={{ display:'flex',alignItems:'center',gap:'14px' }}>
+            <div style={{ width:'46px',height:'46px',borderRadius:'12px',background:'rgba(255,255,255,.12)',border:'1.5px solid rgba(255,255,255,.2)',display:'flex',alignItems:'center',justifyContent:'center' }}>
+              <BookOpen size={22} color="#fff" />
             </div>
             <div>
-              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>
-                {selectedPlayer ? selectedPlayer.name : 'Coach Dashboard'}
+              <h1 style={{ fontSize:'20px',fontWeight:'800',color:'#fff',margin:'0 0 3px',letterSpacing:'-.4px' }}>
+                Welcome back, {currentUser?.username}
               </h1>
-              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>
-                {selectedPlayer
-                  ? `${selectedPlayer.LearningPathway || 'No pathway'} · ${selectedPlayer.sessionCardIds?.length || 0} session cards`
-                  : `Welcome back, ${currentUser?.username}! Your coaching overview`}
+              <p style={{ fontSize:'12px',color:'rgba(255,255,255,.55)',margin:0 }}>
+                {myPlayers.length} player{myPlayers.length!==1?'s':''} · {batchCount} batch{batchCount!==1?'es':''}
               </p>
             </div>
           </div>
-
-          {/* Right-side actions */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            {selectedPlayer && (
-              <>
-                <button
-                  onClick={() => navigate(`/coach/player/${selectedPlayer.playerId}`)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '9px 16px', borderRadius: '8px',
-                    background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.3)',
-                    color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-                >
-                  <ExternalLink size={14} /> View Profile
-                </button>
-                <button
-                  onClick={handleClearSelection}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '9px 16px', borderRadius: '8px',
-                    background: 'rgba(239,68,68,0.25)', border: '1.5px solid rgba(239,68,68,0.45)',
-                    color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.4)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
-                >
-                  <X size={14} /> All Clear
-                </button>
-              </>
-            )}
-            {!selectedPlayer && (
-              <Link to="/coach/start-session" style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '9px 16px', borderRadius: '8px',
-                background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.3)',
-                color: 'white', fontSize: '13px', fontWeight: '700', textDecoration: 'none'
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-              >
-                <Plus size={14} /> Start Session
-              </Link>
-            )}
+          <div style={{ display:'flex',gap:'10px' }}>
+            <Link to="/coach/start-session" style={{ display:'flex',alignItems:'center',gap:'7px',padding:'9px 18px',borderRadius:'9px',background:'rgba(255,255,255,.15)',border:'1.5px solid rgba(255,255,255,.25)',color:'#fff',fontSize:'13px',fontWeight:'700',textDecoration:'none' }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.25)'}
+              onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.15)'}
+            ><Play size={14} /> Start Session</Link>
+            <Link to="/coach/past-sessions" style={{ display:'flex',alignItems:'center',gap:'7px',padding:'9px 18px',borderRadius:'9px',background:'rgba(255,255,255,.08)',border:'1.5px solid rgba(255,255,255,.15)',color:'rgba(255,255,255,.8)',fontSize:'13px',fontWeight:'600',textDecoration:'none' }}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.15)'}
+              onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.08)'}
+            ><BarChart2 size={14} /> Past Sessions</Link>
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-          <SummaryCard label="My Players" value={myPlayers.length} icon={Users} accent="#6366F1" />
-          <SummaryCard label="My Batches" value={batchCount} icon={Layers} accent="#10B981" />
-          <SummaryCard label="Active Cards" value={totalSessions} icon={BookOpen} accent="#F59E0B" />
-          <SummaryCard label="Points Earned" value={totalPoints.toLocaleString()} icon={Trophy} accent="#8B5CF6" />
+        {/* ── Stats ──────────────────────────────────────────────── */}
+        <div style={{ display:'flex',gap:'16px',marginBottom:'20px',flexWrap:'wrap' }}>
+          <StatTile label="My Players"    value={myPlayers.length}                           Icon={Users}         color="#6366F1" gradBg="linear-gradient(135deg,#EEF2FF,#E0E7FF)" />
+          <StatTile label="My Batches"    value={batchCount}                                 Icon={Layers}        color="#10B981" gradBg="linear-gradient(135deg,#ECFDF5,#D1FAE5)" />
+          <StatTile
+            label="Pending Cards"
+            value={cardsLoading ? '…' : totalPending}
+            Icon={AlertTriangle}
+            color="#F59E0B"
+            gradBg="linear-gradient(135deg,#FFFBEB,#FEF3C7)"
+            onClick={() => setShowPending(p => !p)}
+            active={showPending}
+          />
+          <StatTile label="Points Earned" value={totalPoints.toLocaleString()}               Icon={Trophy}        color="#8B5CF6" gradBg="linear-gradient(135deg,#F5F3FF,#EDE9FE)" />
         </div>
 
-        {/* Stats row inside a secondary card when a player is selected */}
-        {selectedPlayer && (
-          <div style={{
-            background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
-            borderRadius: '14px', padding: '20px 24px', marginBottom: '24px',
-            boxShadow: '0 8px 24px rgba(6,0,48,.2)'
-          }}>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statsRow.length}, 1fr)`, gap: '12px' }}>
-              {statsRow.map(stat => (
-                <div key={stat.label} style={{
-                  background: stat.color, borderRadius: '10px', padding: '14px 16px',
-                  border: '1px solid rgba(255,255,255,0.15)', transition: 'background 0.3s'
-                }}>
-                  <p style={{ fontSize: '10px', opacity: 0.8, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '600', color: 'white' }}>
-                    {stat.label}
-                  </p>
-                  <p style={{ fontSize: '22px', fontWeight: '800', margin: 0, color: 'white' }}>
-                    {stat.value}
-                  </p>
+        {/* ── Pending Panel ──────────────────────────────────────── */}
+        {showPending && (
+          <div style={{ background:'#FFFBEB',border:'1.5px solid #FDE68A',borderRadius:'14px',marginBottom:'20px',overflow:'hidden',animation:'fadeIn .22s ease',boxShadow:'0 4px 18px rgba(245,158,11,.12)' }}>
+            <div style={{ padding:'14px 20px',borderBottom:'1px solid #FDE68A',display:'flex',alignItems:'center',gap:'10px' }}>
+              <AlertTriangle size={16} color="#D97706" />
+              <p style={{ fontSize:'14px',fontWeight:'800',color:'#92400E',margin:0,flex:1 }}>Pending Session Cards</p>
+              <button onClick={()=>setShowPending(false)} style={{ background:'none',border:'none',cursor:'pointer',color:'#B45309',display:'flex' }}><X size={16} /></button>
+            </div>
+            <div style={{ padding:'12px 14px' }}>
+              {cardsLoading ? (
+                <div style={{ display:'flex',alignItems:'center',gap:'10px',padding:'16px',color:'#B45309' }}>
+                  <Loader size={16} style={{ animation:'spin 1s linear infinite' }} />
+                  <span style={{ fontSize:'13px',fontWeight:'600' }}>Loading session card statuses…</span>
                 </div>
+              ) : (
+                <div style={{ display:'flex',flexWrap:'wrap',gap:'8px' }}>
+                  {myPlayers.map(player => {
+                    const info = pendingMap[String(player.playerId)]||{ count:0 };
+                    const hasPending = info.count > 0;
+                    return (
+                      <div key={player.playerId} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',borderRadius:'10px',background:hasPending?'#fff':'#F9FAFB',border:`1.5px solid ${hasPending?'#FDE68A':'#E2E8F0'}`,minWidth:'200px',flex:'1 1 200px' }}>
+                        <div style={{ width:'34px',height:'34px',borderRadius:'50%',background:avatarColor(player.name),display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'13px',flexShrink:0 }}>
+                          {player.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex:1,minWidth:0 }}>
+                          <p style={{ fontSize:'13px',fontWeight:'700',color:'#0F172A',margin:'0 0 1px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{player.name}</p>
+                          {hasPending
+                            ? <p style={{ fontSize:'11px',color:'#D97706',fontWeight:'600',margin:0 }}>{info.count} pending</p>
+                            : <p style={{ fontSize:'11px',color:'#16A34A',fontWeight:'600',margin:0 }}>All clear</p>}
+                        </div>
+                        {hasPending && (
+                          <Link to={`/coach/player/${player.playerId}/sessions`} state={{ playerName:player.name, sessionCardIds:player.sessionCardIds||[] }}
+                            style={{ fontSize:'11px',fontWeight:'700',color:'#D97706',textDecoration:'none',display:'flex',alignItems:'center',gap:'2px',flexShrink:0 }}>
+                            View <ChevronRight size={12} />
+                          </Link>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Main 2-col ─────────────────────────────────────────── */}
+        <div style={{ display:'grid',gridTemplateColumns:'300px 1fr',gap:'20px',alignItems:'start' }}>
+
+          {/* ── Left: My Players ─────────────────────────────────── */}
+          <div style={{ background:'#fff',borderRadius:'16px',border:'1.5px solid #E2E8F0',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+            {/* header */}
+            <div style={{ padding:'16px 18px 12px',borderBottom:'1.5px solid #F1F5F9' }}>
+              <div style={{ display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px' }}>
+                <div style={{ width:'32px',height:'32px',borderRadius:'9px',background:'rgba(99,102,241,.1)',display:'flex',alignItems:'center',justifyContent:'center' }}>
+                  <Users size={16} color="#6366F1" />
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ fontSize:'14px',fontWeight:'800',color:'#0F172A',margin:0 }}>My Players</p>
+                </div>
+                <span style={{ fontSize:'11px',fontWeight:'700',padding:'2px 9px',borderRadius:'999px',background:'rgba(99,102,241,.1)',color:'#6366F1' }}>
+                  {myPlayers.length}
+                </span>
+              </div>
+              <div style={{ display:'flex',alignItems:'center',gap:'7px',padding:'8px 11px',background:'#F8FAFC',borderRadius:'9px',border:'1.5px solid #E2E8F0' }}>
+                <Search size={13} color="#94A3B8" />
+                <input
+                  type="text" placeholder="Search…" value={search} onChange={e=>setSearch(e.target.value)}
+                  style={{ border:'none',background:'transparent',outline:'none',fontSize:'13px',color:'#0F172A',flex:1 }}
+                />
+                {search && <button onClick={()=>setSearch('')} style={{ background:'none',border:'none',cursor:'pointer',display:'flex',padding:0 }}><X size={12} color="#94A3B8" /></button>}
+              </div>
+            </div>
+
+            {/* player list */}
+            <div style={{ padding:'10px 10px',maxHeight:'420px',overflowY:'auto' }}>
+              {filtered.length===0 ? (
+                <div style={{ padding:'28px',textAlign:'center' }}>
+                  <AlertCircle size={26} color="#CBD5E1" style={{ display:'block',margin:'0 auto 8px' }} />
+                  <p style={{ fontSize:'13px',color:'#94A3B8',margin:0 }}>No players found</p>
+                </div>
+              ) : filtered.map(player => (
+                <PlayerRow
+                  key={player.playerId}
+                  player={player}
+                  selected={selected?.playerId===player.playerId}
+                  onClick={()=>setSelected(p=>p?.playerId===player.playerId?null:player)}
+                />
               ))}
             </div>
 
-            {/* Selected player's recent cards preview */}
-            {!loadingCards && playerCards.length > 0 && (
-              <div style={{ marginTop: '16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {playerCards.slice(-4).reverse().map((card, i) => {
-                  const norm = (s => (s || '').toLowerCase().replace(' ', '_'));
-                  const st = norm(card.status);
-                  const cfg = st === 'completed' ? { bg: 'rgba(74,222,128,0.2)', color: '#bbf7d0' }
-                            : st === 'pending'   ? { bg: 'rgba(251,191,36,0.2)',  color: '#fde68a' }
-                            :                      { bg: 'rgba(96,165,250,0.2)',  color: '#bfdbfe' };
+            {/* selected player session card strip */}
+            {selected && (
+              <div style={{ borderTop:'1.5px solid #F1F5F9',padding:'14px 16px',background:'#F8FAFC',animation:'fadeIn .2s ease' }}>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'10px' }}>
+                  <p style={{ fontSize:'12px',fontWeight:'800',color:'#060030',margin:0 }}>{selected.name}</p>
+                  <Link to={`/coach/player/${selected.playerId}/sessions`} state={{ playerName:selected.name, sessionCardIds:selected.sessionCardIds||[] }}
+                    style={{ display:'flex',alignItems:'center',gap:'3px',fontSize:'11px',fontWeight:'700',color:'#6366F1',textDecoration:'none' }}>
+                    View All <ChevronRight size={12} />
+                  </Link>
+                </div>
+                {cardsLoading && selectedCards.length===0 && (selected.sessionCardIds?.length||0)>0 ? (
+                  <div style={{ display:'flex',alignItems:'center',gap:'8px',padding:'8px 0',color:'#94A3B8' }}>
+                    <Loader size={14} style={{ animation:'spin 1s linear infinite' }} />
+                    <span style={{ fontSize:'12px' }}>Loading cards…</span>
+                  </div>
+                ) : cardStats && cardStats.total>0 ? (
+                  <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'7px' }}>
+                    {[
+                      { label:'Total',     value:cardStats.total,     bg:'#EEF2FF', color:'#6366F1' },
+                      { label:'Completed', value:cardStats.completed,  bg:'#F0FDF4', color:'#16A34A' },
+                      { label:'Pending',   value:cardStats.pending,    bg:'#FFFBEB', color:'#D97706' },
+                      { label:'Upcoming',  value:cardStats.upcoming,   bg:'#EFF6FF', color:'#2563EB' },
+                    ].map(s=>(
+                      <div key={s.label} style={{ padding:'9px 11px',borderRadius:'9px',background:s.bg,border:`1px solid ${s.color}22` }}>
+                        <p style={{ fontSize:'9px',fontWeight:'700',color:s.color,margin:'0 0 2px',textTransform:'uppercase',letterSpacing:'.4px' }}>{s.label}</p>
+                        <p style={{ fontSize:'18px',fontWeight:'800',color:s.color,margin:0,lineHeight:1 }}>{s.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize:'12px',color:'#94A3B8',margin:0 }}>No session cards yet.</p>
+                )}
+                {/* recent cards */}
+                {selectedCards.length>0 && (
+                  <div style={{ marginTop:'10px' }}>
+                    <p style={{ fontSize:'11px',fontWeight:'700',color:'#475569',margin:'0 0 7px',textTransform:'uppercase',letterSpacing:'.4px' }}>Recent</p>
+                    <div style={{ display:'flex',flexDirection:'column',gap:'5px' }}>
+                      {selectedCards.slice().reverse().slice(0,4).map((c,i)=>{
+                        const st=normStatus(c.status);
+                        const cfg={ completed:{bg:'#F0FDF4',color:'#16A34A',label:'Done'}, pending:{bg:'#FFFBEB',color:'#D97706',label:'Pending'}, inprogress:{bg:'#EFF6FF',color:'#2563EB',label:'Active'} }[st]||{bg:'#F9FAFB',color:'#64748B',label:'Upcoming'};
+                        return (
+                          <div key={i} style={{ display:'flex',alignItems:'center',gap:'9px',padding:'8px 10px',borderRadius:'8px',background:cfg.bg,border:`1px solid ${cfg.color}22` }}>
+                            <span style={{ fontSize:'11px',fontWeight:'800',color:cfg.color,minWidth:'22px' }}>S{c.session||(i+1)}</span>
+                            <p style={{ fontSize:'12px',fontWeight:'600',color:'#0F172A',margin:0,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.Topic||'Session'}</p>
+                            <span style={{ fontSize:'10px',fontWeight:'700',color:cfg.color,flexShrink:0 }}>{cfg.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <button onClick={()=>navigate(`/coach/start-session/${selected.playerId}`)}
+                  style={{ marginTop:'12px',width:'100%',padding:'10px',borderRadius:'9px',background:'#060030',border:'none',color:'#fff',fontSize:'13px',fontWeight:'700',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'7px' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#0a0050'}
+                  onMouseLeave={e=>e.currentTarget.style.background='#060030'}
+                >
+                  <Play size={13} /> Start Session
+                </button>
+              </div>
+            )}
+
+            {/* quick links footer */}
+            <div style={{ padding:'10px',borderTop:'1.5px solid #F1F5F9',display:'flex',gap:'6px' }}>
+              {[
+                { to:'/coach/players',      label:'Players', Icon:Users },
+                { to:'/coach/past-sessions',label:'History', Icon:BarChart2 },
+                { to:'/coach/profile',      label:'Profile',  Icon:Award },
+              ].map(a=>(
+                <Link key={a.to} to={a.to} style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:'4px',padding:'8px 4px',borderRadius:'9px',background:'#F8FAFC',border:'1px solid #E2E8F0',textDecoration:'none',color:'#475569' }}
+                  onMouseEnter={e=>{e.currentTarget.style.background='#EEF2FF';e.currentTarget.style.color='#6366F1';e.currentTarget.style.borderColor='#C7D2FE';}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='#F8FAFC';e.currentTarget.style.color='#475569';e.currentTarget.style.borderColor='#E2E8F0';}}
+                >
+                  <a.Icon size={15} />
+                  <span style={{ fontSize:'10px',fontWeight:'700' }}>{a.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Right: Attendance Calendar ────────────────────────── */}
+          <div style={{ background:'#fff',borderRadius:'16px',border:'1.5px solid #E2E8F0',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,.04)' }}>
+            {/* calendar header */}
+            <div style={{ padding:'16px 20px',borderBottom:'1.5px solid #F1F5F9',display:'flex',alignItems:'center',gap:'10px' }}>
+              <div style={{ width:'32px',height:'32px',borderRadius:'9px',background:'rgba(99,102,241,.1)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+                <Calendar size={16} color="#6366F1" />
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontSize:'14px',fontWeight:'800',color:'#0F172A',margin:0 }}>Attendance Calendar</p>
+                <p style={{ fontSize:'11px',color:'#64748B',margin:0 }}>Your players' attendance at a glance</p>
+              </div>
+              {loading && <Loader size={14} color="#6366F1" style={{ animation:'spin 1s linear infinite',flexShrink:0 }} />}
+            </div>
+
+            <div style={{ padding:'16px 20px' }}>
+              {/* Month nav */}
+              <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'14px' }}>
+                <button onClick={()=>setCalNav(p=>{ let m=p.month-1,y=p.year; if(m<0){m=11;y--;} return {month:m,year:y}; })}
+                  style={{ width:'30px',height:'30px',borderRadius:'8px',border:'1.5px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#E2E8F0'} onMouseLeave={e=>e.currentTarget.style.background='#F8FAFC'}>
+                  <ChevronLeft size={15} color="#475569" />
+                </button>
+                <p style={{ fontSize:'14px',fontWeight:'800',color:'#0F172A',margin:0 }}>
+                  {MONTHS[calNav.month]} {calNav.year}
+                </p>
+                <button onClick={()=>setCalNav(p=>{ let m=p.month+1,y=p.year; if(m>11){m=0;y++;} return {month:m,year:y}; })}
+                  style={{ width:'30px',height:'30px',borderRadius:'8px',border:'1.5px solid #E2E8F0',background:'#F8FAFC',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#E2E8F0'} onMouseLeave={e=>e.currentTarget.style.background='#F8FAFC'}>
+                  <ChevronRight size={15} color="#475569" />
+                </button>
+              </div>
+
+              {/* Day headers */}
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'3px',marginBottom:'3px' }}>
+                {DAYS.map(d=>(
+                  <p key={d} style={{ fontSize:'9px',fontWeight:'700',color:'#94A3B8',textAlign:'center',margin:0,textTransform:'uppercase',letterSpacing:'.4px' }}>{d}</p>
+                ))}
+              </div>
+
+              {/* Calendar grid — compact */}
+              <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'3px' }}>
+                {cells.map((day,idx)=>{
+                  if (!day) return <div key={`b${idx}`} />;
+                  const ds=`${calNav.year}-${String(calNav.month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                  const recs=byDate[ds]||[];
+                  const isToday=ds===today;
+                  const isSel=ds===selDate;
+                  const lcSt = r => (r.attendanceStatus||'').toLowerCase();
+                  const hasPresent=recs.some(r=>lcSt(r)==='present');
+                  const hasAbsent =recs.some(r=>lcSt(r)==='absent');
+                  const hasRecs=recs.length>0;
                   return (
-                    <div key={i} style={{
-                      background: cfg.bg, border: `1px solid ${cfg.color}`,
-                      borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600',
-                      color: 'rgba(255,255,255,0.9)'
-                    }}>
-                      S{card.session || (i + 1)} · {card.Topic?.substring(0, 18) || 'Session'} · {card.status || '-'}
+                    <div key={ds} onClick={()=>hasRecs&&setSelDate(d=>d===ds?null:ds)}
+                      style={{
+                        borderRadius:'7px',padding:'5px 2px 4px',textAlign:'center',
+                        cursor:hasRecs?'pointer':'default',
+                        background:isSel?'#060030':isToday?'#EEF2FF':hasRecs?'#F8FAFC':'transparent',
+                        border:`1.5px solid ${isSel?'#060030':isToday?'#818CF8':hasRecs?'#C7D2FE':'transparent'}`,
+                        transition:'all .15s',
+                      }}
+                      onMouseEnter={e=>{ if (hasRecs&&!isSel) e.currentTarget.style.background='#E0E7FF'; }}
+                      onMouseLeave={e=>{ if (hasRecs&&!isSel) e.currentTarget.style.background=hasRecs?'#F8FAFC':'transparent'; }}
+                    >
+                      <p style={{ fontSize:'11px',fontWeight:isToday?'800':'600',margin:'0 0 3px',
+                        color:isSel?'#fff':isToday?'#4338CA':'#374151' }}>{day}</p>
+                      {hasRecs && (
+                        <div style={{ display:'flex',justifyContent:'center',gap:'2px' }}>
+                          {hasPresent&&<div style={{ width:'5px',height:'5px',borderRadius:'50%',background:isSel?'#4ADE80':'#22C55E' }} />}
+                          {hasAbsent &&<div style={{ width:'5px',height:'5px',borderRadius:'50%',background:isSel?'#FCA5A5':'#EF4444' }} />}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
-                {playerCards.length > 4 && (
-                  <div style={{
-                    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-                    borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600',
-                    color: 'rgba(255,255,255,0.7)'
-                  }}>
-                    +{playerCards.length - 4} more
+              </div>
+
+              {/* Legend - only Present + Absent */}
+              <div style={{ display:'flex',gap:'16px',marginTop:'12px',justifyContent:'center' }}>
+                <div style={{ display:'flex',alignItems:'center',gap:'5px' }}>
+                  <div style={{ width:'7px',height:'7px',borderRadius:'50%',background:'#22C55E' }} />
+                  <span style={{ fontSize:'11px',color:'#64748B',fontWeight:'600' }}>Present</span>
+                </div>
+                <div style={{ display:'flex',alignItems:'center',gap:'5px' }}>
+                  <div style={{ width:'7px',height:'7px',borderRadius:'50%',background:'#EF4444' }} />
+                  <span style={{ fontSize:'11px',color:'#64748B',fontWeight:'600' }}>Absent</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Selected date detail */}
+            {selDate && (
+              <div style={{ borderTop:'1.5px solid #F1F5F9',padding:'14px 20px',animation:'fadeIn .18s ease' }}>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'10px' }}>
+                  <p style={{ fontSize:'13px',fontWeight:'700',color:'#0F172A',margin:0 }}>
+                    {new Date(selDate+'T00:00:00').toLocaleDateString('en-IN',{ weekday:'short',day:'numeric',month:'short' })}
+                  </p>
+                  <button onClick={()=>setSelDate(null)} style={{ background:'none',border:'none',cursor:'pointer',display:'flex',color:'#94A3B8' }}><X size={14} /></button>
+                </div>
+                {selDateRecs.length===0 ? (
+                  <p style={{ fontSize:'12px',color:'#94A3B8',margin:0,textAlign:'center',padding:'10px 0' }}>No records</p>
+                ) : (
+                  <div style={{ display:'flex',flexDirection:'column',gap:'6px' }}>
+                    {selDateRecs.map((r,i)=>{
+                      const rawSt = r.attendanceStatus||'';
+                      const normSt = rawSt.charAt(0).toUpperCase()+rawSt.slice(1).toLowerCase();
+                      const cfg=ATT_CFG[normSt]||{bg:'#F9FAFB',color:'#6B7280',border:'#E5E7EB',dot:'#9CA3AF'};
+                      return (
+                        <div key={i} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'9px 12px',borderRadius:'9px',background:cfg.bg,border:`1px solid ${cfg.border}` }}>
+                          <div style={{ width:'7px',height:'7px',borderRadius:'50%',background:cfg.dot,flexShrink:0 }} />
+                          <p style={{ fontSize:'13px',fontWeight:'700',color:'#0F172A',margin:0,flex:1 }}>{r.playerName}</p>
+                          <span style={{ fontSize:'11px',fontWeight:'700',color:cfg.color }}>{r.attendanceStatus||'–'}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             )}
-            {loadingCards && (
-              <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', opacity: 0.75, fontSize: '13px', color: 'white' }}>
-                <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Loading session cards…
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Two columns: Quick Actions + My Players */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(260px, 360px) 1fr',
-          gap: '24px', marginBottom: '28px', alignItems: 'start'
-        }}>
-          {/* Quick Actions */}
-          <div style={{
-            background: '#FFFFFF', borderRadius: '14px',
-            border: '1.5px solid #E2E8F0', overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-          }}>
-            <div style={{
-              padding: '20px 24px', borderBottom: '1.5px solid #E2E8F0',
-              display: 'flex', alignItems: 'center', gap: '12px'
-            }}>
-              <div style={{
-                width: '40px', height: '40px', background: 'rgba(99,102,241,0.1)',
-                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <Target size={20} color="#6366F1" />
-              </div>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>Quick Actions</h2>
-            </div>
-            <div style={{ padding: '12px' }}>
-              {[
-                { icon: Users,    label: 'My Players',    to: '/coach/players' },
-                { icon: Plus,     label: 'Start Session',  to: '/coach/start-session' },
-                { icon: Award,    label: 'Past Sessions',  to: '/coach/past-sessions' },
-                { icon: Award,    label: 'My Profile',     to: '/coach/profile' },
-              ].map((action, idx) => {
-                const Icon = action.icon;
-                return (
-                  <Link key={idx} to={action.to} style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 14px', background: '#F8FAFC', borderRadius: '10px',
-                    marginBottom: idx < 3 ? '8px' : 0, textDecoration: 'none',
-                    color: '#0F172A', transition: 'all 0.2s ease', border: '1px solid transparent'
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(99,102,241,0.1)'; e.currentTarget.style.borderColor = '#6366F1'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = 'transparent'; }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Icon size={18} color="#6366F1" />
-                      <span style={{ fontWeight: '600', fontSize: '13px' }}>{action.label}</span>
-                    </div>
-                    <ChevronRight size={16} color="#6366F1" />
-                  </Link>
-                );
-              })}
-            </div>
-
-            {/* Batch count pill */}
-            {batchCount > 0 && (
-              <div style={{
-                margin: '0 12px 12px', padding: '12px 14px',
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(99,102,241,0.08))',
-                borderRadius: '10px', border: '1px solid #6366F1',
-                display: 'flex', alignItems: 'center', gap: '10px'
-              }}>
-                <Layers size={18} color="#6366F1" />
-                <div>
-                  <p style={{ fontSize: '11px', color: '#475569', margin: 0, textTransform: 'uppercase', fontWeight: '600' }}>Batches Assigned</p>
-                  <p style={{ fontSize: '18px', fontWeight: '800', color: '#6366F1', margin: 0 }}>{batchCount}</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* My Players - selectable list */}
-          <div style={{
-            background: '#FFFFFF', borderRadius: '14px',
-            border: '1.5px solid #E2E8F0', overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-          }}>
-            <div style={{
-              padding: '20px 24px', borderBottom: '1.5px solid #E2E8F0',
-              display: 'flex', alignItems: 'center', gap: '12px'
-            }}>
-              <div style={{
-                width: '40px', height: '40px', background: 'rgba(99,102,241,0.1)',
-                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <Users size={20} color="#6366F1" />
-              </div>
-              <div>
-                <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>My Players</h2>
-                <p style={{ fontSize: '12px', color: '#475569', margin: 0 }}>
-                  {selectedPlayer ? `${selectedPlayer.name} selected` : 'Click a player to view their stats'}
-                </p>
-              </div>
-              {selectedPlayer && (
-                <button
-                  onClick={handleClearSelection}
-                  style={{
-                    marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px',
-                    padding: '6px 12px', borderRadius: '7px',
-                    background: '#FEE2E2', border: '1px solid #FECACA',
-                    color: '#DC2626', fontSize: '12px', fontWeight: '700', cursor: 'pointer'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#FECACA'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#FEE2E2'}
-                >
-                  <X size={12} /> All Clear
-                </button>
-              )}
-              {!selectedPlayer && (
-                <span style={{
-                  marginLeft: 'auto', padding: '5px 12px',
-                  background: 'rgba(99,102,241,0.1)', color: '#6366F1',
-                  borderRadius: '6px', fontSize: '13px', fontWeight: '700'
-                }}>{myPlayers.length}</span>
-              )}
-            </div>
-
-            {/* Search */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                padding: '9px 12px', background: '#F8FAFC',
-                borderRadius: '8px', border: '1.5px solid #E2E8F0'
-              }}>
-                <Search size={16} color="#475569" />
-                <input
-                  type="text"
-                  placeholder="Search players…"
-                  value={searchPlayer}
-                  onChange={e => setSearchPlayer(e.target.value)}
-                  style={{
-                    border: 'none', background: 'transparent', outline: 'none',
-                    fontSize: '13px', color: '#0F172A', flex: 1
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Player rows */}
-            <div style={{ maxHeight: '480px', overflowY: 'auto' }}>
-              {filteredPlayers.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#475569' }}>
-                  <AlertCircle size={32} style={{ margin: '0 auto 12px', opacity: 0.4, display: 'block' }} />
-                  <p style={{ margin: 0, fontSize: '14px' }}>No players found</p>
-                </div>
-              ) : filteredPlayers.map((player, idx) => {
-                const isSelected = selectedPlayer?.playerId === player.playerId;
-                const sessions = player.sessionCardIds?.length || 0;
-                const [accent] = pal(player.name);
-                return (
-                  <div
-                    key={player.playerId}
-                    onClick={() => handleSelectPlayer(player)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '14px',
-                      padding: '14px 18px', cursor: 'pointer', transition: 'all 0.2s ease',
-                      borderBottom: idx < filteredPlayers.length - 1 ? '1px solid #E2E8F0' : 'none',
-                      borderLeft: isSelected ? '4px solid #6366F1' : '4px solid transparent',
-                      background: isSelected
-                        ? 'linear-gradient(90deg, rgba(99,102,241,0.1) 0%, transparent 100%)'
-                        : 'transparent',
-                    }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#F8FAFC'; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    {/* Avatar */}
-                    <div style={{
-                      width: '42px', height: '42px', borderRadius: '50%', flexShrink: 0,
-                      background: isSelected ? 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)' : accent,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'white', fontWeight: '800', fontSize: '16px',
-                      boxShadow: isSelected ? '0 0 0 3px rgba(99,102,241,0.2)' : 'none'
-                    }}>
-                      {player.name.charAt(0).toUpperCase()}
-                    </div>
-
-                    {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-                        <p style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {player.name}
-                        </p>
-                        {isSelected && (
-                          <span style={{
-                            fontSize: '10px', fontWeight: '700', padding: '2px 7px',
-                            borderRadius: '999px', background: '#6366F1',
-                            color: 'white', flexShrink: 0
-                          }}>SELECTED</span>
-                        )}
-                      </div>
-                      <p style={{ fontSize: '12px', color: '#475569', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {player.LearningPathway || '-'}
-                      </p>
-                    </div>
-
-                    {/* Meta */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
-                      <span style={{
-                        fontSize: '11px', fontWeight: '700', padding: '3px 8px',
-                        borderRadius: '6px', background: 'rgba(99,102,241,0.1)',
-                        color: '#6366F1'
-                      }}>
-                        {sessions} session{sessions !== 1 ? 's' : ''}
-                      </span>
-                      <span style={{ fontSize: '11px', color: '#475569', fontWeight: '600' }}>
-                        {player.totalPoints} pts
-                      </span>
-                    </div>
-
-                    {/* Chevron or spinner */}
-                    <div style={{ flexShrink: 0, marginLeft: '4px' }}>
-                      {isSelected && loadingCards
-                        ? <Loader size={16} color="#6366F1" style={{ animation: 'spin 1s linear infinite' }} />
-                        : <ChevronRight size={16} color={isSelected ? '#6366F1' : '#94A3B8'} />}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         </div>
-
-        {/* Selected player session card breakdown */}
-        {selectedPlayer && !loadingCards && playerCards.length > 0 && (
-          <div style={{
-            background: '#FFFFFF', borderRadius: '14px',
-            border: '1.5px solid #E2E8F0', overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.04)', marginBottom: '28px'
-          }}>
-            <div style={{
-              padding: '18px 24px', borderBottom: '1.5px solid #E2E8F0',
-              display: 'flex', alignItems: 'center', gap: '12px'
-            }}>
-              <div style={{
-                width: '40px', height: '40px', background: '#F0FDF4',
-                borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <Calendar size={20} color="#10B981" />
-              </div>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A', margin: 0 }}>
-                {selectedPlayer.name}'s Session Cards
-              </h2>
-              <Link
-                to={`/coach/player/${selectedPlayer.playerId}/sessions`}
-                style={{
-                  marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '5px',
-                  fontSize: '12px', fontWeight: '600', color: '#6366F1', textDecoration: 'none'
-                }}
-              >
-                View All <ChevronRight size={14} />
-              </Link>
-            </div>
-            <div style={{ padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              {playerCards.slice().reverse().slice(0, 8).map((card, i) => {
-                const norm = s => (s || '').toLowerCase().replace(' ', '_');
-                const st = norm(card.status);
-                const statusCfg = {
-                  completed:   { bg: '#F0FDF4', color: '#16A34A', border: '#BBF7D0', label: 'Completed' },
-                  pending:     { bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', label: 'Pending' },
-                  in_progress: { bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE', label: 'In Progress' },
-                  upcoming:    { bg: '#F9FAFB', color: '#6B7280', border: '#E5E7EB', label: 'Upcoming' },
-                }[st] || { bg: '#F9FAFB', color: '#6B7280', border: '#E5E7EB', label: card.status || '-' };
-
-                return (
-                  <div key={i} style={{
-                    padding: '10px 14px', borderRadius: '10px',
-                    background: statusCfg.bg, border: `1.5px solid ${statusCfg.border}`,
-                    minWidth: '160px', flex: '0 0 auto'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: '700', color: statusCfg.color }}>S{card.session || (i + 1)}</span>
-                      <span style={{
-                        fontSize: '10px', fontWeight: '700', padding: '2px 7px',
-                        borderRadius: '999px', background: statusCfg.border, color: statusCfg.color
-                      }}>{statusCfg.label}</span>
-                    </div>
-                    <p style={{ fontSize: '12px', fontWeight: '600', color: '#0F172A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
-                      {card.Topic || 'Session'}
-                    </p>
-                  </div>
-                );
-              })}
-              {playerCards.length > 8 && (
-                <div style={{
-                  padding: '10px 14px', borderRadius: '10px',
-                  background: '#F8FAFC', border: '1.5px solid #E2E8F0',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  minWidth: '80px', color: '#475569', fontSize: '13px', fontWeight: '700'
-                }}>
-                  +{playerCards.length - 8}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
       </div>
     </Layout>
   );
-};
-
-export default CoachDashboard;
+}

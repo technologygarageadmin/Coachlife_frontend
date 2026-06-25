@@ -4,9 +4,9 @@ import axios from 'axios';
 import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
-import { BookOpen, CheckCircle, Clock, Star, Calendar, ChevronRight, AlertCircle } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, Star, Calendar, ChevronRight, ChevronLeft, AlertCircle } from 'lucide-react';
 
-const VIEW_SESSION_CARD_URL = 'https://y6agq7hb3l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
+const VIEW_SESSION_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 
 const SummaryCard = ({ label, value, icon: SIcon, accent, surface, border }) => {
   const [hov, setHov] = React.useState(false);
@@ -90,8 +90,15 @@ const PastSessions = () => {
           completed.sort((a, b) => (b.session || 0) - (a.session || 0));
 
           const playerMap = {};
-          players.forEach(p => { playerMap[p.playerId] = p.playerName || p.name; });
-          const enriched = completed.map(c => ({ ...c, playerName: playerMap[c.playerId] || c.playerName || 'Unknown' }));
+          players.forEach(item => {
+            const p = item.player || item;
+            const id = String(p._id || p.id || p.playerId || '');
+            playerMap[id] = p.playerName || p.name || '';
+          });
+          const enriched = completed.map(c => ({
+            ...c,
+            playerName: playerMap[String(c.playerId||'')] || c.playerName || 'Unknown',
+          }));
 
           setSessions(enriched);
           setLoading(false);
@@ -115,6 +122,20 @@ const PastSessions = () => {
     <Layout>
       <style>{`@keyframes skPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
+        <button
+          onClick={() => navigate('/coach')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            background: surface, border: `1.5px solid ${border}`, borderRadius: '10px',
+            padding: '9px 16px 9px 12px', marginBottom: '16px',
+            fontSize: '14px', fontWeight: '600', color: textSecondary,
+            cursor: 'pointer', transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = dark ? 'rgba(255,255,255,0.06)' : '#F1F5F9'; e.currentTarget.style.color = textPrimary; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = surface; e.currentTarget.style.color = textSecondary; }}
+        >
+          <ChevronLeft size={18} /> Back to Dashboard
+        </button>
         <div style={{
           background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
           borderRadius: '20px', padding: '28px 32px', marginBottom: '24px',
