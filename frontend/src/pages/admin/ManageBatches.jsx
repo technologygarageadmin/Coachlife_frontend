@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import React from 'react';
+import { createPortal } from 'react-dom';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import {
-  Layers, Plus, Trash2, X, Users, UserCheck, ChevronLeft, Loader, Search, UserPlus, Clock, Calendar
+  Layers, Plus, Users, UserCheck, UserPlus, Clock, Calendar, ChevronRight, AlertTriangle, Loader, UserPen,
 } from 'lucide-react';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -24,9 +26,62 @@ const PALETTES = [
 ];
 const pal = (name = '') => PALETTES[(name.charCodeAt(0) || 0) % PALETTES.length];
 
+const formatTime12h = (t) => {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return t;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+};
+
 const Sk = ({ w, h, r = 8 }) => (
   <div style={{ width: w, height: h, borderRadius: r, background: '#EEF2F7', animation: 'skPulse 1.6s ease-in-out infinite', flexShrink: 0 }} />
 );
+
+const NameGroup = ({ label, dotColor, names }) => (
+  names.length > 0 ? (
+    <div>
+      <div style={{ fontSize: '10px', fontWeight: '800', color: dotColor, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '5px' }}>{label}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {names.map((n, i) => (
+          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+            {n}
+          </span>
+        ))}
+      </div>
+    </div>
+  ) : null
+);
+
+// Renders via a portal so it can float above the scrollable batch list without being clipped.
+const BatchRosterTooltip = ({ anchorRect, playerNames, coachNames, dark }) => {
+  if (!anchorRect) return null;
+  const tooltipBg = dark ? '#181433' : '#111827';
+  const width = 220;
+  const gap = 12;
+  const showOnRight = anchorRect.right + gap + width <= window.innerWidth;
+  const left = showOnRight ? anchorRect.right + gap : Math.max(8, anchorRect.left - gap - width);
+  const top = Math.min(anchorRect.top, window.innerHeight - 220);
+
+  return createPortal(
+    <div style={{
+      position: 'fixed', top: `${Math.max(8, top)}px`, left: `${left}px`, width: `${width}px`,
+      background: tooltipBg, color: '#fff', padding: '14px 16px', borderRadius: '12px',
+      fontSize: '12px', fontWeight: '600', boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+      zIndex: 1000, border: '1px solid rgba(255,255,255,0.08)', pointerEvents: 'none',
+      display: 'flex', flexDirection: 'column', gap: '12px',
+    }}>
+      <NameGroup label="Players" dotColor="#818CF8" names={playerNames} />
+      <NameGroup label="Coaches" dotColor="#34D399" names={coachNames} />
+      {playerNames.length === 0 && coachNames.length === 0 && (
+        <span style={{ opacity: 0.7 }}>No one assigned yet</span>
+      )}
+    </div>,
+    document.body
+  );
+};
 
 const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
   const [hov, setHov] = React.useState(false);
@@ -48,30 +103,29 @@ const SummaryCard = ({ label, value, icon: SIcon, accent }) => {
   );
 };
 
+/**
+ * The batch list - a plain directory now. Everything about ONE batch (roster,
+ * coach, sessions, attendance, settings) lives at /admin/batches/:batchId
+ * (BatchDetail.jsx). See change.md Phase 2.
+ */
 export default function ManageBatches() {
-  const { players, fetchPlayers, coaches, fetchCoaches, userToken } = useStore();
+  const navigate = useNavigate();
+  const { players, fetchPlayers, coaches, fetchCoaches, learningPathway, fetchLearningPathway, userToken } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
 
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBatchId, setSelectedBatchId] = useState('');
   const [toast, setToast] = useState(null);
+  const [hoveredBatchId, setHoveredBatchId] = useState('');
+  const [hoverAnchorRect, setHoverAnchorRect] = useState(null);
 
-  const [removingPlayerId, setRemovingPlayerId] = useState('');
-  const [coachToAssign, setCoachToAssign] = useState('');
-  const [assigningCoach, setAssigningCoach] = useState(false);
-  const [removingCoachId, setRemovingCoachId] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // Batch create/update modal
+  // Create batch modal
   const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchModalMode, setBatchModalMode] = useState('create');
-  const [selectedManageBatchId, setSelectedManageBatchId] = useState('');
-  const [batchForm, setBatchForm] = useState({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '' });
+  const [batchForm, setBatchForm] = useState({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '', LearningPathway: '' });
   const [batchSaving, setBatchSaving] = useState(false);
   const [playerSearch, setPlayerSearch] = useState('');
+  const [mismatchConfirm, setMismatchConfirm] = useState(null); // [{name, pathway}] | null
 
   const fetchedRef = useRef(false);
 
@@ -98,7 +152,7 @@ export default function ManageBatches() {
     (async () => {
       setLoading(true);
       try {
-        await Promise.all([fetchPlayers(), fetchCoaches(), loadBatches()]);
+        await Promise.all([fetchPlayers(), fetchCoaches(), fetchLearningPathway(), loadBatches()]);
       } catch {
         showToast('Failed to load batches', 'error');
       } finally {
@@ -108,120 +162,33 @@ export default function ManageBatches() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedBatch = batches.find(b => b.batchId === selectedBatchId) || null;
-
-  const coachName = (coachId) => {
-    const fromBatch = selectedBatch?.coaches?.find(c => String(c.coachId) === String(coachId));
-    if (fromBatch?.name) return fromBatch.name;
-    const fromStore = coaches.find(c => String(c.coachId || c._id) === String(coachId));
-    return fromStore?.name || 'Coach';
-  };
-
-  const assignedCoachIds = (selectedBatch?.coachIds || []).map(String);
-  const availableCoaches = coaches.filter(c => !assignedCoachIds.includes(String(c.coachId || c._id)));
-
-  const refreshAfterChange = async () => {
-    await Promise.all([loadBatches(), fetchPlayers(), fetchCoaches()]);
-  };
-
-  const handleRemovePlayer = async (playerId) => {
-    if (!selectedBatchId) return;
-    setRemovingPlayerId(playerId);
-    try {
-      const res = await axios.post(CL_MANAGE_BATCH_URL, {
-        action: 'remove_player', batchId: selectedBatchId, playerId,
-      }, { headers });
-      let data = res?.data;
-      if (data?.body && typeof data.body === 'string') {
-        try { data = JSON.parse(data.body); } catch { /* ignore */ }
-      }
-      const batchDeleted = Boolean(data?.batchDeleted);
-      if (batchDeleted) setSelectedBatchId('');
-      await refreshAfterChange();
-      showToast(batchDeleted ? 'Player removed. Empty batch auto-deleted.' : 'Player removed from batch');
-    } catch {
-      showToast('Failed to remove player', 'error');
-    } finally {
-      setRemovingPlayerId('');
-    }
-  };
-
-  const handleAssignCoach = async () => {
-    if (!selectedBatchId || !coachToAssign) { showToast('Select a coach first', 'error'); return; }
-    setAssigningCoach(true);
-    try {
-      await axios.post(CL_MANAGE_BATCH_URL, {
-        action: 'assign_coach', batchId: selectedBatchId, coachId: coachToAssign,
-      }, { headers });
-      setCoachToAssign('');
-      await refreshAfterChange();
-      showToast('Coach assigned to batch');
-    } catch {
-      showToast('Failed to assign coach', 'error');
-    } finally {
-      setAssigningCoach(false);
-    }
-  };
-
-  const handleRemoveCoach = async (coachId) => {
-    if (!selectedBatchId) return;
-    setRemovingCoachId(coachId);
-    try {
-      await axios.post(CL_MANAGE_BATCH_URL, {
-        action: 'remove_coach', batchId: selectedBatchId, coachId,
-      }, { headers });
-      await refreshAfterChange();
-      showToast('Coach removed from batch');
-    } catch {
-      showToast('Failed to remove coach', 'error');
-    } finally {
-      setRemovingCoachId('');
-    }
-  };
-
-  const handleDeleteBatch = async () => {
-    if (!deleteConfirm) return;
-    setDeleting(true);
-    try {
-      await axios.post(CL_MANAGE_BATCH_URL, { action: 'delete', batchId: deleteConfirm }, { headers });
-      if (selectedBatchId === deleteConfirm) setSelectedBatchId('');
-      setDeleteConfirm(null);
-      await loadBatches();
-      showToast('Batch deleted');
-    } catch {
-      showToast('Failed to delete batch', 'error');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  /* ── Batch create/update modal ── */
-  const openCreateModal = () => {
-    setBatchModalMode('create');
-    setSelectedManageBatchId('');
-    setBatchForm({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '' });
-    setPlayerSearch('');
-    setShowBatchModal(true);
-  };
-
-  const openEditModal = (batch) => {
-    setBatchModalMode('update');
-    setSelectedManageBatchId(batch.batchId);
-    setBatchForm({
-      batchName: batch.batchName || '',
-      playerIds: (batch.playerIds || []).map(String),
-      days: batch.days || [],
-      startTime: batch.startTime || '',
-      endTime: batch.endTime || '',
+  const batchPlayerNames = (batch) => {
+    const list = batch.players?.length ? batch.players : (batch.playerIds || []).map(id => ({ playerId: id }));
+    return list.map(p => {
+      if (p.playerName || p.name) return p.playerName || p.name;
+      const fromStore = players.find(pl => String(pl.playerId) === String(p.playerId));
+      return fromStore?.playerName || fromStore?.name || 'Unknown';
     });
+  };
+
+  const batchCoachNames = (batch) => {
+    if (batch.coaches?.length) return batch.coaches.map(c => c.name || 'Coach');
+    return (batch.coachIds || []).map(id => {
+      const fromStore = coaches.find(c => String(c.coachId || c._id) === String(id));
+      return fromStore?.name || 'Coach';
+    });
+  };
+
+  /* ── Create batch modal ── */
+  const openCreateModal = () => {
+    setBatchForm({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '', LearningPathway: '' });
     setPlayerSearch('');
     setShowBatchModal(true);
   };
 
   const closeBatchModal = () => {
     setShowBatchModal(false);
-    setBatchForm({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '' });
-    setSelectedManageBatchId('');
+    setBatchForm({ batchName: '', playerIds: [], days: [], startTime: '', endTime: '', LearningPathway: '' });
     setPlayerSearch('');
   };
 
@@ -242,35 +209,48 @@ export default function ManageBatches() {
     }));
   };
 
-  const handleBatchSubmit = async (e) => {
-    e.preventDefault();
+  // Selected players whose OWN Learning Pathway differs from the batch's pathway.
+  // (Only meaningful when the batch has a pathway set; an empty batch pathway means
+  // "each player uses their own", so there's nothing to mismatch.)
+  const selectedMismatches = useMemo(() => {
+    if (!batchForm.LearningPathway) return [];
+    return players
+      .filter(p => batchForm.playerIds.includes(String(p.playerId)))
+      .filter(p => p.LearningPathway && p.LearningPathway !== batchForm.LearningPathway)
+      .map(p => ({ playerId: p.playerId, name: p.playerName || p.name, pathway: p.LearningPathway }));
+  }, [players, batchForm.playerIds, batchForm.LearningPathway]);
+
+  const handleBatchSubmit = (e) => {
+    if (e?.preventDefault) e.preventDefault();
     if (!batchForm.batchName.trim() || batchForm.playerIds.length === 0) {
       showToast('Batch name and at least one player required', 'error'); return;
     }
+    // Warn if any selected player's pathway doesn't match the batch's pathway.
+    if (selectedMismatches.length > 0) {
+      setMismatchConfirm(selectedMismatches);
+      return;
+    }
+    doCreateBatch();
+  };
+
+  const doCreateBatch = async () => {
+    setMismatchConfirm(null);
     setBatchSaving(true);
     try {
-      const scheduleFields = {
+      await axios.post(CL_MANAGE_BATCH_URL, {
+        action: 'create',
+        batchName: batchForm.batchName.trim(),
+        playerIds: batchForm.playerIds,
         days: batchForm.days,
         startTime: batchForm.startTime || null,
         endTime: batchForm.endTime || null,
-      };
-      if (batchModalMode === 'update') {
-        await axios.post(CL_MANAGE_BATCH_URL, {
-          action: 'update', batchId: selectedManageBatchId,
-          batchName: batchForm.batchName.trim(), playerIds: batchForm.playerIds,
-          ...scheduleFields,
-        }, { headers });
-      } else {
-        await axios.post(CL_MANAGE_BATCH_URL, {
-          action: 'create', batchName: batchForm.batchName.trim(), playerIds: batchForm.playerIds,
-          ...scheduleFields,
-        }, { headers });
-      }
+        LearningPathway: batchForm.LearningPathway || null,
+      }, { headers });
       await loadBatches();
       closeBatchModal();
-      showToast(batchModalMode === 'update' ? 'Batch updated' : 'Batch created');
+      showToast('Batch created');
     } catch {
-      showToast(batchModalMode === 'update' ? 'Failed to update batch' : 'Failed to create batch', 'error');
+      showToast('Failed to create batch', 'error');
     } finally {
       setBatchSaving(false);
     }
@@ -280,6 +260,12 @@ export default function ManageBatches() {
     const term = playerSearch.toLowerCase();
     return players.filter(p => (p.playerName || p.name || '').toLowerCase().includes(term));
   }, [players, playerSearch]);
+
+  const uniquePathwayNames = useMemo(() => {
+    const names = new Set();
+    (learningPathway || []).forEach(s => { if (s.LearningPathway) names.add(s.LearningPathway); });
+    return [...names].sort();
+  }, [learningPathway]);
 
   /* ── Summary stats ── */
   const totalPlayerCount = batches.reduce((s, b) => s + (b.players?.length ?? b.playerIds?.length ?? 0), 0);
@@ -310,8 +296,8 @@ export default function ManageBatches() {
               <Layers size={24} color="#fff" />
             </div>
             <div>
-              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Manage Batches</h1>
-              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>Create batches, manage players, and assign coaches</p>
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', margin: '0 0 3px', letterSpacing: '-.5px' }}>Batches</h1>
+              <p style={{ fontSize: '13px', color: 'rgba(255,255,255,.6)', margin: 0, fontWeight: '500' }}>Click a batch for its full roster, sessions, attendance and settings</p>
             </div>
           </div>
           <button
@@ -336,253 +322,152 @@ export default function ManageBatches() {
           <SummaryCard label="No Coach Yet" value={noCoach} icon={UserPlus} accent="#EF4444" />
         </div>
 
+        {/* Section label - separates the clickable batch cards from the stat tiles above */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 14px' }}>
+          <Layers size={16} color={BRAND} />
+          <h2 style={{ fontSize: '15px', fontWeight: '800', color: dark ? 'var(--cl-text)' : '#0F172A', margin: 0 }}>Your Batches</h2>
+          <span style={{ fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#94A3B8', fontWeight: '600' }}>· click any to manage</span>
+        </div>
+
         {loading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '24px' }}>
-            <Sk w="100%" h="400px" r={16} />
-            <Sk w="100%" h="400px" r={16} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '18px' }}>
+            {[1, 2, 3].map(i => <Sk key={i} w="100%" h="150px" r={18} />)}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '24px', marginBottom: '32px' }}>
-            {/* Batch list */}
-            <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-              <div style={{ padding: '18px 20px', borderBottom: `2px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`, background: dark ? 'rgba(255,255,255,0.03)' : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)' }}>
-                <h2 style={{ fontSize: '17px', fontWeight: '700', margin: '0 0 4px 0', color: dark ? 'var(--cl-text)' : '#111827' }}>Batches</h2>
-                <p style={{ fontSize: '13px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>{batches.length} batch{batches.length === 1 ? '' : 'es'}</p>
-              </div>
-              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                {batches.length > 0 ? batches.map(batch => {
-                  const [c1, c2] = pal(batch.batchName);
-                  const isSelected = selectedBatchId === batch.batchId;
-                  return (
-                  <div
-                    key={batch.batchId}
-                    onClick={() => setSelectedBatchId(batch.batchId)}
-                    style={{
-                      padding: '14px 16px 14px 14px',
-                      borderBottom: `1px solid ${dark ? 'var(--cl-border)' : '#E5E7EB'}`,
-                      cursor: 'pointer',
-                      background: isSelected
-                        ? (dark ? `${c1}20` : `${c1}0F`)
-                        : (dark ? 'transparent' : '#FFFFFF'),
-                      borderLeft: `4px solid ${isSelected ? c1 : `${c1}55`}`,
-                      transition: 'all 0.15s ease',
-                    }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = dark ? `${c1}12` : `${c1}08`; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = dark ? 'transparent' : '#FFFFFF'; }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                      <div style={{
-                        width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
-                        background: `linear-gradient(135deg, ${c1}, ${c2})`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '12px', fontWeight: '800', color: 'white',
-                        boxShadow: `0 2px 8px ${c1}44`,
-                      }}>
-                        {batch.batchName.charAt(0).toUpperCase()}
-                      </div>
-                      <p style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: dark ? 'var(--cl-text)' : '#111827', flex: 1 }}>{batch.batchName}</p>
-                      {isSelected && (
-                        <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: c1, boxShadow: `0 0 6px ${c1}` }} />
-                      )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '18px', marginBottom: '32px' }}>
+            {batches.length > 0 ? batches.map(batch => {
+              const [c1, c2] = pal(batch.batchName);
+              return (
+                <div
+                  key={batch.batchId}
+                  onClick={() => navigate(`/admin/batches/${batch.batchId}`)}
+                  onMouseEnter={e => {
+                    setHoveredBatchId(batch.batchId);
+                    setHoverAnchorRect(e.currentTarget.getBoundingClientRect());
+                    e.currentTarget.style.boxShadow = `0 14px 32px ${c1}40`;
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    const foot = e.currentTarget.querySelector('[data-foot]');
+                    if (foot) foot.style.gap = '8px';
+                  }}
+                  onMouseLeave={e => {
+                    setHoveredBatchId('');
+                    setHoverAnchorRect(null);
+                    e.currentTarget.style.boxShadow = `0 4px 14px ${c1}1f`;
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    const foot = e.currentTarget.querySelector('[data-foot]');
+                    if (foot) foot.style.gap = '5px';
+                  }}
+                  style={{
+                    background: dark ? 'var(--cl-surface)' : '#fff',
+                    border: `1px solid ${dark ? 'var(--cl-border)' : '#EEF2F7'}`,
+                    borderRadius: '18px', cursor: 'pointer', overflow: 'hidden',
+                    boxShadow: `0 4px 14px ${c1}1f`, transition: 'all .22s ease',
+                  }}
+                >
+                  {/* Gradient header band - this is what makes a batch look unlike a stat tile */}
+                  <div style={{
+                    background: `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`,
+                    padding: '16px 18px', display: 'flex', alignItems: 'center', gap: '12px',
+                    position: 'relative', overflow: 'hidden',
+                  }}>
+                    <div style={{ position: 'absolute', top: '-30px', right: '-20px', width: '90px', height: '90px', borderRadius: '50%', background: 'rgba(255,255,255,0.12)', pointerEvents: 'none' }} />
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '12px', flexShrink: 0,
+                      background: 'rgba(255,255,255,0.22)', border: '1.5px solid rgba(255,255,255,0.35)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '18px', fontWeight: '800', color: 'white',
+                    }}>
+                      {batch.batchName.charAt(0).toUpperCase()}
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', paddingLeft: '40px' }}>
-                      <span style={{ fontSize: '11.5px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <Users size={11} /> {batch.players?.length ?? batch.playerIds?.length ?? 0}
-                      </span>
-                      <span style={{ fontSize: '11.5px', color: dark ? 'var(--cl-text-3)' : '#6B7280', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                        <UserCheck size={11} /> {batch.coachIds?.length ?? 0}
-                      </span>
+                    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                      <p style={{ fontSize: '15.5px', fontWeight: '800', margin: 0, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-.2px' }}>
+                        {batch.batchName}
+                      </p>
+                      <p style={{ fontSize: '11.5px', margin: '2px 0 0', color: 'rgba(255,255,255,0.8)', display: 'flex', gap: '10px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><Users size={11} /> {batch.players?.length ?? batch.playerIds?.length ?? 0} players</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><UserCheck size={11} /> {batch.coachIds?.length ?? 0} coach{(batch.coachIds?.length ?? 0) === 1 ? '' : 'es'}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: '14px 18px 16px' }}>
+                    {/* Player name bubbles (the hover roster still shows the full list) */}
+                    {(() => {
+                      const names = batchPlayerNames(batch);
+                      if (names.length === 0) return null;
+                      const shown = names.slice(0, 4);
+                      const extra = names.length - shown.length;
+                      return (
+                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                          {shown.map((n, i) => (
+                            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: '600', color: dark ? 'var(--cl-text-2)' : '#334155', background: dark ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px solid ${c1}22`, padding: '3px 9px 3px 4px', borderRadius: '999px', maxWidth: '100%' }}>
+                              <span style={{ width: '18px', height: '18px', borderRadius: '50%', background: `linear-gradient(135deg, ${c1}, ${c2})`, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: '800', flexShrink: 0 }}>
+                                {(n || '?').charAt(0).toUpperCase()}
+                              </span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n}</span>
+                            </span>
+                          ))}
+                          {extra > 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '11px', fontWeight: '700', color: c1, background: `${c1}14`, padding: '3px 10px', borderRadius: '999px' }}>
+                              +{extra}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', minHeight: '22px' }}>
+                      {batch.LearningPathway && (
+                        <span style={{ fontSize: '10.5px', color: c1, display: 'inline-flex', alignItems: 'center', gap: '3px', background: `${c1}14`, padding: '3px 9px', borderRadius: '20px', fontWeight: '700' }}>
+                          <Layers size={10} /> {batch.LearningPathway}
+                        </span>
+                      )}
                       {batch.days?.length > 0 && (
-                        <span style={{ fontSize: '10.5px', color: c1, display: 'inline-flex', alignItems: 'center', gap: '3px', background: `${c1}18`, padding: '1px 7px', borderRadius: '10px', fontWeight: '600' }}>
+                        <span style={{ fontSize: '10.5px', color: dark ? 'var(--cl-text-2)' : '#475569', display: 'inline-flex', alignItems: 'center', gap: '3px', background: dark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', padding: '3px 9px', borderRadius: '20px', fontWeight: '600' }}>
                           <Calendar size={10} /> {batch.days.join(' · ')}
                         </span>
                       )}
                       {batch.startTime && (
-                        <span style={{ fontSize: '10.5px', color: c2, display: 'inline-flex', alignItems: 'center', gap: '3px', background: `${c2}18`, padding: '1px 7px', borderRadius: '10px', fontWeight: '600' }}>
-                          <Clock size={10} /> {batch.startTime}{batch.endTime ? `–${batch.endTime}` : ''}
+                        <span style={{ fontSize: '10.5px', color: dark ? 'var(--cl-text-2)' : '#475569', display: 'inline-flex', alignItems: 'center', gap: '3px', background: dark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', padding: '3px 9px', borderRadius: '20px', fontWeight: '600' }}>
+                          <Clock size={10} /> {formatTime12h(batch.startTime)}{batch.endTime ? `–${formatTime12h(batch.endTime)}` : ''}
                         </span>
                       )}
+                      {!batch.LearningPathway && !batch.days?.length && !batch.startTime && (
+                        <span style={{ fontSize: '11px', color: dark ? 'var(--cl-text-3)' : '#94A3B8' }}>No schedule set</span>
+                      )}
+                    </div>
+                    <div data-foot style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${dark ? 'var(--cl-border)' : '#F1F5F9'}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '5px', color: c1, fontSize: '12.5px', fontWeight: '800', transition: 'gap .2s ease' }}>
+                      Open batch <ChevronRight size={15} />
                     </div>
                   </div>
-                  );
-                }) : (
-                  <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-                    <Layers size={32} style={{ color: '#7C3AED', opacity: 0.5, marginBottom: '8px' }} />
-                    <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '600', margin: '0 0 4px 0' }}>No batches yet</p>
-                    <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>Create one to get started</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Batch detail */}
-            {selectedBatch ? (
-              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${pal(selectedBatch.batchName)[0]}44`, borderRadius: '16px', overflow: 'hidden', boxShadow: `0 4px 20px ${pal(selectedBatch.batchName)[0]}22` }}>
-                <div style={{
-                  padding: '20px 24px', background: `linear-gradient(135deg, ${pal(selectedBatch.batchName)[0]} 0%, ${pal(selectedBatch.batchName)[1]} 100%)`, color: 'white',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap'
-                }}>
-                  <div>
-                    <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 4px 0' }}>{selectedBatch.batchName}</h2>
-                    <p style={{ fontSize: '13px', opacity: 0.9, margin: '0 0 6px' }}>
-                      {selectedBatch.players?.length ?? 0} players · {selectedBatch.coachIds?.length ?? 0} coaches
-                    </p>
-                    {(selectedBatch.days?.length > 0 || selectedBatch.startTime) && (
-                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-                        {selectedBatch.days?.length > 0 && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.12)', padding: '3px 10px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.2)' }}>
-                            <Calendar size={11} /> {selectedBatch.days.join(' · ')}
-                          </span>
-                        )}
-                        {selectedBatch.startTime && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.12)', padding: '3px 10px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.2)' }}>
-                            <Clock size={11} /> {selectedBatch.startTime}{selectedBatch.endTime ? ` – ${selectedBatch.endTime}` : ''}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => openEditModal(selectedBatch)}
-                      style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.15)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm(selectedBatch.batchId)}
-                      style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.9)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
-                  </div>
                 </div>
-
-                {/* Coaches section */}
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <UserCheck size={16} color={BRAND} /> Assigned Coaches
-                  </h3>
-
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
-                    {assignedCoachIds.length > 0 ? assignedCoachIds.map(cid => (
-                      <span key={cid} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '8px',
-                        padding: '6px 8px 6px 14px', borderRadius: '999px',
-                        background: '#EEF2FF', color: BRAND, fontSize: '13px', fontWeight: '600', border: '1px solid #C7D2FE'
-                      }}>
-                        {coachName(cid)}
-                        <button
-                          onClick={() => handleRemoveCoach(cid)}
-                          disabled={removingCoachId === cid}
-                          title="Remove coach"
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            width: '20px', height: '20px', borderRadius: '50%', border: 'none',
-                            background: '#C7D2FE', color: BRAND, cursor: 'pointer'
-                          }}
-                        >
-                          {removingCoachId === cid ? <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <X size={12} />}
-                        </button>
-                      </span>
-                    )) : (
-                      <p style={{ fontSize: '13px', color: '#9CA3AF', margin: 0 }}>No coaches assigned yet</p>
-                    )}
-                  </div>
-
-                  {/* Assign coach row */}
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-                      <select
-                        value={coachToAssign}
-                        onChange={(e) => setCoachToAssign(e.target.value)}
-                        style={{
-                          width: '100%', padding: '10px 12px', borderRadius: '8px',
-                          border: '2px solid #E5E7EB', fontSize: '14px', background: 'white', cursor: 'pointer'
-                        }}
-                      >
-                        <option value="">Select a coach to assign…</option>
-                        {availableCoaches.map(c => (
-                          <option key={c.coachId || c._id} value={c.coachId || c._id}>
-                            {c.name}{c.specialization ? ` (${c.specialization})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={handleAssignCoach}
-                      disabled={!coachToAssign || assigningCoach}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px',
-                        background: (!coachToAssign || assigningCoach) ? '#E5E7EB' : `linear-gradient(135deg, ${BRAND} 0%, #000000 100%)`,
-                        color: (!coachToAssign || assigningCoach) ? '#9CA3AF' : 'white',
-                        border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600',
-                        cursor: (!coachToAssign || assigningCoach) ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      {assigningCoach ? <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <UserPlus size={16} />}
-                      Assign
-                    </button>
-                  </div>
-                </div>
-
-                {/* Players section */}
-                <div style={{ padding: '20px 24px' }}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#111827', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Users size={16} color={BRAND} /> Players ({selectedBatch.players?.length ?? 0})
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '360px', overflowY: 'auto' }}>
-                    {(selectedBatch.players || []).map(p => (
-                      <div key={p.playerId} style={{
-                        display: 'flex', alignItems: 'center', gap: '12px',
-                        padding: '10px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: '10px'
-                      }}>
-                        <div style={{
-                          width: '34px', height: '34px', borderRadius: '50%',
-                          background: pal(p.playerName)[0],
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '13px', flexShrink: 0
-                        }}>
-                          {(p.playerName || '?').charAt(0).toUpperCase()}
-                        </div>
-                        <span style={{ flex: 1, fontSize: '14px', fontWeight: '600', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {p.playerName}
-                        </span>
-                        <button
-                          onClick={() => handleRemovePlayer(p.playerId)}
-                          disabled={removingPlayerId === p.playerId}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px',
-                            background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA',
-                            borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', flexShrink: 0
-                          }}
-                        >
-                          {removingPlayerId === p.playerId
-                            ? <Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                            : <><X size={13} /> Remove</>}
-                        </button>
-                      </div>
-                    ))}
-                    {(selectedBatch.players?.length ?? 0) === 0 && (
-                      <p style={{ fontSize: '13px', color: '#9CA3AF', margin: 0 }}>No players in this batch.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
-                <div style={{ textAlign: 'center', color: dark ? 'var(--cl-text-3)' : '#9CA3AF' }}>
-                  <Layers size={36} color='#60A5FA' opacity={0.6} style={{ marginBottom: '16px' }} />
-                  <h3 style={{ fontSize: '18px', fontWeight: '600', color: dark ? 'var(--cl-text-2)' : '#111827', margin: '0 0 8px 0' }}>No Batch Selected</h3>
-                  <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>Select a batch to manage its players and coaches</p>
-                </div>
+              );
+            }) : (
+              <div style={{ gridColumn: '1 / -1', padding: '60px 20px', textAlign: 'center', background: dark ? 'var(--cl-surface)' : '#fff', border: `1.5px solid ${dark ? 'var(--cl-border)' : '#E2E8F0'}`, borderRadius: '16px' }}>
+                <Layers size={32} style={{ color: '#7C3AED', opacity: 0.5, marginBottom: '8px' }} />
+                <p style={{ fontSize: '14px', color: dark ? 'var(--cl-text-2)' : '#111827', fontWeight: '600', margin: '0 0 4px 0' }}>No batches yet</p>
+                <p style={{ fontSize: '12px', color: dark ? 'var(--cl-text-3)' : '#6B7280', margin: 0 }}>Create one to get started</p>
               </div>
             )}
           </div>
         )}
+
+        {hoveredBatchId && (() => {
+          const hoveredBatch = batches.find(b => b.batchId === hoveredBatchId);
+          if (!hoveredBatch) return null;
+          return (
+            <BatchRosterTooltip
+              anchorRect={hoverAnchorRect}
+              playerNames={batchPlayerNames(hoveredBatch)}
+              coachNames={batchCoachNames(hoveredBatch)}
+              dark={dark}
+            />
+          );
+        })()}
       </div>
 
-      {/* Create / Update batch modal */}
-      <Modal isOpen={showBatchModal} onClose={closeBatchModal} title={batchModalMode === 'update' ? 'Update Batch' : 'Create Batch'}>
+      {/* Create batch modal */}
+      <Modal isOpen={showBatchModal} onClose={closeBatchModal} title="Create Batch">
         <form onSubmit={handleBatchSubmit} style={{ padding: '20px', width: 'min(92vw, 520px)' }}>
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>
@@ -599,9 +484,25 @@ export default function ManageBatches() {
             />
           </div>
 
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'flex', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', alignItems: 'center', gap: '6px' }}>
+              <Layers size={14} color={BRAND} /> Learning Pathway
+            </label>
+            <select
+              value={batchForm.LearningPathway}
+              onChange={(e) => setBatchForm(prev => ({ ...prev, LearningPathway: e.target.value }))}
+              style={{ width: '100%', padding: '11px 14px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', background: 'white', cursor: 'pointer' }}
+            >
+              <option value="">No pathway set (players use their own profile pathway)</option>
+              {uniquePathwayNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Schedule: days */}
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ display: 'flex', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '10px', alignItems: 'center', gap: '6px' }}>
               <Calendar size={14} color={BRAND} /> Session Days
             </label>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -623,10 +524,10 @@ export default function ManageBatches() {
           {/* Schedule: time range */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ display: 'flex', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', alignItems: 'center', gap: '6px' }}>
                 <Clock size={14} color={BRAND} /> Start Time
               </label>
-              <input type="time" value={batchForm.startTime}
+              <input type="time" step={900} value={batchForm.startTime}
                 onChange={e => setBatchForm(prev => ({ ...prev, startTime: e.target.value }))}
                 style={{ width: '100%', padding: '10px 12px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', cursor: 'pointer' }}
                 onFocus={e => e.target.style.borderColor = BRAND}
@@ -634,10 +535,10 @@ export default function ManageBatches() {
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ display: 'flex', fontSize: '13px', fontWeight: '700', color: '#111827', marginBottom: '8px', alignItems: 'center', gap: '6px' }}>
                 <Clock size={14} color="#10B981" /> End Time
               </label>
-              <input type="time" value={batchForm.endTime}
+              <input type="time" step={900} value={batchForm.endTime}
                 onChange={e => setBatchForm(prev => ({ ...prev, endTime: e.target.value }))}
                 style={{ width: '100%', padding: '10px 12px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', cursor: 'pointer' }}
                 onFocus={e => e.target.style.borderColor = '#10B981'}
@@ -653,7 +554,6 @@ export default function ManageBatches() {
             <span style={{ fontSize: '12px', color: '#6B7280' }}>{batchForm.playerIds.length} selected</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', border: '1px solid #E5E7EB', borderRadius: '8px', marginBottom: '10px' }}>
-            <Search size={16} color="#9CA3AF" />
             <input
               type="text"
               placeholder="Search players…"
@@ -665,6 +565,7 @@ export default function ManageBatches() {
           <div style={{ maxHeight: '260px', overflowY: 'auto', border: '1px solid #E5E7EB', borderRadius: '8px' }}>
             {modalPlayers.map(p => {
               const checked = batchForm.playerIds.includes(String(p.playerId));
+              const mismatch = batchForm.LearningPathway && p.LearningPathway && p.LearningPathway !== batchForm.LearningPathway;
               return (
                 <label key={p.playerId} style={{
                   display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
@@ -672,7 +573,12 @@ export default function ManageBatches() {
                   background: checked ? '#EEF2FF' : 'white'
                 }}>
                   <input type="checkbox" checked={checked} onChange={() => togglePlayer(p.playerId)} />
-                  <span style={{ fontSize: '14px', color: '#111827' }}>{p.playerName || p.name}</span>
+                  <span style={{ fontSize: '14px', color: '#111827', flex: 1 }}>{p.playerName || p.name}</span>
+                  {mismatch && (
+                    <span title={`This player's pathway is "${p.LearningPathway}", different from the batch pathway`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', fontWeight: '700', color: '#B45309', background: '#FEF3C7', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: '999px', flexShrink: 0 }}>
+                      <AlertTriangle size={11} /> {p.LearningPathway}
+                    </span>
+                  )}
                 </label>
               );
             })}
@@ -689,37 +595,43 @@ export default function ManageBatches() {
             <button type="submit" disabled={batchSaving}
               style={{
                 padding: '12px 16px', borderRadius: '8px', fontWeight: '600',
-                background: `linear-gradient(135deg, ${BRAND} 0%, #000000 100%)`, color: 'white', border: 'none',
+                background: `linear-gradient(135deg, ${BRAND} 0%, #000000ff 100%)`, color: 'white', border: 'none',
                 cursor: batchSaving ? 'not-allowed' : 'pointer', fontSize: '14px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: batchSaving ? 0.8 : 1
               }}>
-              {batchSaving && <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-              {batchModalMode === 'update' ? 'Update' : 'Create'}
+              Create
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete confirm modal */}
-      {deleteConfirm && (
-        <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Batch">
-          <div style={{ padding: '24px', textAlign: 'center' }}>
-            <div style={{ width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-              <Trash2 size={28} color="#EF4444" />
+      {/* Pathway mismatch warning: selected players whose own pathway differs from the batch's */}
+      {mismatchConfirm && (
+        <Modal isOpen={!!mismatchConfirm} onClose={() => setMismatchConfirm(null)} title="Pathway mismatch">
+          <div style={{ width: 'min(92vw, 480px)', padding: '4px 4px 8px' }}>
+            <div style={{ display: 'flex', gap: '12px', padding: '14px 16px', borderRadius: '12px', background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: '16px' }}>
+              <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '1px' }} />
+              <p style={{ fontSize: '13.5px', color: '#7F1D1D', margin: 0, lineHeight: 1.6 }}>
+                {mismatchConfirm.length} selected player{mismatchConfirm.length === 1 ? '' : 's'} {mismatchConfirm.length === 1 ? 'has' : 'have'} a Learning Pathway that <strong>doesn't match</strong> this batch (<strong>{batchForm.LearningPathway}</strong>). Fix the player's pathway to match the batch before creating.
+              </p>
             </div>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#111827', marginBottom: '8px' }}>Delete this batch?</h3>
-            <p style={{ fontSize: '14px', color: '#666', marginBottom: '24px' }}>This action cannot be undone.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <button onClick={() => setDeleteConfirm(null)} disabled={deleting}
-                style={{ padding: '10px 16px', borderRadius: '8px', fontWeight: '500', backgroundColor: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={handleDeleteBatch} disabled={deleting}
-                style={{ padding: '10px 16px', borderRadius: '8px', fontWeight: '500', backgroundColor: '#EF4444', color: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                {deleting && <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />}
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
+            <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #F3F4F6', borderRadius: '10px', marginBottom: '18px' }}>
+              {mismatchConfirm.map((m, i) => (
+                <div key={m.playerId || i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '9px 12px', borderBottom: i === mismatchConfirm.length - 1 ? 'none' : '1px solid #F3F4F6' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: '13.5px', fontWeight: '600', color: '#111827', margin: 0 }}>{m.name}</p>
+                    <p style={{ fontSize: '11px', color: '#B45309', margin: '2px 0 0', fontWeight: '700' }}>{m.pathway}</p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/admin/players', { state: { editPlayerId: m.playerId } })}
+                    style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: '8px', border: 'none', background: `linear-gradient(135deg, ${BRAND}, #000)`, color: '#fff', fontSize: '12px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    <UserPen size={12} /> Fix pathway
+                  </button>
+                </div>
+              ))}
             </div>
+            <button onClick={() => setMismatchConfirm(null)} style={{ width: '100%', padding: '11px 16px', borderRadius: '9px', fontWeight: '600', background: '#F3F4F6', color: '#111827', border: '1.5px solid #E5E7EB', cursor: 'pointer', fontSize: '14px' }}>Close</button>
           </div>
         </Modal>
       )}

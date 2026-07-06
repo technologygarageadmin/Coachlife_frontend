@@ -108,7 +108,7 @@ STRICT RULES:
 - DO NOT use analogy (no food, tailor, lego, etc.)
 - DO NOT use HTML
 - ONLY plain text
-- Direct explanation like a teacher
+- Direct explanation like a coacher
 - Max 3 sentences
 - MUST be different from old
 

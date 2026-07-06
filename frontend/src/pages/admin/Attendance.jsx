@@ -10,7 +10,7 @@ import SkeletonLoaderStyles from '../../components/SkeletonLoader';
 import {
   CalendarCheck, CheckCircle, Save, ChevronDown, Users,
   ChevronLeft, ChevronRight, UserCheck, BarChart2, User,
-  Calendar, CircleHelp, Layers,
+  Calendar, CircleHelp, Layers, Trash2, AlertTriangle, Loader,
 } from 'lucide-react';
 
 const BRAND  = '#060030ff';
@@ -22,6 +22,7 @@ const CL_GET_BATCHES_URL     = 'https://ts6wti3133.execute-api.ap-south-1.amazon
 const CL_MANAGE_BATCH_URL    = 'https://rwl4dpqgu5.execute-api.ap-south-1.amazonaws.com/default/CL_Manage_Batch';
 const CL_GET_ATTENDANCE_URL  = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 const CL_MARK_ATTENDANCE_URL    = 'https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance';
+const CL_VIEW_SESSIONCARD_URL   = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 
 const STATUS_CONFIG = {
   Present: { bg: '#dcfce7', color: '#16a34a', border: '#bbf7d0', dot: '#16a34a' },
@@ -206,6 +207,9 @@ export default function Attendance() {
   const [toastMsg, setToastMsg]             = useState('');
   const [toastType, setToastType]           = useState('success');
   const [showInstructionModal, setShowInstructionModal] = useState(false);
+  // { type: 'record' | 'group', label, playerId?, batchId?, sessionDate } | null
+  const [deleteTarget, setDeleteTarget]     = useState(null);
+  const [deleting, setDeleting]             = useState(false);
   const fetchedRef                          = useRef(false);
 
   // ── tabs
@@ -340,55 +344,41 @@ export default function Attendance() {
     }];
   }, [batches, players]);
 
-  // Build per-player session info from available app data (no browser CORS call to session-card API)
+  // Read each player's real latest session card (session number + status) instead of
+  // guessing from attendance history or sessionCardIds.length - those two heuristics
+  // disagreed with each other and with the actual stored value on the card.
   const fetchPlayerCardInfo = useCallback(async (playerIds) => {
     setCardInfoLoading(true);
     const map = new Map();
-    const contextMap = new Map();
 
-    allRecords.forEach((record) => {
-      const playerId = String(record.playerId || '').trim();
-      const sessionNumber = Number(record.sessionNumber);
-      if (!playerId || !Number.isFinite(sessionNumber) || sessionNumber <= 0) return;
+    await Promise.all(playerIds.map(async (pid) => {
+      try {
+        const res = await axios.post(
+          CL_VIEW_SESSIONCARD_URL,
+          { playerId: pid },
+          { headers }
+        );
+        let d = res.data;
+        if (d?.body && typeof d.body === 'string') d = JSON.parse(d.body);
+        const card = d?.sessionCard || d?.data || d;
+        const sessionNumber = Number(card?.session);
+        if (!Number.isFinite(sessionNumber) || sessionNumber <= 0) return;
 
-      const status = String(record.attendanceStatus || '').trim();
-      const current = contextMap.get(playerId) || { inProgress: null, lastCompleted: null };
-      if (status === '') {
-        if (current.inProgress == null || sessionNumber > current.inProgress) current.inProgress = sessionNumber;
-      } else if (current.lastCompleted == null || sessionNumber > current.lastCompleted) {
-        current.lastCompleted = sessionNumber;
+        const rawStatus = String(card?.status || '').toLowerCase().replace(/[\s_]/g, '');
+        map.set(String(pid), {
+          sessionNumber,
+          status: rawStatus,
+          sessionDate: card?.sessionDate || null,
+        });
+      } catch {
+        // No card yet for this player, or the request failed - leave unset so the
+        // UI shows "-" rather than a guessed number.
       }
-      contextMap.set(playerId, current);
-    });
-
-    playerIds.forEach((pid) => {
-      const player = players.find(p => String(p.playerId) === String(pid));
-      const cardCount = Array.isArray(player?.sessionCardIds) ? player.sessionCardIds.length : 0;
-      const context = contextMap.get(String(pid));
-
-      let sessionNumber = null;
-      let status = '';
-
-      // Prefer last completed session for auto number.
-      if (context?.lastCompleted != null && Number.isFinite(context.lastCompleted) && context.lastCompleted > 0) {
-        sessionNumber = Number(context.lastCompleted);
-        status = 'completed';
-      } else if (context?.inProgress != null && Number.isFinite(context.inProgress) && context.inProgress > 0) {
-        sessionNumber = Number(context.inProgress);
-        status = 'in_progress';
-      } else if (cardCount > 0) {
-        // Fallback when attendance history is not available yet.
-        sessionNumber = cardCount;
-      }
-
-      if (sessionNumber != null) {
-        map.set(String(pid), { sessionNumber, status });
-      }
-    });
+    }));
 
     setPlayerCardInfo(map);
     setCardInfoLoading(false);
-  }, [players, allRecords]);
+  }, [headers]);
 
   // Fetch card info whenever the selected batch changes
   useEffect(() => {
@@ -700,6 +690,30 @@ export default function Attendance() {
     }
   }
 
+  // Delete attendance: a single player's record, or a whole batch-group for a
+  // date. Reuses CL_Mark_Attendance's `delete` action. Refreshes every view's
+  // record source afterward so calendar / batch / player all stay in sync.
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const payload = { action: 'delete', sessionDate: deleteTarget.sessionDate };
+      if (deleteTarget.playerId) payload.playerId = deleteTarget.playerId;
+      if (deleteTarget.batchId) payload.batchId = deleteTarget.batchId;
+      const res = await axios.post(CL_MARK_ATTENDANCE_URL, payload, { headers });
+      const deleted = res.data?.deleted ?? res.data?.body;
+      await loadAllRecords();
+      if (selectedBatchId && activeTab === 'batch') await loadBatchRecords(selectedBatchId, batchDate);
+      if (selectedPlayerId && activeTab === 'player') await loadPlayerRecords(selectedPlayerId);
+      setDeleteTarget(null);
+      toast(typeof deleted === 'number' ? `Deleted ${deleted} record(s)` : 'Attendance deleted');
+    } catch {
+      toast('Failed to delete attendance', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function playerRecordKey(record) {
     return record.attendanceId || makeRecordKey(record.playerId, record.batchId, record.sessionDate);
   }
@@ -792,7 +806,7 @@ export default function Attendance() {
 
   return (
     <Layout>
-      <style>{`@keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }`}</style>
+      <style>{`@keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} } @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
       <SkeletonLoaderStyles />
       {toastMsg && (
         <Toast message={toastMsg} type={toastType} duration={3000} onClose={() => setToastMsg('')} />
@@ -1144,6 +1158,20 @@ export default function Attendance() {
                               }}>
                                 {batch.players.length} players
                               </span>
+                              {batch.batchId && (
+                                <button
+                                  title="Delete all attendance for this batch on this date"
+                                  onClick={() => setDeleteTarget({
+                                    type: 'group',
+                                    label: `all ${batch.players.length} record(s) for ${batch.batchName || 'this batch'} on ${selectedDateStr}`,
+                                    batchId: batch.batchId,
+                                    sessionDate: selectedDateStr,
+                                  })}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: 'auto', padding: '3px 9px', borderRadius: '7px', border: `1px solid ${dark ? 'rgba(220,38,38,0.3)' : '#FECACA'}`, background: dark ? 'rgba(220,38,38,0.1)' : '#FEF2F2', color: '#DC2626', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                  <Trash2 size={12} /> Delete all
+                                </button>
+                              )}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               {batch.players.map(p => (
@@ -1169,7 +1197,24 @@ export default function Attendance() {
                                       </p>
                                     )}
                                   </div>
-                                  <StatusBadge status={p.attendanceStatus} />
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <StatusBadge status={p.attendanceStatus} />
+                                    <button
+                                      title="Delete this attendance record"
+                                      onClick={() => setDeleteTarget({
+                                        type: 'record',
+                                        label: `${p.playerName}'s attendance on ${p.sessionDate || selectedDateStr}`,
+                                        playerId: p.playerId,
+                                        batchId: p.batchId || '',
+                                        sessionDate: p.sessionDate || selectedDateStr,
+                                      })}
+                                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '30px', height: '30px', borderRadius: '8px', border: `1px solid ${dark ? 'rgba(220,38,38,0.3)' : '#FECACA'}`, background: dark ? 'rgba(220,38,38,0.1)' : '#FEF2F2', color: '#DC2626', cursor: 'pointer', flexShrink: 0 }}
+                                      onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(220,38,38,0.2)' : '#FEE2E2'}
+                                      onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(220,38,38,0.1)' : '#FEF2F2'}
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -1873,6 +1918,36 @@ export default function Attendance() {
           </div>
         </div>
       </Modal>
+
+      {/* Confirm attendance delete */}
+      {deleteTarget && (
+        <Modal isOpen={!!deleteTarget} onClose={() => { if (!deleting) setDeleteTarget(null); }} title="Delete attendance?">
+          <div style={{ width: 'min(90vw, 440px)', padding: '4px 4px 8px' }}>
+            <div style={{ display: 'flex', gap: '12px', padding: '14px 16px', borderRadius: '12px', background: '#FEF2F2', border: '1px solid #FECACA', marginBottom: '18px' }}>
+              <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '1px' }} />
+              <p style={{ fontSize: '13.5px', color: '#7F1D1D', margin: 0, lineHeight: 1.6 }}>
+                This permanently deletes <strong>{deleteTarget.label}</strong>. This can't be undone.
+              </p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                style={{ padding: '11px 16px', borderRadius: '9px', fontWeight: '600', background: '#F3F4F6', color: '#111827', border: '1.5px solid #E5E7EB', cursor: deleting ? 'not-allowed' : 'pointer', fontSize: '14px' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', padding: '11px 16px', borderRadius: '9px', fontWeight: '700', background: 'linear-gradient(135deg, #DC2626, #991B1B)', color: '#fff', border: 'none', cursor: deleting ? 'not-allowed' : 'pointer', fontSize: '14px', opacity: deleting ? 0.8 : 1 }}
+              >
+                {deleting ? <><Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> Deleting…</> : <><Trash2 size={15} /> Delete</>}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Layout>
   );
 }

@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useCallback, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader, Plus, Inbox, ChevronLeft, Search, Filter, TrendingUp, CheckCircle, Calendar, BookOpen, Star, Zap, Activity, Tag, Award } from 'lucide-react';
+import StatusBadge from '../../components/StatusBadge';
+import { getStatusGroup } from '../../utils/statusGroups';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -23,14 +25,7 @@ const isCompleted = (status) => normalizeStatus(status) === 'completed';
 const isPending = (status) => normalizeStatus(status) === 'pending';
 
 const SessionCard = memo(({ session, isCompletedSession, navigate, selectedPlayer, shouldShowStartButton }) => {
-  const statusColor = isCompleted(session.status) ? '#10B981'
-    : isInProgress(session.status) ? '#6366F1'
-    : isPending(session.status) ? '#D97706'
-    : '#94A3B8';
-  const statusBg = isCompleted(session.status) ? 'rgba(16,185,129,0.1)'
-    : isInProgress(session.status) ? 'rgba(99,102,241,0.1)'
-    : isPending(session.status) ? '#FEF3C7'
-    : '#F8FAFC';
+  const { color: statusColor, bg: statusBg } = getStatusGroup(session.status);
 
   return (
     <div style={{
@@ -86,18 +81,7 @@ const SessionCard = memo(({ session, isCompletedSession, navigate, selectedPlaye
             <p style={{ fontSize: '11px', fontWeight: '600', color: '#94A3B8', margin: 0, textTransform: 'uppercase' }}>Session</p>
           </div>
         </div>
-        <span style={{
-          padding: '6px 12px',
-          background: statusBg,
-          color: statusColor,
-          borderRadius: '6px',
-          fontSize: '11px',
-          fontWeight: '700',
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px'
-        }}>
-          {isCompleted(session.status) ? 'Completed' : isInProgress(session.status) ? 'In Progress' : isPending(session.status) ? 'Pending' : session.status || 'Draft'}
-        </span>
+        <StatusBadge status={session.status} />
       </div>
 
       {/* Main Content */}

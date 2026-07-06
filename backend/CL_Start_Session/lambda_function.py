@@ -144,7 +144,11 @@ def lambda_handler(event, context):
 
         # -------- START SESSION --------
         if current_status in ("UPCOMING", "pending"):
-            if current_session != last_completed_session + 1:
+            # A pending card is a MAKE-UP for a missed/unfinished session - the coach
+            # clears it out of order, any time, so it is never gated on completing an
+            # earlier session. The sequential order-check applies only to a normal
+            # upcoming card (the regular forward flow).
+            if current_status == "UPCOMING" and current_session != last_completed_session + 1:
                 # Allow starting if all sessions in the gap are pending (player was absent/excused)
                 gap_cards = list(session_cards.find(
                     {

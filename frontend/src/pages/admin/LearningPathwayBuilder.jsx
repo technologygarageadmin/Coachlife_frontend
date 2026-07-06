@@ -384,7 +384,7 @@ const LearningPathwayBuilder = () => {
                               </span>
                             </div>
                             <p style={{ fontSize: '11.5px', color: textSecondary, margin: '0 0 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {pathway.Objective || '—'}
+                              {pathway.Objective || '-'}
                             </p>
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>

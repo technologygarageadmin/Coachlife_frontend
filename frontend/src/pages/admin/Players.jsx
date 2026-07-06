@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, createElement } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Modal } from '../../components/Modal';
@@ -100,7 +101,7 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts, surface, border 
       }}
       onClick={() => onView(player)}
     >
-      {/* Top band — consistent brand color */}
+      {/* Top band - consistent brand color */}
       <div style={{
         height:'72px', position:'relative', flexShrink:0,
         background:'linear-gradient(135deg, #060030 0%, #1a0060 100%)',
@@ -228,6 +229,8 @@ const PlayerCard = ({ player, onEdit, onDelete, onView, maxPts, surface, border 
    MAIN COMPONENT
 ════════════════════════════════════════════════ */
 const Players = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const {
     players, fetchPlayers, addPlayerRemote, updatePlayerRemote,
     deletePlayerRemote, learningPathway, fetchLearningPathway,
@@ -339,6 +342,18 @@ const Players = () => {
     setFormError(''); setIsModalOpen(true);
   };
   const closeModal = () => { setIsModalOpen(false); setFormData(emptyForm); setIsEditMode(false); setEditingPlayerId(null); setFormError(''); };
+
+  // Deep-link: another page (e.g. a batch's pathway-mismatch prompt) can send us
+  // here with { editPlayerId } to open that player's edit form straight away.
+  useEffect(() => {
+    const pid = location.state?.editPlayerId;
+    if (!pid || players.length === 0) return;
+    const row = players.find(p => String(p.playerId) === String(pid));
+    if (row) openEdit(row);
+    // clear the state so it doesn't re-open on back/refresh
+    navigate(location.pathname, { replace: true, state: {} });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.editPlayerId, players.length]);
 
   const handleSubmit = async () => {
     setFormError('');
@@ -667,6 +682,11 @@ const Players = () => {
                     </div>
                   ))}
 
+                  <button
+                    onClick={() => navigate(`/admin/player-detail/${selectedPlayer.playerId}`, { state: { player: selectedPlayer } })}
+                    style={{ width:'100%', padding:'12px', borderRadius:'11px', background:'#EEF2FF', color:'#4F46E5', border:'1.5px solid #C7D2FE', fontWeight:'700', fontSize:'13.5px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', marginTop:'8px' }}>
+                    <BookOpen size={15} /> View Full Profile &amp; Sessions
+                  </button>
                   <button
                     onClick={() => { setSelectedPlayer(null); openEdit(selectedPlayer); }}
                     style={{ width:'100%', padding:'12px', borderRadius:'11px', background:'linear-gradient(135deg, #060030, #1a0060)', color:'white', border:'none', fontWeight:'700', fontSize:'13.5px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', boxShadow:'0 4px 14px rgba(6,0,48,0.35)', marginTop:'8px' }}>

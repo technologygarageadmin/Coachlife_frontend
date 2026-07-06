@@ -10,7 +10,7 @@ const SessionDetail = () => {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { userToken, currentUser } = useStore();
+  const { userToken, currentUser, players, fetchAssignedPlayersForCoach } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
   const surface = dark ? 'var(--cl-surface)' : '#fff';
@@ -72,6 +72,35 @@ const SessionDetail = () => {
 
   useEffect(() => {
     const fetchSessionDetails = async () => {
+      // Resolve the player's name + points for the sidebar. The session-card API
+      // doesn't return the player name, and opening a card from the Pending Queue
+      // passes no nav state - so fall back to the coach's roster (by playerId) so
+      // the panel never shows "Unknown Player".
+      const resolvePlayer = async (pid, cardPlayerName) => {
+        const chip = location.state?.batchPlayerCards?.find(
+          p => p.playerId === (location.state?.activePlayerId || pid)
+        );
+        if (chip?.name) return { _id: pid, playerId: pid, playerName: chip.name, name: chip.name, totalPoints: 0 };
+
+        let roster = players;
+        if ((!roster || roster.length === 0) && currentUser?.id) {
+          try {
+            const r = await fetchAssignedPlayersForCoach(currentUser.id);
+            roster = (r?.players || []).map(it => {
+              const p = it.player || it;
+              return {
+                playerId: p._id || p.id || p.playerId,
+                playerName: p.playerName || p.name,
+                totalPoints: p.TotalPoints || p.totalPoints || 0,
+              };
+            });
+          } catch { roster = []; }
+        }
+        const m = (roster || []).find(p => String(p.playerId || p._id || p.id) === String(pid));
+        const name = m?.playerName || m?.name || cardPlayerName || '';
+        return { _id: pid, playerId: pid, playerName: name, name, totalPoints: m?.totalPoints ?? m?.TotalPoints ?? 0 };
+      };
+
       try {
         setLoading(true);
         setError(null);
@@ -93,19 +122,11 @@ const SessionDetail = () => {
           
           if (location.state?.player) {
             setPlayerData(location.state.player);
-          } else if (location.state?.batchPlayerCards && location.state?.activePlayerId) {
-            // Switched in from the batch chips - derive the player from the chip data
-            const chip = location.state.batchPlayerCards.find(
-              p => p.playerId === location.state.activePlayerId
-            );
-            if (chip) {
-              setPlayerData({
-                _id: chip.playerId,
-                playerId: chip.playerId,
-                playerName: chip.name,
-                name: chip.name
-              });
-            }
+          } else {
+            setPlayerData(await resolvePlayer(
+              location.state.session.playerId,
+              location.state.session.playerName
+            ));
           }
 
           setLoading(false);
@@ -159,26 +180,14 @@ const SessionDetail = () => {
           activities: sortedActivities,
           totalPoints: card.totalPoints,
           sessionTakeaways: card.sessionTakeaways || [],
+          sessionDate: card.sessionDate || null,
           feedback: (card.rating || card.coachComment)
             ? { rating: card.rating || 0, coachComment: card.coachComment || '' }
             : null,
           playerId: card.playerId
         });
 
-        // The session-card endpoint doesn't return playerName - when we arrived via
-        // the batch chips, take the name from the chip data so the sidebar doesn't
-        // show "Unknown Player".
-        const batchChip = location.state?.batchPlayerCards?.find(
-          p => p.playerId === (location.state?.activePlayerId || card.playerId)
-        );
-        const resolvedName = card.playerName || batchChip?.name || '';
-
-        setPlayerData({
-          _id: card.playerId || batchChip?.playerId,
-          playerId: card.playerId || batchChip?.playerId,
-          playerName: resolvedName,
-          name: resolvedName
-        });
+        setPlayerData(await resolvePlayer(card.playerId, card.playerName));
 
       } catch (err) {
         console.error('Error fetching session details:', err);
@@ -327,9 +336,9 @@ const SessionDetail = () => {
   // Helper function to get current activity feedback
   const getCurrentActivityFeedback = () => {
     if (!editingActivityId && editingActivityId !== 0) {
-      return { rating: 0, coachComment: '' };
+      return { rating: 0, coachComment: '', status: 'completed' };
     }
-    const feedback = activityFeedbackMap[editingActivityId] || { rating: 0, coachComment: '' };
+    const feedback = activityFeedbackMap[editingActivityId] || { rating: 0, coachComment: '', status: 'completed' };
     return feedback;
   };
 
@@ -349,25 +358,29 @@ const SessionDetail = () => {
   // Save activity feedback
   const saveActivityFeedback = (activityIndex, feedbackData) => {
     try {
+      const status = feedbackData.status || 'completed';
+      const feedbackOnly = { rating: feedbackData.rating, coachComment: feedbackData.coachComment };
       setSessionData(prev => {
         const updated = { ...prev };
         if (updated.activities && updated.activities[activityIndex]) {
           updated.activities = [...updated.activities];
           updated.activities[activityIndex] = {
             ...updated.activities[activityIndex],
-            feedback: feedbackData
+            feedback: feedbackOnly,
+            status
           };
         }
         return updated;
       });
-      
+
       // Save complete draft to localStorage
       const draftData = {
         sessionId: sessionData._id,
         playerId: playerData?._id,
         activities: sessionData.activities.map((activity, idx) => ({
           _id: activity._id || idx,
-          feedback: idx === activityIndex ? feedbackData : activity.feedback
+          feedback: idx === activityIndex ? feedbackOnly : activity.feedback,
+          status: idx === activityIndex ? status : activity.status
         })),
         sessionFeedback: sessionData.feedback,
         savedAt: new Date().toISOString(),
@@ -427,33 +440,6 @@ const SessionDetail = () => {
     }
   };
 
-  // Save session as draft to localStorage
-  const handleSaveDraft = () => {
-    try {
-      // Check if overall rating is provided
-      if (!sessionFeedback.rating || sessionFeedback.rating === 0) {
-        setToast({ isVisible: true, message: 'Please provide an overall rating before saving draft.', type: 'error' });
-        return;
-      }
-
-      const draftData = {
-        sessionId: sessionData._id,
-        playerId: playerData._id,
-        activities: sessionData.activities,
-        sessionFeedback: sessionFeedback,
-        activityFeedbackMap: activityFeedbackMap,
-        savedAt: new Date().toISOString(),
-        sessionStatus: sessionData.status
-      };
-
-      localStorage.setItem(`session_draft_${sessionData._id}`, JSON.stringify(draftData));
-      setToast({ isVisible: true, message: 'Session draft saved! You can resume editing later.', type: 'success' });
-    } catch (error) {
-      console.error('Error saving draft:', error);
-      setToast({ isVisible: true, message: `Error saving draft: ${error.message}`, type: 'error' });
-    }
-  };
-
   const handleMarkAttendance = async (status) => {
     if (isMarkingAttendance) return;
     const token = userToken;
@@ -462,28 +448,68 @@ const SessionDetail = () => {
       setToast({ isVisible: true, message: 'Unable to mark attendance', type: 'error' });
       return;
     }
+    // Record attendance against the SESSION's own date (set when the card was
+    // generated) so it lands on the session's scheduled day - consistent with the
+    // batch Class Room. Fall back to today only if the card has no date.
     const now = new Date();
-    const sessionDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const sessionDate = sessionData?.sessionDate || todayStr;
+    const sessionCardId = sessionData?._id || sessionId || '';
+
+    const markAttendance = () => fetch('https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', userToken: token },
+      body: JSON.stringify({
+        playerId: attendancePlayerId,
+        playerName: playerData?.playerName || playerData?.name || '',
+        batchId: location.state?.batch?._id || location.state?.batch?.batchId || location.state?.batchInfo?.batchId || sessionData?.batchId || '',
+        batchName: location.state?.batch?.batchName || location.state?.batchInfo?.batchName || sessionData?.batchName || '',
+        sessionNumber: sessionData?.session ?? sessionData?.sessionNumber ?? null,
+        sessionDate,
+        attendanceStatus: status,
+        sessionCardId,
+        override: true,
+      }),
+    });
+
     try {
       setIsMarkingAttendance(true);
-      const res = await fetch('https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', userToken: token },
-        body: JSON.stringify({
-          playerId: attendancePlayerId,
-          playerName: playerData?.playerName || playerData?.name || '',
-          batchId: location.state?.batch?._id || location.state?.batch?.batchId || sessionData?.batchId || '',
-          batchName: location.state?.batch?.batchName || sessionData?.batchName || '',
-          sessionNumber: sessionData?.session ?? sessionData?.sessionNumber ?? null,
-          sessionDate,
-          attendanceStatus: status,
-          sessionCardId: sessionData?._id || sessionId || '',
-          override: true,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setAttendanceStatus(status);
-      setToast({ isVisible: true, message: `Attendance marked as ${status}`, type: 'success' });
+
+      if (status === 'Present') {
+        // Start the (pending) session FIRST, then record attendance. Order matters:
+        // CL_Mark_Attendance's Present-logic can restore a pending card back to
+        // 'upcoming', which would then trip CL_Start_Session's order-check. Starting
+        // first leaves the card 'in progress', so the later Present mark is a no-op
+        // on the card and can't bounce it.
+        let started = false;
+        let startMsg = '';
+        try {
+          const startRes = await fetch('https://rslqy219i9.execute-api.ap-south-1.amazonaws.com/default/CL_Start_Session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', userToken: token },
+            body: JSON.stringify({ sessionCardId }),
+          });
+          const startData = await startRes.json().catch(() => ({}));
+          if (startRes.ok && startData.status) {
+            started = true;
+            setSessionData(prev => ({ ...prev, status: startData.status }));
+          } else {
+            startMsg = startData.message || '';
+          }
+        } catch { /* start is best-effort; attendance still gets recorded below */ }
+
+        const res = await markAttendance();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setAttendanceStatus('Present');
+        setToast(started
+          ? { isVisible: true, message: 'Marked present — session started', type: 'success' }
+          : { isVisible: true, message: startMsg || 'Marked present (could not auto-start the session)', type: 'info' });
+      } else {
+        const res = await markAttendance();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setAttendanceStatus('Absent');
+        setToast({ isVisible: true, message: 'Marked absent — session stays pending', type: 'success' });
+      }
     } catch (e) {
       setToast({ isVisible: true, message: `Failed to mark attendance: ${e.message}`, type: 'error' });
     } finally {
@@ -502,8 +528,12 @@ const SessionDetail = () => {
       if (!token) throw new Error('No authentication token found');
       if (!sessionData) throw new Error('Session data not loaded');
 
+      // An activity marked "not_completed" is addressed and needs no rating/comment -
+      // this is the fix for the missed-session block: a coach no longer has to force
+      // a rating on an activity the player never did.
       const activitiesWithoutFeedback = [];
       (sessionData.activities || []).forEach((activity, index) => {
+        if (activity.status === 'not_completed') return;
         const hasRating = activity.feedback?.rating && activity.feedback.rating > 0;
         const hasComment = activity.feedback?.coachComment && activity.feedback.coachComment.trim().length > 0;
         if (!hasRating || !hasComment) {
@@ -518,7 +548,7 @@ const SessionDetail = () => {
       });
 
       if (activitiesWithoutFeedback.length > 0) {
-        let errorMessage = 'The following activities are missing feedback:\n\n';
+        let errorMessage = 'The following activities need feedback, or mark them "Not Completed":\n\n';
         activitiesWithoutFeedback.forEach(activity => {
           const missing = [];
           if (activity.missingRating) missing.push('rating');
@@ -532,6 +562,7 @@ const SessionDetail = () => {
 
       const activitiesFeedback = (sessionData.activities || []).map((activity, index) => ({
         activitySequence: activity.activitySequence || (index + 1),
+        status: activity.status || 'completed',
         rating: activity.feedback?.rating || 0,
         feedback: activity.feedback?.coachComment || ''
       }));
@@ -574,6 +605,14 @@ const SessionDetail = () => {
       setToast({ isVisible: true, message: 'Session completed successfully!', type: 'success' });
 
       setTimeout(() => {
+        // If this session was opened from a batch Class Room, go back to that
+        // batch (not the single-player start page) so the coach can carry on with
+        // the rest of the class.
+        const fromBatch = location.state?.batch;
+        if (fromBatch) {
+          navigate('/coach/batch-session', { replace: true, state: { batch: fromBatch } });
+          return;
+        }
         const playerId = playerData?._id || playerData?.playerId || playerData?.id;
         if (playerId) {
           navigate(`/coach/start-session/${playerId}`, { replace: true });
@@ -617,7 +656,7 @@ const SessionDetail = () => {
           body: JSON.stringify({
             sessionCardId,
             activities_feedback: activitiesFeedback,
-            playerName: playerData?.name || playerData?.playerName || 'Student',
+            playerName: playerData?.name || playerData?.playerName || 'Player',
             sessionTopic: sessionData.Topic || '',
             sessionNumber: sessionData.session || '',
             coachName: currentUser?.name || 'Coach',
@@ -665,7 +704,7 @@ const SessionDetail = () => {
           body: JSON.stringify({
             sessionCardId,
             activities_feedback: activitiesFeedback,
-            playerName: playerData?.name || playerData?.playerName || 'Student',
+            playerName: playerData?.name || playerData?.playerName || 'Player',
             sessionTopic: sessionData.Topic || '',
             sessionNumber: sessionData.session || '',
             coachName: currentUser?.name || 'Coach',
@@ -1886,6 +1925,15 @@ const SessionDetail = () => {
                                 }}>
                                   Activity Feedback
                                 </p>
+                                {activity.status === 'not_completed' && (
+                                  <span style={{
+                                    fontSize: '10px', fontWeight: '700', padding: '2px 8px',
+                                    borderRadius: '999px', background: '#FEE2E2', color: '#DC2626',
+                                    letterSpacing: '0.3px'
+                                  }}>
+                                    NOT COMPLETED
+                                  </span>
+                                )}
                               </div>
                               {editingActivityId !== index && (
                                 <button
@@ -1897,7 +1945,8 @@ const SessionDetail = () => {
                                           ...prev,
                                           [index]: {
                                             rating: activity.feedback?.rating || 0,
-                                            coachComment: activity.feedback?.coachComment || ''
+                                            coachComment: activity.feedback?.coachComment || '',
+                                            status: activity.status || 'completed'
                                           }
                                         };
                                         return updated;
@@ -1927,44 +1976,85 @@ const SessionDetail = () => {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                 <div>
                                   <p style={{ fontSize: '11px', fontWeight: '600', color: textPrimary, margin: '0 0 6px 0' }}>
-                                    Rating (1-5 stars)
+                                    Status
                                   </p>
-                                  <div style={{ display: 'flex', gap: '6px' }}>
-                                    {[1, 2, 3, 4, 5].map((star) => {
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    {[
+                                      { value: 'completed', label: 'Completed' },
+                                      { value: 'not_completed', label: 'Not Completed' }
+                                    ].map(({ value, label }) => {
                                       const currentFeedback = getCurrentActivityFeedback();
+                                      const active = (currentFeedback.status || 'completed') === value;
                                       return (
                                         <button
-                                          key={star}
-                                          onClick={() => setCurrentActivityFeedback({ ...currentFeedback, rating: star })}
+                                          key={value}
+                                          onClick={() => setCurrentActivityFeedback({ ...currentFeedback, status: value })}
                                           style={{
-                                            width: '28px',
-                                            height: '28px',
-                                            border: 'none',
-                                            background: dark ? 'rgba(255,255,255,0.06)' : '#FFF',
-                                            borderRadius: '6px',
+                                            padding: '6px 14px',
+                                            borderRadius: '20px',
+                                            border: `1.5px solid ${active ? (value === 'not_completed' ? '#DC2626' : '#060030ff') : border}`,
+                                            background: active ? (value === 'not_completed' ? '#FEE2E2' : '#EEF2FF') : 'transparent',
+                                            color: active ? (value === 'not_completed' ? '#DC2626' : '#060030ff') : textSecondary,
+                                            fontSize: '12px',
+                                            fontWeight: '700',
                                             cursor: 'pointer',
-                                            fontSize: '18px',
-                                            fontWeight: 'bold',
-                                            color: currentFeedback.rating >= star ? '#FCD34D' : '#808080',
-                                            transition: 'all 0.2s ease'
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            e.currentTarget.style.color = '#FCD34D';
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            e.currentTarget.style.color = currentFeedback.rating >= star ? '#FCD34D' : '#7c7c7c';
+                                            transition: 'all 0.15s ease'
                                           }}
                                         >
-                                          ★
+                                          {label}
                                         </button>
                                       );
                                     })}
                                   </div>
+                                  {getCurrentActivityFeedback().status === 'not_completed' && (
+                                    <p style={{ fontSize: '11px', color: '#7C3AED', margin: '8px 0 0', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: '6px', padding: '7px 10px', lineHeight: 1.5 }}>
+                                      This activity becomes a <strong>home task</strong> for the player - the session still completes, and it's flagged on your dashboard to follow up.
+                                    </p>
+                                  )}
                                 </div>
+
+                                {getCurrentActivityFeedback().status !== 'not_completed' && (
+                                  <div>
+                                    <p style={{ fontSize: '11px', fontWeight: '600', color: textPrimary, margin: '0 0 6px 0' }}>
+                                      Rating (1-5 stars)
+                                    </p>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                      {[1, 2, 3, 4, 5].map((star) => {
+                                        const currentFeedback = getCurrentActivityFeedback();
+                                        return (
+                                          <button
+                                            key={star}
+                                            onClick={() => setCurrentActivityFeedback({ ...currentFeedback, rating: star })}
+                                            style={{
+                                              width: '28px',
+                                              height: '28px',
+                                              border: 'none',
+                                              background: dark ? 'rgba(255,255,255,0.06)' : '#FFF',
+                                              borderRadius: '6px',
+                                              cursor: 'pointer',
+                                              fontSize: '18px',
+                                              fontWeight: 'bold',
+                                              color: currentFeedback.rating >= star ? '#FCD34D' : '#808080',
+                                              transition: 'all 0.2s ease'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.currentTarget.style.color = '#FCD34D';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.currentTarget.style.color = currentFeedback.rating >= star ? '#FCD34D' : '#7c7c7c';
+                                            }}
+                                          >
+                                            ★
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div>
                                   <p style={{ fontSize: '11px', fontWeight: '600', color: textPrimary, margin: '0 0 6px 0' }}>
-                                    Coach Comment
+                                    Coach Comment{getCurrentActivityFeedback().status === 'not_completed' ? ' (optional)' : ''}
                                   </p>
                                   <textarea
                                     value={getCurrentActivityFeedback().coachComment}
@@ -1972,7 +2062,11 @@ const SessionDetail = () => {
                                       const currentFeedback = getCurrentActivityFeedback();
                                       setCurrentActivityFeedback({ ...currentFeedback, coachComment: e.target.value });
                                     }}
-                                    placeholder="Add your feedback for this activity..."
+                                    placeholder={
+                                      getCurrentActivityFeedback().status === 'not_completed'
+                                        ? 'Optional note on why this was not completed...'
+                                        : 'Add your feedback for this activity...'
+                                    }
                                     style={{
                                       width: '100%',
                                       padding: '8px',
@@ -2640,11 +2734,14 @@ const SessionDetail = () => {
                     </p>
                   </div>
 
-                  {/* Attendance buttons — only for pending session cards */}
+                  {/* Attendance buttons - only for pending session cards */}
                   {sessionData.status === 'pending' && (
                     <div style={{ marginBottom: '16px' }}>
-                      <p style={{ fontSize: '11px', color: dark ? '#9CA3AF' : '#6B7280', margin: '0 0 8px 0', fontWeight: '600' }}>
+                      <p style={{ fontSize: '11px', color: dark ? '#9CA3AF' : '#6B7280', margin: '0 0 3px 0', fontWeight: '600' }}>
                         ATTENDANCE
+                      </p>
+                      <p style={{ fontSize: '10.5px', color: dark ? '#6B7280' : '#9CA3AF', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                        Present starts this session · Absent keeps it pending
                       </p>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button
@@ -2738,38 +2835,7 @@ const SessionDetail = () => {
                         {isSubmitting ? 'Starting...' : 'Start Session'}
                       </button>
                     )}
-                    <button 
-                      onClick={() => {
-                        handleSaveDraft();
-                      }}
-                      disabled={isSubmitting}
-                      style={{
-                        padding: '12px 24px',
-                        background: isSubmitting ? '#94A3B8' : '#F59E0B',
-                        color: 'white',
-                        border: 'none',
-                        width: '100%',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s ease',
-                        opacity: isSubmitting ? 0.7 : 1,
-                        pointerEvents: isSubmitting ? 'none' : 'auto'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isSubmitting) {
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.3)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}>
-                      Save Draft
-                    </button>
-                    <button 
+                    <button
                       onClick={() => {
                         handleCompleteSession();
                       }}

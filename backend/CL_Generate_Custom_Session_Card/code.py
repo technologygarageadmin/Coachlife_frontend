@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pymongo import MongoClient
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -22,7 +22,12 @@ if not OPENAI_API_KEY or not MONGO_URI:
 # =====================================================
  
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
- 
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def today_ist_str():
+    return datetime.now(IST).strftime('%Y-%m-%d')
+
 mongo = MongoClient(MONGO_URI)
 db = mongo["CoachLife"]
  
@@ -172,6 +177,7 @@ def create_custom_session_card(payload):
         "LearningPathway": payload.get("LearningPathway"),
         "Topic": payload.get("Topic"),
         "session": next_session,
+        "sessionDate": payload.get("sessionDate") or today_ist_str(),
         "typeOfSessioncard": payload.get("typeOfSessioncard", "Custom"),
         "Objective": payload.get("Objective"),
         "activities": enriched_activities,
@@ -183,7 +189,9 @@ def create_custom_session_card(payload):
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "createdByCoach": player.get("primaryCoach"),
     }
- 
+    if payload.get("batchGroupId"):
+        session_doc["batchGroupId"] = payload["batchGroupId"]
+
     session_cards_col.insert_one(session_doc)
  
     return {

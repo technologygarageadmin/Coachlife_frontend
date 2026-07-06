@@ -64,6 +64,98 @@ def validate_user(event):
     user["_id"] = str(user["_id"])
     return user
 
+# ------------------ HOME TASK MAKE-UP ------------------
+def complete_home_task(body, user):
+    """Mark ONE activity (left not_completed during the session) as completed later.
+
+    Credits that activity's points to the player exactly once, and clears the
+    card's home-task flag when no not_completed activities remain. The session
+    card stays 'completed' throughout - this only closes a leftover activity.
+    """
+    card_id = body.get("card_id")
+    seq = body.get("activitySequence")
+
+    if not card_id:
+        return response(400, {"message": "card_id is required"})
+    if seq is None:
+        return response(400, {"message": "activitySequence is required"})
+    try:
+        seq = int(seq)
+    except (TypeError, ValueError):
+        return response(400, {"message": "activitySequence must be a number"})
+
+    rating = body.get("rating")
+    if rating is not None and (not isinstance(rating, (int, float)) or not (0 <= rating <= 5)):
+        return response(400, {"message": "rating must be a number between 0 and 5"})
+    feedback = body.get("feedback")
+
+    try:
+        card_oid = ObjectId(card_id)
+    except Exception:
+        return response(400, {"message": "Invalid card_id"})
+
+    now = now_ist()
+    card = session_cards.find_one({"_id": card_oid})
+    if not card:
+        return response(404, {"message": "Session card not found"})
+
+    target = next((a for a in card.get("activities", []) if a.get("activitySequence") == seq), None)
+    if not target:
+        return response(404, {"message": f"Activity {seq} not found on this card"})
+    if str(target.get("status")) == "completed":
+        return response(200, {"message": "Home task already completed", "alreadyDone": True})
+
+    points = (target.get("points") or {}).get("total", 0) or 0
+
+    set_fields = {
+        "activities.$.status": "completed",
+        "activities.$.completedAsHomeTask": True,
+        "updatedAt": now,
+        "updatedBy": {"id": user["_id"], "name": user.get("name")},
+    }
+    if rating is not None:
+        set_fields["activities.$.rating"] = rating
+    if feedback is not None:
+        set_fields["activities.$.feedback"] = feedback
+
+    # Atomic flip guarded on "not already completed" so points can't be double-credited
+    # even if the button is clicked twice. $elemMatch is REQUIRED here: with two plain
+    # dot-notation conditions the positional `$` can bind to the wrong array element
+    # (the first not_completed activity, not the one with this activitySequence),
+    # which would flip/credit the wrong activity and leave the clicked one unchanged.
+    upd = session_cards.update_one(
+        {"_id": card_oid,
+         "activities": {"$elemMatch": {"activitySequence": seq, "status": {"$ne": "completed"}}}},
+        {"$set": set_fields, "$inc": {"earnedPoints": points}},
+    )
+    if upd.modified_count == 0:
+        return response(200, {"message": "Home task already completed", "alreadyDone": True})
+
+    player_id = card.get("playerId")
+    if player_id and points > 0:
+        try:
+            players.update_one({"_id": ObjectId(player_id)},
+                               {"$inc": {"TotalPoints": points, "PointBalance": points}})
+        except Exception:
+            pass
+
+    fresh = session_cards.find_one({"_id": card_oid}, {"activities": 1})
+    remaining = [a.get("activitySequence") for a in (fresh.get("activities") or [])
+                 if a.get("status") == "not_completed"]
+    session_cards.update_one(
+        {"_id": card_oid},
+        {"$set": {"hasHomeTask": len(remaining) > 0, "homeTaskActivities": remaining}},
+    )
+
+    return response(200, {
+        "message": "Home task completed",
+        "card_id": card_id,
+        "activitySequence": seq,
+        "creditedPoints": points,
+        "remainingHomeTasks": remaining,
+    })
+
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -82,6 +174,10 @@ def lambda_handler(event, context):
     except Exception:
         return response(400, {"message": "Invalid JSON body"})
 
+    # -------- HOME TASK MAKE-UP (single activity) --------
+    if str(body.get("action") or "").strip() == "completeHomeTask":
+        return complete_home_task(body, user)
+
     card_id = body.get("card_id")
     activities_feedback = body.get("activities_feedback", [])
     rating = body.get("rating")
@@ -94,17 +190,28 @@ def lambda_handler(event, context):
         return response(400, {"message": "activities_feedback must be an array"})
 
     # -------- VALIDATE ACTIVITIES INPUT --------
+    # `status` is optional and defaults to "completed" for backward compatibility with
+    # older clients that only ever sent rating + feedback. A "not_completed" activity
+    # may omit rating/feedback (feedback stays optional context, not a grade).
     for idx, activity in enumerate(activities_feedback):
-        if not all(k in activity for k in ("activitySequence", "rating", "feedback")):
+        if "activitySequence" not in activity:
             return response(
                 400,
-                {
-                    "message": (
-                        f"Invalid activities_feedback at index {idx}. "
-                        "Required fields: activitySequence, rating, feedback."
-                    )
-                }
+                {"message": f"Invalid activities_feedback at index {idx}. activitySequence is required."}
             )
+
+        status = str(activity.get("status") or "completed").strip().lower()
+        if status not in ("completed", "not_completed"):
+            return response(400, {
+                "message": f"Invalid status at index {idx}. Must be 'completed' or 'not_completed'."
+            })
+
+        if status == "completed":
+            rating_val = activity.get("rating")
+            if rating_val is None or not isinstance(rating_val, (int, float)) or not (0 <= rating_val <= 5):
+                return response(400, {
+                    "message": f"Activity {activity.get('activitySequence')} needs a rating (0-5) to be marked completed."
+                })
 
     # -------- VALIDATE OVERALL FIELDS --------
     if rating is not None:
@@ -118,22 +225,24 @@ def lambda_handler(event, context):
 
     # -------- UPDATE ACTIVITY FEEDBACK --------
     for activity in activities_feedback:
+        status = str(activity.get("status") or "completed").strip().lower()
+        set_fields = {
+            "activities.$.status": status,
+            "activities.$.feedback": activity.get("feedback"),
+            "updatedAt": now,
+            "updatedBy": {"id": user["_id"], "name": user.get("name")},
+        }
+        if status == "completed":
+            set_fields["activities.$.rating"] = activity.get("rating")
+        elif "rating" in activity:
+            set_fields["activities.$.rating"] = activity.get("rating")
+
         session_cards.update_one(
             {
                 "_id": ObjectId(card_id),
                 "activities.activitySequence": activity["activitySequence"]
             },
-            {
-                "$set": {
-                    "activities.$.rating": activity["rating"],
-                    "activities.$.feedback": activity["feedback"],
-                    "updatedAt": now,
-                    "updatedBy": {
-                        "id": user["_id"],
-                        "name": user.get("name")
-                    }
-                }
-            }
+            {"$set": set_fields}
         )
 
     # -------- UPDATE OVERALL FEEDBACK --------
@@ -171,33 +280,57 @@ def lambda_handler(event, context):
     if not card:
         return response(404, {"message": "Session card not found"})
 
-    # -------- STRICT COMPLETION VALIDATION --------
-    incomplete_activities = []
+    # -------- COMPLETION CHECK (per-activity, not all-or-nothing) --------
+    # A session can finish once every activity has been *addressed* (has a status),
+    # regardless of whether it was completed or explicitly marked not_completed.
+    # This is the fix for the "missed session block": a coach no longer has to
+    # force a rating on an activity the player never did.
+    activities = card.get("activities", [])
+    unaddressed = [
+        a.get("activitySequence") for a in activities
+        if not a.get("status")
+    ]
 
-    for activity in card.get("activities", []):
-        if activity.get("rating") is None or not activity.get("feedback"):
-            incomplete_activities.append(activity.get("activitySequence"))
-
-    if incomplete_activities:
+    if unaddressed:
         return response(
             400,
             {
-                "message": "Please complete the rating and feedback for all activities before completing the session.",
-                "incompleteActivities": incomplete_activities
+                "message": "Mark every activity as completed or not completed before finishing the session.",
+                "incompleteActivities": unaddressed
             }
         )
 
-    # -------- COMPLETE SESSION & CREDIT POINTS --------
-    if card.get("status") != "completed":
+    # A session the coach actually worked through is COMPLETED - even if some
+    # activities were marked not_completed. Those become per-activity "home tasks"
+    # flagged for the player to finish later (surfaced on the coach dashboard); they
+    # do NOT drag the whole session back to a pending/not_completed state.
+    home_task_sequences = [
+        a.get("activitySequence") for a in activities if a.get("status") == "not_completed"
+    ]
+    session_status = "completed"
 
-        total_points = card.get("totalPoints", 0)
+    if card.get("status") not in ("completed", "not_completed"):
+        # Credit only points earned from activities actually completed - do NOT touch
+        # the card's own `totalPoints` field, which other views (SessionDetail,
+        # ViewSessionCard, SessionCardsView) read as "points at stake for this session".
+        earned_points = sum(
+            (a.get("points") or {}).get("total", 0)
+            for a in activities
+            if a.get("status") == "completed"
+        )
         player_id = card.get("playerId")
 
         session_cards.update_one(
             {"_id": ObjectId(card_id)},
             {
                 "$set": {
-                    "status": "completed",
+                    "status": session_status,
+                    "earnedPoints": earned_points,
+                    # Home-task markers: the completed card carries the sequences the
+                    # player still owes, so the dashboard can flag them cheaply.
+                    "hasHomeTask": len(home_task_sequences) > 0,
+                    "homeTaskActivities": home_task_sequences,
+                    "completedAt": now,
                     "updatedAt": now,
                     "updatedBy": {
                         "id": user["_id"],
@@ -207,13 +340,13 @@ def lambda_handler(event, context):
             }
         )
 
-        if player_id and total_points > 0:
+        if player_id and earned_points > 0:
             players.update_one(
                 {"_id": ObjectId(player_id)},
                 {
                     "$inc": {
-                        "TotalPoints": total_points,
-                        "PointBalance": total_points
+                        "TotalPoints": earned_points,
+                        "PointBalance": earned_points
                     }
                 }
             )
@@ -222,9 +355,10 @@ def lambda_handler(event, context):
     return response(
         200,
         {
-            "message": "Activity feedback and session completion updated successfully.",
+            "message": "Session finished successfully.",
             "card_id": card_id,
-            "status": "completed",
+            "status": session_status,
+            "homeTaskActivitySequences": home_task_sequences,
             "updatedAt": now.isoformat()
         }
     )

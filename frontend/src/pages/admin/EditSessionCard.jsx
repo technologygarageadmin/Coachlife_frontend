@@ -26,11 +26,19 @@ const EditSessionCard = () => {
   const { id } = useParams();
   const { userToken } = useStore();
 
+  // Preserve where the admin came from (e.g. a specific batch in "By Batch" view)
+  // so leaving this page returns them there instead of resetting to the default view.
+  const fromBatchId = location.state?.batchId;
+  const goBackToSessionCards = () => {
+    navigate('/admin/session-card', fromBatchId ? { state: { batchId: fromBatchId } } : undefined);
+  };
+
   const [formData, setFormData] = useState({
     Topic: '',
     Objective: '',
     Activities: [],
-    status: 'draft'
+    status: 'draft',
+    sessionDate: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -39,6 +47,8 @@ const EditSessionCard = () => {
   const [toastType, setToastType] = useState('success');
   const [originalFormData, setOriginalFormData] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [batchGroupId, setBatchGroupId] = useState(null);
+  const [applyToBatch, setApplyToBatch] = useState(false);
   
   const [activityModalOpen, setActivityModalOpen] = useState(false);
   const [editingActivityIndex, setEditingActivityIndex] = useState(null);
@@ -102,15 +112,18 @@ const EditSessionCard = () => {
           Topic: sessionCard.Topic || '',
           Objective: sessionCard.Objective || '',
           Activities: activities,
-          status: sessionCard.status || 'draft'
+          status: sessionCard.status || 'draft',
+          sessionDate: sessionCard.sessionDate || ''
         });
         // Store original data to detect changes
         setOriginalFormData({
           Topic: sessionCard.Topic || '',
           Objective: sessionCard.Objective || '',
           Activities: activities,
-          status: sessionCard.status || 'draft'
+          status: sessionCard.status || 'draft',
+          sessionDate: sessionCard.sessionDate || ''
         });
+        setBatchGroupId(sessionCard.batchGroupId || null);
       } catch (err) {
         console.error('Error fetching session card:', err);
         setToastMessage('Failed to load session card details');
@@ -333,6 +346,7 @@ const EditSessionCard = () => {
         Topic: formData.Topic,
         Objective: formData.Objective,
         status: formData.status,
+        sessionDate: formData.sessionDate || undefined,
         activities: formData.Activities.map((activity, idx) => ({
           activitySequence: idx + 1,
           activityTitle: activity.activityTitle,
@@ -358,7 +372,7 @@ const EditSessionCard = () => {
           'Content-Type': 'application/json',
           'userToken': userToken
         },
-        body: JSON.stringify({ sessionCardId: id, ...payload })
+        body: JSON.stringify({ sessionCardId: id, ...payload, applyToBatch })
       });
 
       const result = await response.json().catch(() => ({}));
@@ -367,12 +381,16 @@ const EditSessionCard = () => {
         throw new Error(result.message || `Failed to update session card: ${response.status}`);
       }
 
-      setToastMessage('Session card updated successfully!');
+      setToastMessage(
+        applyToBatch && result.propagatedToCount
+          ? `Session card updated and applied to ${result.propagatedToCount} other Player(s) in this batch!`
+          : 'Session card updated successfully!'
+      );
       setToastType('success');
       setHasUnsavedChanges(false);
 
       setTimeout(() => {
-        navigate('/admin/session-card');
+        goBackToSessionCards();
       }, 1500);
     } catch (err) {
       console.error('Error updating session card:', err);
@@ -444,7 +462,7 @@ const EditSessionCard = () => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button
-              onClick={() => navigate('/admin/session-card')}
+              onClick={goBackToSessionCards}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -941,11 +959,75 @@ const EditSessionCard = () => {
                 </select>
               </div>
 
+              {/* Session Date */}
+              <div style={{ marginBottom: '32px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  color: '#111827',
+                  marginBottom: '8px',
+                  textTransform: 'uppercase'
+                }}>
+                  Session Date
+                </label>
+                <input
+                  type="date"
+                  name="sessionDate"
+                  value={formData.sessionDate}
+                  onChange={handleInputChange}
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    border: '2px solid #E5E7EB',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    boxSizing: 'border-box',
+                    transition: 'all 0.3s',
+                    background: loading ? '#F9FAFB' : 'white',
+                    cursor: loading ? 'not-allowed' : 'pointer'
+                  }}
+                  onFocus={(e) => !loading && (e.target.style.borderColor = '#060030ff')}
+                  onBlur={(e) => (e.target.style.borderColor = '#E5E7EB')}
+                />
+                <p style={{ fontSize: '11px', color: '#6B7280', margin: '6px 0 0' }}>
+                  Set automatically to the day this card was generated. Change it if the
+                  session actually ran on a different day.
+                </p>
+              </div>
+
+              {/* Batch propagation option - only shown for cards generated as part of a batch */}
+              {batchGroupId && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '10px',
+                  padding: '14px 16px', borderRadius: '10px',
+                  background: applyToBatch ? '#FEF3C7' : '#F9FAFB',
+                  border: `1.5px solid ${applyToBatch ? '#FCD34D' : '#E5E7EB'}`,
+                  marginBottom: '16px',
+                }}>
+                  <input
+                    type="checkbox"
+                    id="applyToBatch"
+                    checked={applyToBatch}
+                    onChange={(e) => setApplyToBatch(e.target.checked)}
+                    style={{ marginTop: '3px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="applyToBatch" style={{ fontSize: '13px', color: '#111827', cursor: 'pointer' }}>
+                    <strong>Apply this content edit to the whole batch.</strong>{' '}
+                    This card was generated together with other Players. Checking this
+                    updates the Topic, Objective and activities for all of them too -
+                    each Player's own rating/feedback/completion status is kept as-is.
+                  </label>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <button
                   type="button"
-                  onClick={() => navigate('/admin/session-card')}
+                  onClick={goBackToSessionCards}
                   disabled={loading}
                   style={{
                     padding: '12px 16px',

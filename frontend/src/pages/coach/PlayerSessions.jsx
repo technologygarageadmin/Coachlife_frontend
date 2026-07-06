@@ -163,7 +163,7 @@ const PlayerSessions = () => {
 
   const avgRating = completedSessions.length > 0
     ? (completedSessions.reduce((sum, s) => sum + (s.rating || 0), 0) / completedSessions.length).toFixed(1)
-    : '—';
+    : '-';
 
   const sessionLink = (s) => {
     const st = normalizeStatus(s.status);
@@ -267,9 +267,9 @@ const PlayerSessions = () => {
 
         {!loading && !error && (
           <>
+            {renderSection('Pending', pendingSessions, '#D97706', AlertCircle)}
             {renderSection('In Progress', inProgressSessions, '#F59E0B', Clock)}
             {renderSection('Upcoming', upcomingSessions, '#6366F1', Clock)}
-            {renderSection('Pending / Absent', pendingSessions, '#94A3B8', Clock)}
             {renderSection('Completed', completedSessions, '#10B981', CheckCircle)}
             {sessions.length === 0 && (
               <div style={{ background: surface, border: `1px solid ${border}`, borderRadius: '12px', textAlign: 'center', padding: '48px 20px' }}>

@@ -33,6 +33,7 @@ const EditSessionCard = lazy(() => import('./pages/admin/EditSessionCard'));
 const CustomCardGenerate = lazy(() => import('./pages/admin/customCardGenerate'));
 const Attendance = lazy(() => import('./pages/admin/Attendance'));
 const ManageBatches = lazy(() => import('./pages/admin/ManageBatches'));
+const BatchDetail = lazy(() => import('./pages/admin/BatchDetail'));
 
 // Coach Pages - Lazy load
 const CoachDashboard = lazy(() => import('./pages/coach/CoachDashboard'));
@@ -95,19 +96,20 @@ const router = createBrowserRouter([
       { path: '/admin/player-detail/:playerId', element: <ProtectedRoute requiredRole="admin"><PlayerDetail /></ProtectedRoute> },
       { path: '/admin/coaches', element: <ProtectedRoute requiredRole="admin"><Coaches /></ProtectedRoute> },
       { path: '/admin/assign-players', element: <ProtectedRoute requiredRole="admin"><AssignPlayers /></ProtectedRoute> },
-      { path: '/admin/session-card', element: <ProtectedRoute requiredRole="admin"><SessionCardManage /></ProtectedRoute> },
-      { path: '/admin/view-session-card/:id', element: <ProtectedRoute requiredRole="admin"><AdminViewSessionCard /></ProtectedRoute> },
-      { path: '/admin/edit-session-card/:id', element: <ProtectedRoute requiredRole="admin"><EditSessionCard /></ProtectedRoute> },
-      { path: '/admin/custom-generate-card', element: <ProtectedRoute requiredRole="admin"><CustomCardGenerate /></ProtectedRoute> },
+      { path: '/admin/session-card', element: <ProtectedRoute requiredRoles={['admin','coach']}><SessionCardManage /></ProtectedRoute> },
+      { path: '/admin/view-session-card/:id', element: <ProtectedRoute requiredRoles={['admin','coach']}><AdminViewSessionCard /></ProtectedRoute> },
+      { path: '/admin/edit-session-card/:id', element: <ProtectedRoute requiredRoles={['admin','coach']}><EditSessionCard /></ProtectedRoute> },
+      { path: '/admin/custom-generate-card', element: <ProtectedRoute requiredRoles={['admin','coach']}><CustomCardGenerate /></ProtectedRoute> },
       { path: '/admin/learning-pathway', element: <ProtectedRoute requiredRole="admin"><LearningPathwayBuilder /></ProtectedRoute> },
       { path: '/admin/learning-pathway/add', element: <ProtectedRoute requiredRole="admin"><AddPathway /></ProtectedRoute> },
-      { path: '/admin/learning-pathway/add/activity', element: <ProtectedRoute requiredRole="admin"><ActivityEditor /></ProtectedRoute> },
+      { path: '/admin/learning-pathway/add/activity', element: <ProtectedRoute requiredRoles={['admin','coach']}><ActivityEditor /></ProtectedRoute> },
       { path: '/admin/learning-pathway/:id/view', element: <ProtectedRoute requiredRole="admin"><ViewPathway /></ProtectedRoute> },
       { path: '/admin/learning-pathway/:id/edit', element: <ProtectedRoute requiredRole="admin"><EditPathway /></ProtectedRoute> },
       { path: '/admin/rewards', element: <ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute> },
       { path: '/admin/redeem-history', element: <ProtectedRoute requiredRole="admin"><RedeemHistory /></ProtectedRoute> },
       { path: '/admin/attendance', element: <ProtectedRoute requiredRole="admin"><Attendance /></ProtectedRoute> },
-      { path: '/admin/manage-batches', element: <ProtectedRoute requiredRole="admin"><ManageBatches /></ProtectedRoute> },
+      { path: '/admin/manage-batches', element: <ProtectedRoute requiredRoles={['admin','coach']}><ManageBatches /></ProtectedRoute> },
+      { path: '/admin/batches/:batchId', element: <ProtectedRoute requiredRoles={['admin','coach']}><BatchDetail /></ProtectedRoute> },
       
       // Coach Routes
       { path: '/coach', element: <ProtectedRoute requiredRole="coach"><CoachDashboard /></ProtectedRoute> },

@@ -433,7 +433,6 @@ npm run lint     # ESLint
 - **Response shape varies per endpoint** - always unwrap all known variants before using data
 - **Some endpoints use `fetch`, some use `axios`** - both are present; this is intentional per-page choice, not a bug
 - **`selectedPlayer` in Zustand is persisted** - so the session card manage page remembers the last selected player across navigations; reset on page load via `location.key` effect
-- **Session card delete modal appears twice** in SessionCardManage.jsx (duplicate Modal blocks) - existing issue in code
 - **`sessionHistory` in store has hardcoded demo data** - real session data comes from API, not this local array; the local array is used for demo/fallback only
 - **Player `name` field normalization** - API returns `playerName`, store normalizes to both `name` and `playerName` for compatibility across components
 - **401 threshold is 3 consecutive errors** - single 401s don't log out the user; only 3+ in a row trigger the modal

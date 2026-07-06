@@ -229,8 +229,8 @@ const ViewSessionCard = () => {
             {[
               { icon: List,   label: 'Activities',    value: activities.length },
               { icon: Zap,    label: 'Total Points',  value: `${totalPts} pts` },
-              { icon: Clock,  label: 'Duration',      value: totalDur ? `${totalDur} min` : '—' },
-              ...(playerData ? [{ icon: User, label: 'Player', value: playerData.playerName || playerData.name || '—' }] : []),
+              { icon: Clock,  label: 'Duration',      value: totalDur ? `${totalDur} min` : '-' },
+              ...(playerData ? [{ icon: User, label: 'Player', value: playerData.playerName || playerData.name || '-' }] : []),
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} style={{
                 background: 'rgba(255,255,255,.10)', borderRadius: '12px',

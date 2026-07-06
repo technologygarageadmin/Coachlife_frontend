@@ -419,7 +419,7 @@ export function Home() {
           </div>
           <h2 className="tg-section-title">From sign-in to submitted<br />in 4 simple steps</h2>
           <p className="tg-section-sub" style={{ marginBottom: '36px' }}>
-            CoachLife is designed to be fast so you can stay focused on teaching, not the tool.
+            CoachLife is designed to be fast so you can stay focused on coaching, not the tool.
           </p>
 
           <div className="tg-flow-grid">

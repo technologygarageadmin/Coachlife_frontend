@@ -6,8 +6,12 @@ import { Layout } from '../../components/Layout';
 import {
   Users, BookOpen, Plus, Award, Search, ChevronRight, ChevronLeft,
   AlertCircle, Loader, Layers, X, ExternalLink, Calendar, Trophy,
-  Clock, CheckCircle, AlertTriangle, Play, BarChart2,
+  Clock, CheckCircle, AlertTriangle, Play, BarChart2, ArrowRight,
+  ClipboardList, Eye, CheckCircle2,
 } from 'lucide-react';
+import StatusBadge from '../../components/StatusBadge';
+import { Toast } from '../../components/Toast';
+import { Modal } from '../../components/Modal';
 
 /* ─── constants ─────────────────────────────────────────────────────── */
 const PALETTES = [
@@ -23,6 +27,7 @@ const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const BATCHES_URL   = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
 const VIEW_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 const ATTEND_URL    = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
+const COMPLETE_SESSION_URL = 'https://65km9yygae.execute-api.ap-south-1.amazonaws.com/default/CL_Complete_Session';
 
 const ATT_CFG = {
   Present: { bg:'#DCFCE7', color:'#16A34A', border:'#BBF7D0', dot:'#22C55E' },
@@ -38,10 +43,16 @@ const getFirstWeekday = (y,m) => { const d=new Date(y,m,1).getDay(); return d===
 const normStatus = s => (s||'').toLowerCase().replace(/[\s_]/g,'');
 const DONE_STATUSES = new Set(['completed', 'submitted']);
 const UPCOMING_STATUSES = new Set(['upcoming', 'draft']);
-const isDoneCard     = c => DONE_STATUSES.has(normStatus(c.status));
-const isUpcomingCard = c => UPCOMING_STATUSES.has(normStatus(c.status));
-// "Pending" = needs the coach's attention now (not completed, not just upcoming/scheduled)
-const isPendingCard  = c => !isDoneCard(c) && !isUpcomingCard(c);
+// "Pending" per the flow spec = a session that was missed or not completed.
+const PENDING_STATUSES = new Set(['pending', 'notcompleted', 'absent', 'excused']);
+// In-progress = a session the coach started but hasn't completed. On its own it's
+// not "pending", but an ABANDONED in-progress session (started, then left) must
+// still be recoverable - so the queue surfaces it as a "Resume" item.
+const INPROGRESS_STATUSES = new Set(['inprogress']);
+const isDoneCard       = c => DONE_STATUSES.has(normStatus(c.status));
+const isUpcomingCard   = c => UPCOMING_STATUSES.has(normStatus(c.status));
+const isPendingCard    = c => PENDING_STATUSES.has(normStatus(c.status));
+const isInProgressCard = c => INPROGRESS_STATUSES.has(normStatus(c.status));
 
 /* ─── PlayerRow ─────────────────────────────────────────────────────── */
 const PlayerRow = React.memo(({ player, selected, onClick }) => {
@@ -141,14 +152,23 @@ export default function CoachDashboard() {
 
   const [myPlayers,    setMyPlayers]    = useState([]);
   const [batchCount,   setBatchCount]   = useState(0);
+  const [myBatches,    setMyBatches]    = useState([]);
   const [attRecs,      setAttRecs]      = useState([]);
   const [cardsMap,     setCardsMap]     = useState({});
   const [loading,      setLoading]      = useState(true);
   const [cardsLoading, setCardsLoading] = useState(false);
 
-  const [selected,    setSelected]    = useState(null);
-  const [search,      setSearch]      = useState('');
-  const [showPending, setShowPending] = useState(false);
+  const [selected,      setSelected]      = useState(null);
+  const [search,        setSearch]        = useState('');
+  const [showPending,   setShowPending]   = useState(false);
+  const [showHomeTasks, setShowHomeTasks] = useState(false);
+  const [cardsRefreshKey, setCardsRefreshKey] = useState(0);
+  const [markingKey,    setMarkingKey]    = useState(null);
+  const [htModal,       setHtModal]       = useState(null);  // home-task being marked { row }
+  const [htRating,      setHtRating]      = useState(0);
+  const [htFeedback,    setHtFeedback]    = useState('');
+  const [toastMsg,      setToastMsg]      = useState('');
+  const [toastType,     setToastType]     = useState('success');
 
   const [calNav,   setCalNav]   = useState(() => { const n=new Date(); return { month:n.getMonth(), year:n.getFullYear() }; });
   const [selDate,  setSelDate]  = useState(null);
@@ -185,7 +205,7 @@ export default function CoachDashboard() {
           };
         });
 
-        // paint immediately — player list + card fetch (Effect 2) can start now
+        // paint immediately - player list + card fetch (Effect 2) can start now
         setMyPlayers(list);
       } finally {
         if (!cancelled) setLoading(false);
@@ -207,7 +227,9 @@ export default function CoachDashboard() {
         let bd = bRes.value;
         if (bd?.body && typeof bd.body === 'string') bd = JSON.parse(bd.body);
         const batches = Array.isArray(bd) ? bd : (bd.batches || []);
-        setBatchCount(batches.filter(b => b.coachIds && b.coachIds.includes(currentUser.id)).length);
+        const mine = batches.filter(b => b.coachIds && b.coachIds.includes(currentUser.id));
+        setBatchCount(mine.length);
+        setMyBatches(mine);
       }
 
       if (aRes.status === 'fulfilled' && aRes.value) {
@@ -219,7 +241,7 @@ export default function CoachDashboard() {
     return () => { cancelled = true; };
   }, [currentUser?.id, userToken]);
 
-  /* ── Effect 2: session cards — runs after players load, non-blocking ── */
+  /* ── Effect 2: session cards - runs after players load, non-blocking ── */
   useEffect(() => {
     if (myPlayers.length === 0 || !userToken) return;
     let cancelled = false;
@@ -283,24 +305,124 @@ export default function CoachDashboard() {
       }
     })();
     return () => { cancelled = true; };
-  }, [myPlayers, userToken]);
+  }, [myPlayers, userToken, cardsRefreshKey]);
 
   /* ── derived (all from already-loaded cardsMap, no extra fetches) ── */
   const totalPoints = useMemo(() => myPlayers.reduce((s,p)=>s+(p.totalPoints||0),0), [myPlayers]);
 
-  const pendingMap = useMemo(() => {
+  // Today's sessions: batches this coach runs that meet today, by weekday abbr
+  // (DAYS is already Mon-first, matching how batch.days is stored everywhere else).
+  const todaysClasses = useMemo(() => {
+    const todayAbbr = DAYS[(new Date().getDay() + 6) % 7];
+    return myBatches.filter(b => Array.isArray(b.days) && b.days.includes(todayAbbr));
+  }, [myBatches]);
+
+  // playerId → their batch { batchId, batchName } (for the queue label + so an
+  // attendance mark from an opened card can be stamped with the right batch).
+  const playerBatch = useMemo(() => {
     const map = {};
-    myPlayers.forEach(p => {
-      const pCards = cardsMap[String(p.playerId)] || [];
-      map[String(p.playerId)] = { name: p.name, count: pCards.filter(isPendingCard).length };
+    myBatches.forEach(b => {
+      (b.playerIds || (b.players || []).map(p => p.playerId)).forEach(pid => {
+        map[String(pid)] = { batchId: b.batchId || b._id || '', batchName: b.batchName || '' };
+      });
     });
     return map;
-  }, [myPlayers, cardsMap]);
+  }, [myBatches]);
 
-  const totalPending = useMemo(
-    () => Object.values(pendingMap).reduce((s,v) => s + v.count, 0),
-    [pendingMap]
-  );
+  // The Pending Queue: one flat, actionable row per SESSION-to-finish across all
+  // players - both PENDING (missed/not finished) and IN PROGRESS (started but left
+  // without completing, so it would otherwise get lost). Sorted oldest-first.
+  const pendingQueue = useMemo(() => {
+    const rows = [];
+    myPlayers.forEach(p => {
+      (cardsMap[String(p.playerId)] || []).forEach(c => {
+        const pending = isPendingCard(c);
+        const resume = isInProgressCard(c);
+        if (!pending && !resume) return;
+        const b = playerBatch[String(p.playerId)];
+        rows.push({
+          cardId: c.sessionCardId || c._id,
+          playerId: p.playerId,
+          playerName: p.name,
+          batchId: b?.batchId || '',
+          batchName: b?.batchName || p.LearningPathway || '',
+          session: c.session ?? null,
+          sessionDate: c.sessionDate || '',
+          rawStatus: c.status || '',
+          resume,
+        });
+      });
+    });
+    // oldest session first (fall back to date, then name)
+    return rows.sort((a, b) =>
+      (a.session ?? 1e9) - (b.session ?? 1e9)
+      || (a.sessionDate || '').localeCompare(b.sessionDate || '')
+      || a.playerName.localeCompare(b.playerName)
+    );
+  }, [myPlayers, cardsMap, playerBatch]);
+
+  const totalPending = pendingQueue.length;
+
+  // Home Tasks: individual activities a coach marked "Not Completed" inside a
+  // session that was otherwise finished. The session is Completed; these are the
+  // leftover pieces the player owes as homework - one row per activity, so the
+  // coach can see exactly what to tell each player to finish. Derived from the
+  // cards already in cardsMap (no extra fetch).
+  const homeTasks = useMemo(() => {
+    const rows = [];
+    myPlayers.forEach(p => {
+      (cardsMap[String(p.playerId)] || []).forEach(c => {
+        if (!isDoneCard(c)) return;
+        (c.activities || []).forEach(a => {
+          if (normStatus(a.status) !== 'notcompleted') return;
+          rows.push({
+            cardId: c.sessionCardId || c._id,
+            playerId: p.playerId,
+            playerName: p.name,
+            batchName: playerBatch[String(p.playerId)]?.batchName || p.LearningPathway || '',
+            session: c.session ?? null,
+            activitySequence: a.activitySequence ?? null,
+            activityTitle: a.activityTitle || a.title || `Activity ${a.activitySequence ?? ''}`.trim(),
+          });
+        });
+      });
+    });
+    return rows.sort((a, b) =>
+      (a.session ?? 1e9) - (b.session ?? 1e9)
+      || a.playerName.localeCompare(b.playerName)
+    );
+  }, [myPlayers, cardsMap, playerBatch]);
+
+  const totalHomeTasks = homeTasks.length;
+
+  // Mark one home-task activity as completed (make-up). Credits its points to the
+  // player server-side, then refreshes cards so the row drops off the list.
+  const markHomeTaskDone = async (row, rating, feedback) => {
+    if (!row.cardId || row.activitySequence == null) {
+      setToastMsg('Missing card info for this task'); setToastType('error'); return;
+    }
+    const key = `${row.cardId}_${row.activitySequence}`;
+    setMarkingKey(key);
+    try {
+      const payload = { action: 'completeHomeTask', card_id: row.cardId, activitySequence: row.activitySequence };
+      if (rating) payload.rating = rating;
+      if (feedback && feedback.trim()) payload.feedback = feedback.trim();
+      const res = await axios.post(COMPLETE_SESSION_URL, payload, { headers: cardAxiosHeaders });
+      let d = res.data;
+      if (d?.body && typeof d.body === 'string') { try { d = JSON.parse(d.body); } catch { /* ignore */ } }
+      const credited = d?.creditedPoints;
+      setToastMsg(typeof credited === 'number' && credited > 0 ? `Home task done · +${credited} pts` : 'Home task marked done');
+      setToastType('success');
+      setHtModal(null);
+      setCardsRefreshKey(k => k + 1);
+    } catch {
+      setToastMsg('Failed to mark home task done'); setToastType('error');
+    } finally {
+      setMarkingKey(null);
+    }
+  };
+
+  const openHtModal = (row) => { setHtRating(0); setHtFeedback(''); setHtModal({ row }); };
 
   const selectedCards = useMemo(
     () => selected ? (cardsMap[String(selected.playerId)] || []) : [],
@@ -359,6 +481,54 @@ export default function CoachDashboard() {
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
+      {toastMsg && (
+        <Toast message={toastMsg} type={toastType} duration={3000} onClose={() => setToastMsg('')} />
+      )}
+
+      {/* Mark a home task done — capture a rating + feedback for the make-up */}
+      {htModal && (() => {
+        const busy = markingKey === `${htModal.row.cardId}_${htModal.row.activitySequence}`;
+        return (
+          <Modal isOpen={!!htModal} onClose={() => { if (!busy) setHtModal(null); }} title="Mark home task done">
+            <div style={{ width:'min(90vw, 440px)', padding:'4px 4px 8px' }}>
+              <div style={{ padding:'12px 14px', borderRadius:'12px', background:'#F5F3FF', border:'1px solid #DDD6FE', marginBottom:'18px' }}>
+                <p style={{ fontSize:'12px', fontWeight:'700', color:'#6D28D9', margin:'0 0 3px' }}>{htModal.row.playerName} · Session {htModal.row.session ?? '—'}</p>
+                <p style={{ fontSize:'13.5px', fontWeight:'600', color:'#4B5563', margin:0 }}>{htModal.row.activityTitle}</p>
+              </div>
+
+              <p style={{ fontSize:'11px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'.4px', margin:'0 0 6px' }}>Rating (optional)</p>
+              <div style={{ display:'flex', gap:'6px', marginBottom:'16px' }}>
+                {[1,2,3,4,5].map(star => (
+                  <button key={star} onClick={() => setHtRating(star === htRating ? 0 : star)}
+                    style={{ width:'34px', height:'34px', borderRadius:'8px', border:'1.5px solid #E5E7EB', background:'#fff', cursor:'pointer', fontSize:'20px', lineHeight:1, color: htRating >= star ? '#F59E0B' : '#CBD5E1' }}>
+                    ★
+                  </button>
+                ))}
+              </div>
+
+              <p style={{ fontSize:'11px', fontWeight:'700', color:'#475569', textTransform:'uppercase', letterSpacing:'.4px', margin:'0 0 6px' }}>Feedback (optional)</p>
+              <textarea
+                value={htFeedback}
+                onChange={e => setHtFeedback(e.target.value)}
+                placeholder="How did the player do on this make-up activity?"
+                rows={3}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'9px', border:'1.5px solid #E5E7EB', fontSize:'13.5px', color:'#111827', outline:'none', resize:'vertical', fontFamily:'inherit', boxSizing:'border-box', marginBottom:'18px' }}
+              />
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                <button onClick={() => setHtModal(null)} disabled={busy}
+                  style={{ padding:'11px 16px', borderRadius:'9px', fontWeight:'600', background:'#F3F4F6', color:'#111827', border:'1.5px solid #E5E7EB', cursor: busy?'not-allowed':'pointer', fontSize:'14px' }}>
+                  Cancel
+                </button>
+                <button onClick={() => markHomeTaskDone(htModal.row, htRating, htFeedback)} disabled={busy}
+                  style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'7px', padding:'11px 16px', borderRadius:'9px', fontWeight:'700', background:'linear-gradient(135deg, #16A34A, #15803D)', color:'#fff', border:'none', cursor: busy?'not-allowed':'pointer', fontSize:'14px', opacity: busy?0.8:1 }}>
+                  {busy ? <><Loader size={15} style={{ animation:'spin 1s linear infinite' }} /> Saving…</> : <><CheckCircle2 size={15} /> Mark Done</>}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       <div style={{ maxWidth:'1300px',margin:'0 auto',padding:'0 28px 48px' }}>
 
@@ -394,64 +564,201 @@ export default function CoachDashboard() {
           </div>
         </div>
 
+        {/* ── Today's Sessions ────────────────────────────────────── */}
+        {todaysClasses.length > 0 && (
+          <div style={{
+            background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+            border: '1.5px solid #FDE68A', borderRadius: '16px',
+            padding: '18px 20px', marginBottom: '20px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <Calendar size={16} color="#D97706" />
+              <p style={{ fontSize: '13px', fontWeight: '800', color: '#92400E', margin: 0, textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                Today's Sessions
+              </p>
+              <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '999px', background: 'rgba(217,119,6,.15)', color: '#B45309' }}>
+                {todaysClasses.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              {todaysClasses.map(batch => (
+                <div key={batch.batchId} style={{
+                  flex: '1 1 260px', minWidth: '240px', background: '#fff', borderRadius: '12px',
+                  border: '1.5px solid #FDE68A', padding: '14px 16px',
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {batch.batchName}
+                    </p>
+                    <p style={{ fontSize: '11.5px', color: '#78716C', margin: 0, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      {batch.startTime && <><Clock size={11} /> {batch.startTime}{batch.endTime ? `–${batch.endTime}` : ''} · </>}
+                      {(batch.players?.length ?? batch.playerIds?.length ?? 0)} kids
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/coach/batch-session', { state: { batch } })}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px',
+                      borderRadius: '9px', background: 'linear-gradient(135deg, #060030, #000)',
+                      color: '#fff', border: 'none', fontSize: '12.5px', fontWeight: '700',
+                      cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Play size={13} /> Start Session
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Stats ──────────────────────────────────────────────── */}
         <div style={{ display:'flex',gap:'16px',marginBottom:'20px',flexWrap:'wrap' }}>
           <StatTile label="My Players"    value={myPlayers.length}                           Icon={Users}         color="#6366F1" gradBg="linear-gradient(135deg,#EEF2FF,#E0E7FF)" />
           <StatTile label="My Batches"    value={batchCount}                                 Icon={Layers}        color="#10B981" gradBg="linear-gradient(135deg,#ECFDF5,#D1FAE5)" />
           <StatTile
-            label="Pending Cards"
+            label="Pending Sessions"
             value={cardsLoading ? '…' : totalPending}
             Icon={AlertTriangle}
             color="#F59E0B"
             gradBg="linear-gradient(135deg,#FFFBEB,#FEF3C7)"
-            onClick={() => setShowPending(p => !p)}
+            onClick={() => { setShowPending(p => !p); setShowHomeTasks(false); }}
             active={showPending}
+          />
+          <StatTile
+            label="Home Tasks"
+            value={cardsLoading ? '…' : totalHomeTasks}
+            Icon={ClipboardList}
+            color="#7C3AED"
+            gradBg="linear-gradient(135deg,#F5F3FF,#EDE9FE)"
+            onClick={() => { setShowHomeTasks(p => !p); setShowPending(false); }}
+            active={showHomeTasks}
           />
           <StatTile label="Points Earned" value={totalPoints.toLocaleString()}               Icon={Trophy}        color="#8B5CF6" gradBg="linear-gradient(135deg,#F5F3FF,#EDE9FE)" />
         </div>
 
-        {/* ── Pending Panel ──────────────────────────────────────── */}
+        {/* ── Pending Queue ──────────────────────────────────────────
+            A flat, actionable list of every missed / unfinished session across
+            all players, oldest-first. The coach clears this backlog at any time,
+            independent of the batch's own progression. (flow spec: Pending Queue) */}
         {showPending && (
-          <div style={{ background:'#FFFBEB',border:'1.5px solid #FDE68A',borderRadius:'14px',marginBottom:'20px',overflow:'hidden',animation:'fadeIn .22s ease',boxShadow:'0 4px 18px rgba(245,158,11,.12)' }}>
-            <div style={{ padding:'14px 20px',borderBottom:'1px solid #FDE68A',display:'flex',alignItems:'center',gap:'10px' }}>
+          <div style={{ background:'#fff',border:'1.5px solid #FDE68A',borderRadius:'14px',marginBottom:'20px',overflow:'hidden',animation:'fadeIn .22s ease',boxShadow:'0 4px 18px rgba(245,158,11,.12)' }}>
+            <div style={{ padding:'14px 20px',borderBottom:'1px solid #FDE68A',display:'flex',alignItems:'center',gap:'10px',background:'#FFFBEB' }}>
               <AlertTriangle size={16} color="#D97706" />
-              <p style={{ fontSize:'14px',fontWeight:'800',color:'#92400E',margin:0,flex:1 }}>Pending Session Cards</p>
+              <p style={{ fontSize:'14px',fontWeight:'800',color:'#92400E',margin:0,flex:1 }}>Pending Sessions Queue</p>
+              <span style={{ fontSize:'11px',fontWeight:'700',color:'#B45309' }}>oldest first</span>
               <button onClick={()=>setShowPending(false)} style={{ background:'none',border:'none',cursor:'pointer',color:'#B45309',display:'flex' }}><X size={16} /></button>
             </div>
-            <div style={{ padding:'12px 14px' }}>
-              {cardsLoading ? (
-                <div style={{ display:'flex',alignItems:'center',gap:'10px',padding:'16px',color:'#B45309' }}>
-                  <Loader size={16} style={{ animation:'spin 1s linear infinite' }} />
-                  <span style={{ fontSize:'13px',fontWeight:'600' }}>Loading session card statuses…</span>
-                </div>
-              ) : (
-                <div style={{ display:'flex',flexWrap:'wrap',gap:'8px' }}>
-                  {myPlayers.map(player => {
-                    const info = pendingMap[String(player.playerId)]||{ count:0 };
-                    const hasPending = info.count > 0;
-                    return (
-                      <div key={player.playerId} style={{ display:'flex',alignItems:'center',gap:'10px',padding:'10px 14px',borderRadius:'10px',background:hasPending?'#fff':'#F9FAFB',border:`1.5px solid ${hasPending?'#FDE68A':'#E2E8F0'}`,minWidth:'200px',flex:'1 1 200px' }}>
-                        <div style={{ width:'34px',height:'34px',borderRadius:'50%',background:avatarColor(player.name),display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'13px',flexShrink:0 }}>
-                          {player.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div style={{ flex:1,minWidth:0 }}>
-                          <p style={{ fontSize:'13px',fontWeight:'700',color:'#0F172A',margin:'0 0 1px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{player.name}</p>
-                          {hasPending
-                            ? <p style={{ fontSize:'11px',color:'#D97706',fontWeight:'600',margin:0 }}>{info.count} pending</p>
-                            : <p style={{ fontSize:'11px',color:'#16A34A',fontWeight:'600',margin:0 }}>All clear</p>}
-                        </div>
-                        {hasPending && (
-                          <Link to={`/coach/player/${player.playerId}/sessions`} state={{ playerName:player.name, sessionCardIds:player.sessionCardIds||[] }}
-                            style={{ fontSize:'11px',fontWeight:'700',color:'#D97706',textDecoration:'none',display:'flex',alignItems:'center',gap:'2px',flexShrink:0 }}>
-                            View <ChevronRight size={12} />
-                          </Link>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            {cardsLoading && pendingQueue.length === 0 ? (
+              <div style={{ display:'flex',alignItems:'center',gap:'10px',padding:'20px',color:'#B45309' }}>
+                <Loader size={16} style={{ animation:'spin 1s linear infinite' }} />
+                <span style={{ fontSize:'13px',fontWeight:'600' }}>Loading pending sessions…</span>
+              </div>
+            ) : pendingQueue.length === 0 ? (
+              <div style={{ padding:'24px',textAlign:'center' }}>
+                <CheckCircle size={26} color="#16A34A" style={{ display:'block',margin:'0 auto 8px' }} />
+                <p style={{ fontSize:'13px',fontWeight:'600',color:'#16A34A',margin:0 }}>All caught up - no pending sessions.</p>
+              </div>
+            ) : (
+              <div style={{ display:'flex',flexDirection:'column' }}>
+                {pendingQueue.map((row,i) => (
+                  <div key={row.cardId||i} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'12px 20px',borderTop:i===0?'none':'1px solid #FEF3C7' }}>
+                    <div style={{ width:'34px',height:'34px',borderRadius:'50%',background:avatarColor(row.playerName),display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'13px',flexShrink:0 }}>
+                      {row.playerName.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1,minWidth:0 }}>
+                      <p style={{ fontSize:'13.5px',fontWeight:'700',color:'#0F172A',margin:'0 0 2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{row.playerName}</p>
+                      <p style={{ fontSize:'11.5px',color:'#78716C',margin:0,display:'flex',gap:'8px',flexWrap:'wrap' }}>
+                        {row.batchName && <span>{row.batchName}</span>}
+                        <span style={{ fontWeight:'700',color:'#B45309' }}>Session {row.session ?? '-'}</span>
+                        {row.sessionDate && <span>· since {row.sessionDate}</span>}
+                      </p>
+                    </div>
+                    <StatusBadge status={row.resume ? (row.rawStatus || 'in_progress') : 'pending'} size="sm" />
+                    <button
+                      onClick={() => navigate(`/coach/session/${row.cardId}`, { state: { batchInfo: { batchId: row.batchId, batchName: row.batchName } } })}
+                      disabled={!row.cardId}
+                      style={{ display:'flex',alignItems:'center',gap:'6px',padding:'8px 14px',borderRadius:'8px',background:!row.cardId?'#E5E7EB':row.resume?'linear-gradient(135deg, #4F46E5, #4338CA)':'linear-gradient(135deg, #D97706, #B45309)',color:row.cardId?'#fff':'#9CA3AF',border:'none',fontSize:'12px',fontWeight:'700',cursor:row.cardId?'pointer':'not-allowed',flexShrink:0,whiteSpace:'nowrap' }}
+                    >
+                      <Play size={12} /> {row.resume ? 'Resume' : 'Start Session'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Home Tasks flag ────────────────────────────────────────
+            Per-activity homework: activities marked "Not Completed" inside a
+            completed session. The session is done; these are the pieces the
+            player still owes. Distinct from the (session-level) Pending Queue. */}
+        {showHomeTasks && (
+          <div style={{ background:'#fff',border:'1.5px solid #DDD6FE',borderRadius:'14px',marginBottom:'20px',overflow:'hidden',animation:'fadeIn .22s ease',boxShadow:'0 4px 18px rgba(124,58,237,.12)' }}>
+            <div style={{ padding:'14px 20px',borderBottom:'1px solid #DDD6FE',display:'flex',alignItems:'center',gap:'10px',background:'#F5F3FF' }}>
+              <ClipboardList size={16} color="#7C3AED" />
+              <p style={{ fontSize:'14px',fontWeight:'800',color:'#5B21B6',margin:0,flex:1 }}>Home Tasks</p>
+              <span style={{ fontSize:'11px',fontWeight:'700',color:'#6D28D9' }}>activities to finish</span>
+              <button onClick={()=>setShowHomeTasks(false)} style={{ background:'none',border:'none',cursor:'pointer',color:'#6D28D9',display:'flex' }}><X size={16} /></button>
             </div>
+            {cardsLoading && homeTasks.length === 0 ? (
+              <div style={{ display:'flex',alignItems:'center',gap:'10px',padding:'20px',color:'#6D28D9' }}>
+                <Loader size={16} style={{ animation:'spin 1s linear infinite' }} />
+                <span style={{ fontSize:'13px',fontWeight:'600' }}>Loading home tasks…</span>
+              </div>
+            ) : homeTasks.length === 0 ? (
+              <div style={{ padding:'24px',textAlign:'center' }}>
+                <CheckCircle size={26} color="#16A34A" style={{ display:'block',margin:'0 auto 8px' }} />
+                <p style={{ fontSize:'13px',fontWeight:'600',color:'#16A34A',margin:0 }}>No home tasks - every activity is completed.</p>
+              </div>
+            ) : (
+              <div style={{ display:'flex',flexDirection:'column' }}>
+                {homeTasks.map((row,i) => (
+                  <div key={(row.cardId||i)+'_'+row.activityTitle+i} style={{ display:'flex',alignItems:'center',gap:'12px',padding:'12px 20px',borderTop:i===0?'none':'1px solid #EDE9FE' }}>
+                    <div style={{ width:'34px',height:'34px',borderRadius:'50%',background:avatarColor(row.playerName),display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:'800',fontSize:'13px',flexShrink:0 }}>
+                      {row.playerName.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex:1,minWidth:0 }}>
+                      <p style={{ fontSize:'13.5px',fontWeight:'700',color:'#0F172A',margin:'0 0 2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>
+                        {row.playerName}
+                      </p>
+                      <p style={{ fontSize:'11.5px',color:'#6B7280',margin:0,display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center' }}>
+                        <span style={{ fontWeight:'700',color:'#6D28D9' }}>Session {row.session ?? '-'}</span>
+                        <span style={{ color:'#CBD5E1' }}>·</span>
+                        <span style={{ fontWeight:'600',color:'#4B5563',overflow:'hidden',textOverflow:'ellipsis' }}>{row.activityTitle}</span>
+                      </p>
+                    </div>
+                    <span style={{ fontSize:'10px',fontWeight:'800',padding:'3px 9px',borderRadius:'999px',background:'#EDE9FE',color:'#6D28D9',flexShrink:0,textTransform:'uppercase',letterSpacing:'.4px' }}>
+                      Home Task
+                    </span>
+                    {(() => {
+                      const busy = markingKey === `${row.cardId}_${row.activitySequence}`;
+                      const canMark = row.cardId && row.activitySequence != null && !busy;
+                      return (
+                        <button
+                          onClick={() => canMark && openHtModal(row)}
+                          disabled={!canMark}
+                          title="Mark this activity completed with a rating and feedback"
+                          style={{ display:'flex',alignItems:'center',gap:'6px',padding:'8px 12px',borderRadius:'8px',background:canMark?'linear-gradient(135deg, #16A34A, #15803D)':'#E5E7EB',color:canMark?'#fff':'#9CA3AF',border:'none',fontSize:'12px',fontWeight:'700',cursor:canMark?'pointer':'not-allowed',flexShrink:0,whiteSpace:'nowrap' }}
+                        >
+                          {busy
+                            ? <><Loader size={12} style={{ animation:'spin 1s linear infinite' }} /> Marking…</>
+                            : <><CheckCircle2 size={12} /> Mark Done</>}
+                        </button>
+                      );
+                    })()}
+                    <button
+                      onClick={() => navigate(`/coach/view-completed-session/${row.cardId}`)}
+                      disabled={!row.cardId}
+                      style={{ display:'flex',alignItems:'center',gap:'6px',padding:'8px 12px',borderRadius:'8px',background:'#fff',color:row.cardId?'#6D28D9':'#9CA3AF',border:`1.5px solid ${row.cardId?'#DDD6FE':'#E5E7EB'}`,fontSize:'12px',fontWeight:'700',cursor:row.cardId?'pointer':'not-allowed',flexShrink:0,whiteSpace:'nowrap' }}
+                    >
+                      <Eye size={12} /> View
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -537,17 +844,13 @@ export default function CoachDashboard() {
                   <div style={{ marginTop:'10px' }}>
                     <p style={{ fontSize:'11px',fontWeight:'700',color:'#475569',margin:'0 0 7px',textTransform:'uppercase',letterSpacing:'.4px' }}>Recent</p>
                     <div style={{ display:'flex',flexDirection:'column',gap:'5px' }}>
-                      {selectedCards.slice().reverse().slice(0,4).map((c,i)=>{
-                        const st=normStatus(c.status);
-                        const cfg={ completed:{bg:'#F0FDF4',color:'#16A34A',label:'Done'}, pending:{bg:'#FFFBEB',color:'#D97706',label:'Pending'}, inprogress:{bg:'#EFF6FF',color:'#2563EB',label:'Active'} }[st]||{bg:'#F9FAFB',color:'#64748B',label:'Upcoming'};
-                        return (
-                          <div key={i} style={{ display:'flex',alignItems:'center',gap:'9px',padding:'8px 10px',borderRadius:'8px',background:cfg.bg,border:`1px solid ${cfg.color}22` }}>
-                            <span style={{ fontSize:'11px',fontWeight:'800',color:cfg.color,minWidth:'22px' }}>S{c.session||(i+1)}</span>
-                            <p style={{ fontSize:'12px',fontWeight:'600',color:'#0F172A',margin:0,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.Topic||'Session'}</p>
-                            <span style={{ fontSize:'10px',fontWeight:'700',color:cfg.color,flexShrink:0 }}>{cfg.label}</span>
-                          </div>
-                        );
-                      })}
+                      {selectedCards.slice().reverse().slice(0,4).map((c,i)=>(
+                        <div key={i} style={{ display:'flex',alignItems:'center',gap:'9px',padding:'8px 10px',borderRadius:'8px',background:'#F9FAFB',border:'1px solid #E5E7EB' }}>
+                          <span style={{ fontSize:'11px',fontWeight:'800',color:'#475569',minWidth:'22px' }}>S{c.session||(i+1)}</span>
+                          <p style={{ fontSize:'12px',fontWeight:'600',color:'#0F172A',margin:0,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{c.Topic||'Session'}</p>
+                          <StatusBadge status={c.status} size="sm" />
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -618,7 +921,7 @@ export default function CoachDashboard() {
                 ))}
               </div>
 
-              {/* Calendar grid — compact */}
+              {/* Calendar grid - compact */}
               <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'3px' }}>
                 {cells.map((day,idx)=>{
                   if (!day) return <div key={`b${idx}`} />;

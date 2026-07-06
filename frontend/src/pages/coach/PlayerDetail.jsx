@@ -3,7 +3,62 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
-import { User, Mail, Award, TrendingUp, FileText, BookOpen, ArrowLeft, ChevronRight, Calendar, Zap, Loader, Clock, CheckCircle } from 'lucide-react';
+import StatusBadge from '../../components/StatusBadge';
+import { User, Mail, Award, TrendingUp, FileText, BookOpen, ArrowLeft, ChevronRight, Calendar, Zap, Loader, Clock, CheckCircle, Sparkles, CalendarCheck, Eye, Edit3 } from 'lucide-react';
+
+const normSt = (s) => (s || '').toLowerCase().replace(/[\s_]/g, '');
+const statusColors = (status) => {
+  const s = normSt(status);
+  if (s === 'completed') return { bg: '#DCFCE7', text: '#16A34A' };
+  if (s === 'inprogress') return { bg: '#E0E7FF', text: '#4F46E5' };
+  if (['pending', 'notcompleted', 'absent', 'excused'].includes(s)) return { bg: '#FEF3C7', text: '#D97706' };
+  return { bg: '#EFF6FF', text: '#2563EB' }; // upcoming / draft
+};
+
+// Compact session card - same look as the Session Card "By Batch" workspace.
+const SessionMiniCard = ({ session, dark, onView, onEdit }) => {
+  const [hov, setHov] = useState(false);
+  const sc = statusColors(session.status);
+  const border = dark ? 'var(--cl-border)' : '#E5E7EB';
+  const textPrimary = dark ? 'var(--cl-text)' : '#111827';
+  const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
+  return (
+    <div
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ borderRadius: '12px', border: `1px solid ${hov ? sc.text + '55' : border}`, background: dark ? 'rgba(255,255,255,0.03)' : '#fff', overflow: 'hidden', boxShadow: hov ? `0 8px 20px ${sc.text}22` : '0 1px 4px rgba(0,0,0,0.05)', transition: 'all .2s', transform: hov ? 'translateY(-3px)' : 'none' }}
+    >
+      <div style={{ height: '4px', background: sc.text }} />
+      <div style={{ padding: '13px 14px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', marginBottom: '7px' }}>
+          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#4F46E5' }}>Session {session.session ?? '-'}</span>
+          <span style={{ fontSize: '9.5px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: sc.bg, color: sc.text, whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{session.status || 'Draft'}</span>
+        </div>
+        <p style={{ fontSize: '13.5px', fontWeight: '700', color: textPrimary, margin: '0 0 4px', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{session.Topic || 'Untitled Session'}</p>
+        <p style={{ fontSize: '11px', color: textMuted, margin: '0 0 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.LearningPathway || 'No pathway'}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '11px' }}>
+          <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 9px', borderRadius: '6px', background: dark ? 'rgba(16,185,129,0.12)' : '#F0FDF4', color: '#16A34A', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '3px' }}><Zap size={11} />{session.totalPoints || 0}</span>
+        </div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button onClick={onView} style={{ flex: 1, padding: '7px 8px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><Eye size={13} /> View</button>
+          {onEdit && (
+            <button onClick={onEdit} style={{ flex: 1, padding: '7px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><Edit3 size={13} /> Edit</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GENERATE_CARD_URL = 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating';
+const GET_ALL_PLAYERS_URL = 'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players';
+const GET_ATTENDANCE_URL = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
+
+const ATT_STATUS_STYLE = {
+  Present: { bg: '#DCFCE7', color: '#16A34A' },
+  Absent:  { bg: '#FEE2E2', color: '#DC2626' },
+  Late:    { bg: '#FEF3C7', color: '#D97706' },
+  Excused: { bg: '#EDE9FE', color: '#7C3AED' },
+};
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -55,6 +110,10 @@ const PlayerDetail = () => {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // This page is shared with the coach route. isAdmin only affects where the
+  // View action links (read-only admin view vs. the coach teaching view).
+  const isAdmin = currentUser?.role === 'admin' || (currentUser?.roles || []).includes('admin');
+
   const convertProgressToPercentage = (progress) => {
     if (typeof progress === 'number') return progress;
     if (progress === 'Not Started') return 0;
@@ -71,6 +130,29 @@ const PlayerDetail = () => {
   const isInProgress = (status) => normalizeStatus(status) === 'inprogress';
   const isCompleted = (status) => normalizeStatus(status) === 'completed';
   const isPending = (status) => normalizeStatus(status) === 'pending';
+
+  // Admin views this page as a read-only observer (view-session-card); a coach
+  // views it as the person who'll actually coach the session.
+  const sessionLink = (session) => isAdmin
+    ? `/admin/view-session-card/${session._id}`
+    : (isCompleted(session.status)
+      ? `/coach/view-completed-session/${session._id}`
+      : `/coach/session/${session._id}`);
+
+  const groupSessionsByPathway = (list) => {
+    const groups = {};
+    list.forEach(s => {
+      const key = s.LearningPathway || 'Unassigned Pathway';
+      (groups[key] = groups[key] || []).push(s);
+    });
+    return Object.keys(groups)
+      .sort((a, b) => {
+        if (a === player?.LearningPathway) return -1;
+        if (b === player?.LearningPathway) return 1;
+        return a.localeCompare(b);
+      })
+      .map(name => ({ name, sessions: groups[name] }));
+  };
 
   useEffect(() => {
     const loadPlayerDetails = async () => {
@@ -538,49 +620,28 @@ const PlayerDetail = () => {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                    {sessions.filter(s => isInProgress(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
-                      >
-                        <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: 'radial-gradient(circle, rgba(107, 114, 128, 0.1) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }}></div>
-
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: surface, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Zap size={18} color="#94A3B8" />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
-                          </div>
-                        </div>
-
-                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {session.Description || `Session ${session.session || 'N/A'}`}
-                        </p>
-
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>In Progress</span>
-                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
-                          {session.totalPoints && (
-                            <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Zap size={12} />{session.totalPoints} pts
-                            </span>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => navigate(`/coach/session/${session._id}`, { state: { session, player } })}
-                          style={{ width: '100%', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', border: 'none', borderRadius: '8px', padding: '10px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s ease' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.transform = 'scale(1.02)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'; e.currentTarget.style.transform = 'scale(1)'; }}
-                        >
-                          Continue Session
-                        </button>
+                  {groupSessionsByPathway(sessions.filter(s => isInProgress(s.status))).map(group => (
+                    <div key={group.name} style={{ marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: textPrimary }}>{group.name}</span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: textMuted, background: surface2, padding: '2px 9px', borderRadius: '20px' }}>{group.sessions.length}</span>
+                        {group.name === player.LearningPathway && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#4F46E5', background: 'rgba(99,102,241,0.1)', padding: '2px 9px', borderRadius: '20px' }}>Current</span>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+                        {group.sessions.map((session) => (
+                          <SessionMiniCard
+                            key={session._id}
+                            session={session}
+                            dark={dark}
+                            onView={() => navigate(sessionLink(session), { state: { session, player } })}
+                            onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -594,42 +655,28 @@ const PlayerDetail = () => {
                       {sessions.filter(s => isPending(s.status)).length}
                     </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                    {sessions.filter(s => isPending(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: surface2, border: '2px solid #FCD34D', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(217,119,6,0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#D97706'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#FCD34D'; }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: '#FEF3C7', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Clock size={18} color="#D97706" />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
-                          </div>
-                        </div>
-                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {session.Description || `Session ${session.session || 'N/A'}`}
-                        </p>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>Pending</span>
-                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
-                          <span style={{ padding: '5px 11px', background: '#F0FDF4', color: '#166534', borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Zap size={12} />{session.totalPoints || 0}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => navigate(`/coach/session/${session._id}`, { state: { session, player } })}
-                          style={{ width: '100%', padding: '10px 12px', background: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.transform = 'scale(1.02)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #D97706 0%, #B45309 100%)'; e.currentTarget.style.transform = 'scale(1)'; }}
-                        >
-                          View Details <ChevronRight size={16} />
-                        </button>
+                  {groupSessionsByPathway(sessions.filter(s => isPending(s.status))).map(group => (
+                    <div key={group.name} style={{ marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: textPrimary }}>{group.name}</span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: textMuted, background: surface2, padding: '2px 9px', borderRadius: '20px' }}>{group.sessions.length}</span>
+                        {group.name === player.LearningPathway && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#4F46E5', background: 'rgba(99,102,241,0.1)', padding: '2px 9px', borderRadius: '20px' }}>Current</span>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+                        {group.sessions.map((session) => (
+                          <SessionMiniCard
+                            key={session._id}
+                            session={session}
+                            dark={dark}
+                            onView={() => navigate(sessionLink(session), { state: { session, player } })}
+                            onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -644,49 +691,28 @@ const PlayerDetail = () => {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                    {sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status) && !isPending(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
-                      >
-                        <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: 'radial-gradient(circle, rgba(107, 114, 128, 0.1) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }}></div>
-
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: surface, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Clock size={18} color="#94A3B8" />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
-                          </div>
-                        </div>
-
-                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {session.Description || `Session ${session.session || 'N/A'}`}
-                        </p>
-
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', textTransform: 'capitalize' }}>
-                            {session.status === 'in_progress' ? 'In Progress' : session.status || 'Upcoming'}
-                          </span>
-                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
-                          <span style={{ padding: '5px 11px', background: '#F0FDF4', color: '#166534', borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Zap size={12} />{session.totalPoints || 0}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => navigate(`/coach/session/${session._id}`, { state: { session, player } })}
-                          style={{ width: '100%', padding: '10px 12px', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.transform = 'scale(1.02)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'; e.currentTarget.style.transform = 'scale(1)'; }}
-                        >
-                          View Details <ChevronRight size={16} />
-                        </button>
+                  {groupSessionsByPathway(sessions.filter(s => !isCompleted(s.status) && !isInProgress(s.status) && !isPending(s.status))).map(group => (
+                    <div key={group.name} style={{ marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: textPrimary }}>{group.name}</span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: textMuted, background: surface2, padding: '2px 9px', borderRadius: '20px' }}>{group.sessions.length}</span>
+                        {group.name === player.LearningPathway && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#4F46E5', background: 'rgba(99,102,241,0.1)', padding: '2px 9px', borderRadius: '20px' }}>Current</span>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+                        {group.sessions.map((session) => (
+                          <SessionMiniCard
+                            key={session._id}
+                            session={session}
+                            dark={dark}
+                            onView={() => navigate(sessionLink(session), { state: { session, player } })}
+                            onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -701,47 +727,28 @@ const PlayerDetail = () => {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-                    {sessions.filter(s => isCompleted(s.status)).map((session) => (
-                      <div key={session._id} style={{ background: surface2, border: '2px solid #E2E8F0', borderRadius: '12px', padding: '18px', transition: 'all 0.3s ease', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
-                        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 12px 28px rgba(107, 114, 128, 0.15)'; e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.borderColor = '#6366F1'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = '#E2E8F0'; }}
-                      >
-                        <div style={{ position: 'absolute', top: 0, right: 0, width: '80px', height: '80px', background: 'radial-gradient(circle, rgba(107, 114, 128, 0.1) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none' }}></div>
-
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '14px' }}>
-                          <div style={{ padding: '8px', background: surface, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <CheckCircle size={18} color="#94A3B8" />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <h5 style={{ fontSize: '14px', fontWeight: '700', color: textPrimary, margin: 0 }}>{session.Topic || 'Untitled Session'}</h5>
-                            <p style={{ fontSize: '12px', color: textSecondary, margin: '4px 0 0 0' }}>{session.LearningPathway || 'No pathway assigned'}</p>
-                          </div>
-                        </div>
-
-                        <p style={{ fontSize: '13px', color: textSecondary, lineHeight: '1.5', margin: '0 0 14px 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {session.Description || `Session ${session.session || 'N/A'}`}
-                        </p>
-
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>Completed</span>
-                          <span style={{ padding: '5px 11px', background: '#FEF3C7', color: '#92400E', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{session.SessionType || 'Primary'}</span>
-                          <span style={{ padding: '5px 11px', background: surface2, color: textSecondary, borderRadius: '6px', fontSize: '11px', fontWeight: '700', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Zap size={12} />{session.totalPoints || 0}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => navigate(`/coach/view-completed-session/${session._id}`, { state: { session, player } })}
-                          style={{ width: '100%', padding: '10px 12px', background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.transform = 'scale(1.02)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)'; e.currentTarget.style.transform = 'scale(1)'; }}
-                        >
-                          View Details <ChevronRight size={16} />
-                        </button>
+                  {groupSessionsByPathway(sessions.filter(s => isCompleted(s.status))).map(group => (
+                    <div key={group.name} style={{ marginBottom: '20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: textPrimary }}>{group.name}</span>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: textMuted, background: surface2, padding: '2px 9px', borderRadius: '20px' }}>{group.sessions.length}</span>
+                        {group.name === player.LearningPathway && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', color: '#4F46E5', background: 'rgba(99,102,241,0.1)', padding: '2px 9px', borderRadius: '20px' }}>Current</span>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+                        {group.sessions.map((session) => (
+                          <SessionMiniCard
+                            key={session._id}
+                            session={session}
+                            dark={dark}
+                            onView={() => navigate(sessionLink(session), { state: { session, player } })}
+                            onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

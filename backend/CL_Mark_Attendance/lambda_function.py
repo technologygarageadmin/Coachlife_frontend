@@ -281,6 +281,33 @@ def lambda_handler(event, context):
 
     marked_by = {"id": user["_id"], "name": user.get("name", "")}
 
+    # Delete/reset: clear attendance for a batch+date (or one player+date). Used to
+    # clean up records left behind after their session cards were deleted, and to
+    # let a coach reset a day's roster and start over.
+    if str(body.get("action") or "").strip().lower() in ("delete", "deleteattendance", "reset"):
+        batch_id = str(body.get("batchId") or "").strip()
+        session_date = str(body.get("sessionDate") or "").strip()
+        player_id = str(body.get("playerId") or "").strip()
+
+        if not session_date:
+            return resp(400, {"message": "sessionDate is required to delete attendance"})
+        if not batch_id and not player_id:
+            return resp(400, {"message": "batchId or playerId is required to delete attendance"})
+
+        del_filter = {"sessionDate": session_date}
+        if batch_id:
+            del_filter["batchId"] = batch_id
+        if player_id:
+            del_filter["playerId"] = player_id
+
+        result = attendance_col.delete_many(del_filter)
+        return resp(200, {
+            "message": f"Deleted {result.deleted_count} attendance record(s)",
+            "deleted": result.deleted_count,
+            "batchId": batch_id,
+            "sessionDate": session_date,
+        })
+
     # Bulk: mark all players in a batch with one status
     if "bulkStatus" in body:
         bulk_status = normalize_status(body.get('bulkStatus', 'Present'), allow_empty=False)

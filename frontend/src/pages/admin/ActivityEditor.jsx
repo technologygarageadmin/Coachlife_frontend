@@ -185,6 +185,9 @@ const ActivityEditor = () => {
 
     navigate(backPath, {
       state: {
+        // Preserve any caller-specific context (e.g. customCardGenerate's player/batch
+        // info) round-trip - only returnFormData actually changes here.
+        ...location.state,
         returnFormData: { ...returnFormData, activities: currentActivities },
         isCustomPathway,
         editedPathway
@@ -194,7 +197,7 @@ const ActivityEditor = () => {
 
   const handleCancel = () => {
     navigate(backPath, {
-      state: { returnFormData, isCustomPathway, editedPathway }
+      state: { ...location.state, returnFormData, isCustomPathway, editedPathway }
     });
   };
 

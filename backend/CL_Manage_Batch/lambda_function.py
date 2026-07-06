@@ -119,6 +119,7 @@ def lambda_handler(event, context):
                 "days": [str(d).strip() for d in body.get("days", []) if str(d).strip()],
                 "startTime": body.get("startTime") or None,
                 "endTime": body.get("endTime") or None,
+                "LearningPathway": str(body.get("LearningPathway") or "").strip() or None,
                 "createdAt": now_ist(),
                 "createdBy": {"id": user["_id"], "name": user.get("name", "")},
             }
@@ -145,6 +146,8 @@ def lambda_handler(event, context):
                 update["startTime"] = body["startTime"] or None
             if "endTime" in body:
                 update["endTime"] = body["endTime"] or None
+            if "LearningPathway" in body:
+                update["LearningPathway"] = str(body["LearningPathway"] or "").strip() or None
             update["updatedAt"] = now_ist()
             update["updatedBy"] = {"id": user["_id"], "name": user.get("name", "")}
             result = batches_col.update_one({"_id": batch_oid}, {"$set": update})

@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle } from 'lucide-react';
+import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle, Calendar, PencilLine } from 'lucide-react';
 
 // API Endpoints
 const API_ENDPOINTS = {
@@ -14,6 +14,7 @@ const API_ENDPOINTS = {
   DELETE_SESSION_CARD: 'https://rmauptygg5.execute-api.ap-south-1.amazonaws.com/Coachlife-com/CL_Deleting_Sessioncard',
   GET_BATCHES: 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches',
   GENERATE_SESSION_CARD: 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
+  UPDATE_SESSION_CARD: 'https://78nwtutkw0.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Session_Card',
 };
 
 const PALETTES = [
@@ -53,7 +54,7 @@ const SummaryCard = ({ label, value, icon: SIcon, accent, dark }) => {
 const SessionCardManage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userToken, selectedPlayer, setSelectedPlayer } = useStore();
+  const { userToken, selectedPlayer, setSelectedPlayer, learningPathway, fetchLearningPathway } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
   const [players, setPlayers] = useState([]);
@@ -76,12 +77,29 @@ const SessionCardManage = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
   // Batch view state
-  const [viewMode, setViewMode] = useState('student'); // 'student' | 'batch'
+  const [viewMode, setViewMode] = useState('Player'); // 'Player' | 'batch'
   const [batches, setBatches] = useState([]);
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [batchGenStatus, setBatchGenStatus] = useState({}); // { [playerId]: { state, message } }
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [errorDetail, setErrorDetail] = useState(null); // { playerName, message }
+
+  // Per-player "what session are they actually on" info, read from their real
+  // latest card - not guessed. Powers the session pill + the preview-before-generate.
+  const [playerCardInfo, setPlayerCardInfo] = useState({}); // { [playerId]: { session, sessionDate, status, cardId } | null }
+  const [cardInfoLoading, setCardInfoLoading] = useState(false);
+  const [batchAllCards, setBatchAllCards] = useState({}); // { [playerId]: [full card, ...] }
+  const [batchCardsLoading, setBatchCardsLoading] = useState(false);
+  const [showBatchPreview, setShowBatchPreview] = useState(false);
+  const [batchPreviewRows, setBatchPreviewRows] = useState([]);
+  const [batchPreviewLoading, setBatchPreviewLoading] = useState(false);
+  const [previewSessionDate, setPreviewSessionDate] = useState('');
+  const [previewBatchGroupId, setPreviewBatchGroupId] = useState('');
+
+  // "Custom" batch generation asks for a session date first, then navigates to
+  // the custom-card builder with that date (and a shared batchGroupId) carried along.
+  const [showCustomDatePrompt, setShowCustomDatePrompt] = useState(false);
+  const [customSessionDate, setCustomSessionDate] = useState('');
 
 
   const isMobile = windowWidth < 640;
@@ -114,6 +132,8 @@ const SessionCardManage = () => {
     isFirstMount.current = false;
     fetchPlayers();
     fetchBatches();
+    fetchLearningPathway();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
   // Fetch session cards when player is selected (with caching)
@@ -263,6 +283,7 @@ const SessionCardManage = () => {
     const real = batches.map(b => ({
       batchId: b.batchId,
       batchName: b.batchName,
+      LearningPathway: b.LearningPathway || '',
       players: (b.players || (b.playerIds || []).map(id => ({ playerId: id }))).map(enrich)
     }));
 
@@ -283,6 +304,15 @@ const SessionCardManage = () => {
 
   const selectedBatch = displayBatches.find(b => b.batchId === selectedBatchId) || null;
 
+  // Signature of how many cards each player in the selected batch has. When a
+  // generate adds a card, fetchPlayers() updates `players` and this string grows,
+  // which re-runs the card-list effect below - so new cards appear without a
+  // manual page refresh (keying on players.length alone missed it: same players,
+  // more cards).
+  const selectedBatchCardSig = (selectedBatch?.players || [])
+    .map(p => `${p.playerId}:${(players.find(pl => String(pl.playerId) === String(p.playerId))?.sessionCardIds || []).length}`)
+    .join('|');
+
   const handleSelectPlayer = (player) => {
     setSelectedPlayer(player);
   };
@@ -292,8 +322,281 @@ const SessionCardManage = () => {
     setBatchGenStatus({});
   };
 
+  // Read each player's real latest card (session number, date, status) - not guessed.
+  // Returns the map directly (not just via setState) so callers can use it immediately
+  // without racing React's async state update.
+  const fetchBatchPlayerCardInfo = async (playerIds) => {
+    setCardInfoLoading(true);
+    const map = {};
+    await Promise.all(playerIds.map(async (pid) => {
+      try {
+        const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', userToken },
+          body: JSON.stringify({ playerId: pid }),
+        });
+        if (!res.ok) { map[pid] = null; return; }
+        const data = await res.json();
+        const card = data.sessionCard || data.data || data;
+        map[pid] = {
+          session: card?.session ?? null,
+          sessionDate: card?.sessionDate || null,
+          status: card?.status || '',
+          cardId: card?._id || null,
+        };
+      } catch {
+        map[pid] = null;
+      }
+    }));
+    setPlayerCardInfo(map);
+    setCardInfoLoading(false);
+    return map;
+  };
+
+  // Fetch EVERY card for every player in the batch (complete history) so the
+  // By Batch view can show all cards, grouped by pathway, with edit/delete.
+  const fetchBatchAllCards = async (batchPlayers) => {
+    setBatchCardsLoading(true);
+    const map = {};
+    await Promise.all(batchPlayers.map(async (bp) => {
+      const profile = players.find(p => String(p.playerId) === String(bp.playerId));
+      const ids = Array.isArray(profile?.sessionCardIds) ? profile.sessionCardIds : [];
+      const cards = [];
+      await Promise.all(ids.map(async (id) => {
+        try {
+          const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', userToken },
+            body: JSON.stringify({ sessionCardId: id }),
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          const card = data.sessionCard || data.data || data;
+          if (card && (card.Topic || card.activities || card.status)) cards.push({ _id: id, ...card });
+        } catch { /* skip */ }
+      }));
+      map[bp.playerId] = cards;
+    }));
+    setBatchAllCards(map);
+    setBatchCardsLoading(false);
+  };
+
+  useEffect(() => {
+    if (!selectedBatch?.players?.length) { setPlayerCardInfo({}); setBatchAllCards({}); return; }
+    fetchBatchPlayerCardInfo(selectedBatch.players.map(p => p.playerId));
+    fetchBatchAllCards(selectedBatch.players);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBatchId, selectedBatchCardSig]);
+
+  const BLOCKED_STATUSES = ['upcoming', 'in_progress', 'in progress'];
+
+  // What generating "next" will actually do for this player, computed from their
+  // real card info + the pathway's session content - shown in the preview modal.
+  const getNextSessionPreview = (player, cardInfoMap) => {
+    const info = cardInfoMap[player.playerId];
+    const pathwayName = selectedBatch?.LearningPathway || player.LearningPathway;
+    const rawStatus = (info?.status || '').toLowerCase();
+    const nextSession = info?.session ? info.session + 1 : 1;
+    const isHanging = info && BLOCKED_STATUSES.includes(rawStatus);
+
+    if (!pathwayName) {
+      return { playerId: player.playerId, playerName: player.playerName || player.name, blocked: true, reason: 'No Learning Pathway set for this batch or player' };
+    }
+
+    const pathwaySession = (learningPathway || []).find(
+      s => s.LearningPathway === pathwayName && Number(s.session) === nextSession
+    );
+
+    // Missing pathway content is always a hard block, regardless of whether the
+    // current card is hanging - there is nowhere to actually advance to, so it
+    // must never be shown as "recoverable" (which would enable Confirm & Generate
+    // only to fail later with a confusing error).
+    if (!pathwaySession) {
+      return {
+        playerId: player.playerId,
+        playerName: player.playerName || player.name,
+        blocked: true,
+        reason: isHanging
+          ? `Session ${info.session} is still ${rawStatus}, and Session ${nextSession} has no pathway content yet - add it to "${pathwayName}" first`
+          : `No pathway content found for session ${nextSession} in "${pathwayName}"`,
+      };
+    }
+
+    const activityCount = pathwaySession.activities?.length || 0;
+    const points = (pathwaySession.activities || []).reduce((sum, a) => sum + (a.points?.total || 0), 0);
+
+    // A card left hanging at upcoming/in_progress is recoverable: clicking Generate
+    // will first mark it "pending" (an already-allowed recoverable-miss status,
+    // same as absent/excused), which unblocks the live generator immediately -
+    // no backend redeploy needed for this specific case.
+    if (isHanging) {
+      return {
+        playerId: player.playerId,
+        playerName: player.playerName || player.name,
+        blocked: true,
+        recoverable: true,
+        cardId: info.cardId,
+        reason: `Session ${info.session} is still ${rawStatus} - will be marked pending, then Session ${nextSession} will be generated`,
+        nextSession,
+        topic: pathwaySession.Topic || '',
+        activityCount,
+        points,
+        pathwayName,
+        pathwaySession,
+      };
+    }
+
+    return {
+      playerId: player.playerId,
+      playerName: player.playerName || player.name,
+      blocked: false,
+      nextSession,
+      topic: pathwaySession.Topic || '',
+      activityCount,
+      points,
+      pathwayName,
+      pathwaySession,
+    };
+  };
+
+  const todayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const openBatchPreview = async () => {
+    if (!selectedBatch || !selectedBatch.players.length) {
+      setToastMessage('Select a batch with players first');
+      setToastType('error');
+      return;
+    }
+    setPreviewSessionDate(todayStr());
+    // Generated once per preview session so cards created either via "Confirm &
+    // Generate" or via the staging editor's "Edit" (per player) still land in the
+    // same propagation group.
+    setPreviewBatchGroupId(`${selectedBatch.batchId}_${Date.now()}`);
+    setShowBatchPreview(true);
+    setBatchPreviewLoading(true);
+    const freshInfo = await fetchBatchPlayerCardInfo(selectedBatch.players.map(p => p.playerId));
+    const rows = selectedBatch.players.map(p => getNextSessionPreview(p, freshInfo));
+    setBatchPreviewRows(rows);
+    setBatchPreviewLoading(false);
+  };
+
+  const confirmBatchGenerate = async () => {
+    // Keep the preview modal OPEN and show live progress inside it. (Closing it up
+    // front used to hide every bit of feedback - the spinner and per-player status
+    // live in this modal - so the whole generate ran with a blank screen until the
+    // final toast fired.) Flip batchGenerating immediately so the button reacts on
+    // the very first click, then close only once everything is done.
+    setBatchGenerating(true);
+    setBatchGenStatus({});
+
+    // Auto-recover any card left hanging at upcoming/in_progress: mark it pending
+    // first (the live generator already allows advancing past a pending card),
+    // so one stuck Player never blocks their own Generate click.
+    const recoverable = batchPreviewRows.filter(r => r.blocked && r.recoverable && r.cardId);
+    if (recoverable.length > 0) {
+      await Promise.all(recoverable.map(r =>
+        fetch(API_ENDPOINTS.UPDATE_SESSION_CARD, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', userToken },
+          body: JSON.stringify({ sessionCardId: r.cardId, status: 'pending' }),
+        }).catch(() => {})
+      ));
+    }
+
+    await handleBatchGenerate(previewSessionDate, previewBatchGroupId);
+    setShowBatchPreview(false);
+    if (selectedBatch?.players?.length) {
+      fetchBatchPlayerCardInfo(selectedBatch.players.map(p => p.playerId));
+    }
+  };
+
+  // Open the staging editor in batch mode: one shared Topic/Objective/activities
+  // template (sourced from the first generatable player's next pathway session),
+  // edited once, then applied to every player in the batch on create - reusing
+  // the existing batchMode + runBatchGenerate loop in customCardGenerate.jsx.
+  const openBatchStagingEditor = async () => {
+    const representative = batchPreviewRows.find(r => !r.blocked && r.pathwaySession)
+      || batchPreviewRows.find(r => r.recoverable && r.pathwaySession);
+    if (!representative) {
+      setToastMessage('No generatable session found to stage for this batch');
+      setToastType('error');
+      return;
+    }
+
+    // Clear every recoverable (hanging) card out of the way now - batch creation
+    // hits each player's own last-session block independently.
+    const recoverable = batchPreviewRows.filter(r => r.recoverable && r.cardId);
+    if (recoverable.length > 0) {
+      await Promise.all(recoverable.map(r =>
+        fetch(API_ENDPOINTS.UPDATE_SESSION_CARD, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', userToken },
+          body: JSON.stringify({ sessionCardId: r.cardId, status: 'pending' }),
+        }).catch(() => {})
+      ));
+    }
+
+    setShowBatchPreview(false);
+    navigate('/admin/custom-generate-card', {
+      state: {
+        batchMode: true,
+        batchId: selectedBatch.batchId,
+        batchName: selectedBatch.batchName,
+        batchPlayers: selectedBatch.players,
+        sessionDate: previewSessionDate,
+        batchGroupId: previewBatchGroupId,
+        prefill: {
+          Topic: representative.pathwaySession.Topic,
+          Objective: representative.pathwaySession.Objective,
+          LearningPathway: representative.pathwayName,
+          session: representative.nextSession,
+          activities: representative.pathwaySession.activities,
+          sessionTakeaways: representative.pathwaySession.sessionTakeaways,
+        },
+      },
+    });
+  };
+
+  // Open the staging editor (same drag-and-drop builder as "Custom") pre-loaded
+  // with this one player's next pathway session, so it can be reviewed/edited
+  // before the card is actually created.
+  const openStagingEditor = async (row) => {
+    // If this player's last card is only recoverable (hanging at upcoming/in_progress),
+    // clear it out of the way now - the Custom-card creation endpoint has the same
+    // "still upcoming" block, so without this the staging page would work fine but
+    // fail when the admin actually tries to create the card from it.
+    if (row.recoverable && row.cardId) {
+      await fetch(API_ENDPOINTS.UPDATE_SESSION_CARD, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', userToken },
+        body: JSON.stringify({ sessionCardId: row.cardId, status: 'pending' }),
+      }).catch(() => {});
+    }
+
+    navigate('/admin/custom-generate-card', {
+      state: {
+        playerId: row.playerId,
+        playerName: row.playerName,
+        LearningPathway: row.pathwayName,
+        sessionDate: previewSessionDate,
+        batchGroupId: previewBatchGroupId,
+        prefill: {
+          Topic: row.pathwaySession.Topic,
+          Objective: row.pathwaySession.Objective,
+          LearningPathway: row.pathwayName,
+          session: row.nextSession,
+          activities: row.pathwaySession.activities,
+          sessionTakeaways: row.pathwaySession.sessionTakeaways,
+        },
+      },
+    });
+  };
+
   // Sequentially generate a standard session card for every player in the batch.
-  const handleBatchGenerate = async () => {
+  const handleBatchGenerate = async (sessionDate, batchGroupId) => {
     if (!selectedBatch || !selectedBatch.players.length) {
       setToastMessage('Select a batch with players first');
       setToastType('error');
@@ -303,6 +606,10 @@ const SessionCardManage = () => {
     setBatchGenerating(true);
     let success = 0;
     let failed = 0;
+
+    // One id shared by every card generated in this run, so an edit made to any one
+    // Player's card can be propagated to the rest of the batch afterwards.
+    batchGroupId = batchGroupId || `${selectedBatch.batchId}_${Date.now()}`;
 
     for (const player of selectedBatch.players) {
       setBatchGenStatus(prev => ({ ...prev, [player.playerId]: { state: 'loading' } }));
@@ -316,7 +623,14 @@ const SessionCardManage = () => {
         const response = await fetch(API_ENDPOINTS.GENERATE_SESSION_CARD, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ playerId: player.playerId })
+          body: JSON.stringify({
+            playerId: player.playerId,
+            // Batch-sourced generation inherits the batch's pathway instead of each
+            // player's own profile pathway (fixes dual-pathway / summer-camp kids).
+            LearningPathway: selectedBatch.LearningPathway || undefined,
+            batchGroupId,
+            sessionDate: sessionDate || undefined,
+          })
         });
 
         if (!response.ok) {
@@ -349,18 +663,77 @@ const SessionCardManage = () => {
     setToastType(failed === 0 ? 'success' : 'error');
   };
 
+  // Player-level staging: preview and edit this player's next pathway session
+  // before creating the card, using cards already fetched for this player (no
+  // extra API call needed).
+  const openPlayerStagingEditor = () => {
+    if (!selectedPlayer) return;
+    const pathwayName = selectedPlayer.LearningPathway;
+    if (!pathwayName) {
+      setToastMessage('This player has no Learning Pathway set');
+      setToastType('error');
+      return;
+    }
+
+    const relevant = sessionCards.filter(c => c.LearningPathway === pathwayName);
+    const last = relevant.reduce((max, c) => ((c.session || 0) > (max?.session || 0) ? c : max), null);
+    const rawStatus = (last?.status || '').toLowerCase();
+    if (last && ['upcoming', 'in_progress', 'in progress'].includes(rawStatus)) {
+      setToastMessage(`Session ${last.session} is still ${rawStatus} - finish or close it before previewing the next one`);
+      setToastType('error');
+      return;
+    }
+
+    const nextSession = last ? (last.session || 0) + 1 : 1;
+    const pathwaySession = (learningPathway || []).find(
+      s => s.LearningPathway === pathwayName && Number(s.session) === nextSession
+    );
+    if (!pathwaySession) {
+      setToastMessage(`No pathway content found for session ${nextSession}`);
+      setToastType('error');
+      return;
+    }
+
+    navigate('/admin/custom-generate-card', {
+      state: {
+        playerId: selectedPlayer.playerId,
+        playerName: selectedPlayer.playerName,
+        LearningPathway: pathwayName,
+        sessionDate: todayStr(),
+        prefill: {
+          Topic: pathwaySession.Topic,
+          Objective: pathwaySession.Objective,
+          LearningPathway: pathwayName,
+          session: nextSession,
+          activities: pathwaySession.activities,
+          sessionTakeaways: pathwaySession.sessionTakeaways,
+        },
+      },
+    });
+  };
+
   const handleBatchCustom = () => {
     if (!selectedBatch || !selectedBatch.players.length) {
       setToastMessage('Select a batch with players first');
       setToastType('error');
       return;
     }
+    setCustomSessionDate(todayStr());
+    setShowCustomDatePrompt(true);
+  };
+
+  const confirmBatchCustom = () => {
+    setShowCustomDatePrompt(false);
     navigate('/admin/custom-generate-card', {
       state: {
         batchMode: true,
         batchId: selectedBatch.batchId,
         batchName: selectedBatch.batchName,
-        batchPlayers: selectedBatch.players
+        batchPlayers: selectedBatch.players,
+        sessionDate: customSessionDate,
+        // Shared across every card this batch-custom run creates, so an edit to
+        // one can later be propagated to the rest (same mechanism as standard batch generate).
+        batchGroupId: `${selectedBatch.batchId}_${Date.now()}`,
       }
     });
   };
@@ -454,9 +827,15 @@ const SessionCardManage = () => {
 
       setToastMessage('Session card deleted successfully!');
       setToastType('success');
-      setDeleteConfirm(null);
 
       setSessionCards(prev => prev.filter(card => card._id !== deleteConfirm));
+      // also drop it from the By Batch all-cards map
+      setBatchAllCards(prev => {
+        const next = {};
+        Object.keys(prev).forEach(pid => { next[pid] = prev[pid].filter(c => c._id !== deleteConfirm); });
+        return next;
+      });
+      setDeleteConfirm(null);
 
     } catch (err) {
       console.error('Error deleting card:', err);
@@ -524,7 +903,7 @@ const SessionCardManage = () => {
 
           {/* View toggle inside header */}
           <div style={{ display: 'inline-flex', gap: '3px', background: 'rgba(255,255,255,0.1)', padding: '3px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.15)' }}>
-            {[{ key: 'student', label: 'By Student', Icon: User }, { key: 'batch', label: 'By Batch', Icon: Layers }].map(tab => {
+            {[{ key: 'Player', label: 'By Player', Icon: User }, { key: 'batch', label: 'By Batch', Icon: Layers }].map(tab => {
               const active = viewMode === tab.key;
               return (
                 <button key={tab.key} onClick={() => setViewMode(tab.key)} style={{
@@ -551,7 +930,7 @@ const SessionCardManage = () => {
               <Loader size={28} color="#6366F1" style={{ animation: 'spin 1s linear infinite' }} />
             </div>
           </div>
-        ) : viewMode === 'student' ? (
+        ) : viewMode === 'Player' ? (
           <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
 
             {/* ── LEFT: Player list ── */}
@@ -645,6 +1024,13 @@ const SessionCardManage = () => {
                       {loading ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={14} />}
                       {loading ? 'Generating...' : 'Generate'}
                     </button>
+                    <button onClick={openPlayerStagingEditor} disabled={loading}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: '#EEF2FF', color: '#4F46E5', border: '1px solid #C7D2FE', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', transition: 'all .18s' }}
+                      onMouseEnter={e => { if (!loading) e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+                    >
+                      <PencilLine size={14} /> Preview &amp; Edit
+                    </button>
                     <button onClick={() => navigate('/admin/custom-generate-card', { state: { playerId: selectedPlayer.playerId, playerName: selectedPlayer.playerName, LearningPathway: selectedPlayer.LearningPathway } })}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: 'linear-gradient(135deg, #4F46E5, #6D28D9)', color: 'white', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: 'pointer', transition: 'all .18s' }}
                       onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
@@ -672,16 +1058,39 @@ const SessionCardManage = () => {
                         />
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
-                        {sessionCards
-                          .filter(card => card.Topic?.toLowerCase().includes(cardSearchTerm.toLowerCase()) || card.Objective?.toLowerCase().includes(cardSearchTerm.toLowerCase()))
-                          .sort((a, b) => {
-                            const n = c => { const v = c.session ?? c.sessionNumber ?? c.sessionNo; const n = Number(v); return Number.isFinite(n) ? n : null; };
-                            const na = n(a), nb = n(b);
-                            if (na !== null && nb !== null) return na - nb;
-                            if (na !== null) return -1; if (nb !== null) return 1;
-                            return (a.Topic || '').localeCompare(b.Topic || '');
-                          })
+                      {(() => {
+                        const sortFn = (a, b) => {
+                          const n = c => { const v = c.session ?? c.sessionNumber ?? c.sessionNo; const num = Number(v); return Number.isFinite(num) ? num : null; };
+                          const na = n(a), nb = n(b);
+                          if (na !== null && nb !== null) return na - nb;
+                          if (na !== null) return -1; if (nb !== null) return 1;
+                          return (a.Topic || '').localeCompare(b.Topic || '');
+                        };
+                        const filtered = sessionCards.filter(card => card.Topic?.toLowerCase().includes(cardSearchTerm.toLowerCase()) || card.Objective?.toLowerCase().includes(cardSearchTerm.toLowerCase()));
+                        const groups = {};
+                        filtered.forEach(card => {
+                          const key = card.LearningPathway || 'Unassigned Pathway';
+                          (groups[key] = groups[key] || []).push(card);
+                        });
+                        const groupNames = Object.keys(groups).sort((a, b) => {
+                          if (a === selectedPlayer.LearningPathway) return -1;
+                          if (b === selectedPlayer.LearningPathway) return 1;
+                          return a.localeCompare(b);
+                        });
+                        return groupNames.map(pathwayName => (
+                          <div key={pathwayName} style={{ marginBottom: '22px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                              <span style={{ fontSize: '12.5px', fontWeight: '800', color: textPrimary }}>{pathwayName}</span>
+                              <span style={{ fontSize: '10.5px', fontWeight: '700', color: textMuted, background: surface2, padding: '2px 8px', borderRadius: '20px' }}>
+                                {groups[pathwayName].length} card{groups[pathwayName].length !== 1 ? 's' : ''}
+                              </span>
+                              {pathwayName === selectedPlayer.LearningPathway && (
+                                <span style={{ fontSize: '10px', fontWeight: '700', color: dark ? '#818CF8' : '#4F46E5', background: dark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)', padding: '2px 8px', borderRadius: '20px' }}>Current</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+                        {groups[pathwayName]
+                          .sort(sortFn)
                           .map((card, index) => {
                             const sc = statusColors(card.status);
                             const sessionNum = card.session ?? (index + 1);
@@ -704,7 +1113,7 @@ const SessionCardManage = () => {
                                   </div>
                                   <p style={{ fontSize: '13.5px', fontWeight: '700', color: textPrimary, margin: '0 0 4px', lineHeight: '1.3' }}>{card.Topic || 'Untitled'}</p>
                                   <p style={{ fontSize: '11.5px', color: textSecondary, margin: '0 0 10px', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                                    {card.Objective || '—'}
+                                    {card.Objective || '-'}
                                   </p>
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
                                     <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>⏱ {card.totalDuration || 30} min</span>
@@ -732,7 +1141,10 @@ const SessionCardManage = () => {
                               </div>
                             );
                           })}
-                      </div>
+                            </div>
+                          </div>
+                        ));
+                      })()}
                     </>
                   ) : (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', textAlign: 'center', gap: '12px' }}>
@@ -821,7 +1233,7 @@ const SessionCardManage = () => {
                     <p style={{ fontSize: '12px', color: textMuted, margin: 0 }}>{selectedBatch.players.length} player{selectedBatch.players.length !== 1 ? 's' : ''}</p>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    <button onClick={handleBatchGenerate} disabled={batchGenerating}
+                    <button onClick={openBatchPreview} disabled={batchGenerating}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', background: 'linear-gradient(135deg, #060030, #000)', color: 'white', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '700', cursor: batchGenerating ? 'not-allowed' : 'pointer', opacity: batchGenerating ? 0.8 : 1 }}>
                       {batchGenerating ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Generating…</> : <><Plus size={14} /> Generate</>}
                     </button>
@@ -832,31 +1244,106 @@ const SessionCardManage = () => {
                   </div>
                 </div>
 
-                {/* Players in batch */}
+                {/* Players in batch - each with their COMPLETE card history */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
                   {selectedBatch.players.map(player => {
                     const status = batchGenStatus[player.playerId]?.state || 'idle';
                     const name = player.playerName || player.name || '';
                     const [c1, c2] = pal(name);
+                    const info = playerCardInfo[player.playerId];
+                    const cards = batchAllCards[player.playerId] || [];
+                    // group this player's cards by pathway, newest session first
+                    const byPathway = {};
+                    cards.forEach(card => {
+                      const key = card.LearningPathway || player.LearningPathway || 'Unassigned Pathway';
+                      (byPathway[key] = byPathway[key] || []).push(card);
+                    });
+                    const pathwayNames = Object.keys(byPathway).sort((a, b) => a.localeCompare(b));
+
                     return (
-                      <div key={player.playerId} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '10px', marginBottom: '4px', background: dark ? 'rgba(255,255,255,0.02)' : '#FAFBFC', border: `1px solid ${border}` }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: `linear-gradient(135deg, ${c1}, ${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
-                          {(name || '?').charAt(0).toUpperCase()}
+                      <div key={player.playerId} style={{ marginBottom: '14px', border: `1px solid ${border}`, borderRadius: '12px', overflow: 'hidden', background: dark ? 'rgba(255,255,255,0.02)' : '#fff' }}>
+                        {/* Player header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', background: dark ? 'rgba(255,255,255,0.02)' : '#FAFBFC', borderBottom: `1px solid ${border}` }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: `linear-gradient(135deg, ${c1}, ${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
+                            {(name || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: '13.5px', fontWeight: '700', margin: 0, color: textPrimary }}>{name}</p>
+                            <p style={{ fontSize: '11px', color: textMuted, margin: '2px 0 0' }}>
+                              {cardInfoLoading && !info ? 'Checking current session…'
+                                : info ? `On Session ${info.session} · ${info.status || 'upcoming'}`
+                                : `${cards.length} card${cards.length === 1 ? '' : 's'}`}
+                            </p>
+                          </div>
+                          <span style={{ fontSize: '11px', fontWeight: '700', color: textMuted, background: surface2, padding: '3px 10px', borderRadius: '20px', flexShrink: 0 }}>
+                            {cards.length} card{cards.length === 1 ? '' : 's'}
+                          </span>
+                          <div style={{ flexShrink: 0, width: '20px', textAlign: 'center' }}>
+                            {status === 'loading' && <Loader size={16} style={{ animation: 'spin 1s linear infinite', color: '#6366F1' }} />}
+                            {status === 'success' && <CheckCircle size={18} color="#10B981" />}
+                            {status === 'error' && (
+                              <button onClick={() => setErrorDetail({ playerName: name, message: batchGenStatus[player.playerId]?.message })}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                                <Info size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: '13px', fontWeight: '600', margin: 0, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
-                          {player.LearningPathway && <p style={{ fontSize: '11px', color: textMuted, margin: '2px 0 0' }}>{player.LearningPathway}</p>}
-                        </div>
-                        <div style={{ flexShrink: 0 }}>
-                          {status === 'loading' && <Loader size={16} style={{ animation: 'spin 1s linear infinite', color: '#6366F1' }} />}
-                          {status === 'success' && <CheckCircle size={18} color="#10B981" />}
-                          {status === 'error' && (
-                            <button onClick={() => setErrorDetail({ playerName: name, message: batchGenStatus[player.playerId]?.message })}
-                              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                              <Info size={12} /> Error
-                            </button>
+
+                        {/* Player's cards, grouped by pathway */}
+                        <div style={{ padding: '12px 14px' }}>
+                          {batchCardsLoading && cards.length === 0 ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '10px' }}>
+                              {[1, 2].map(i => <div key={i} style={{ height: '110px', borderRadius: '10px', background: surface2, animation: 'skPulse 1.5s ease infinite' }} />)}
+                            </div>
+                          ) : cards.length === 0 ? (
+                            <p style={{ fontSize: '12px', color: textMuted, margin: 0 }}>No cards yet - use Generate above.</p>
+                          ) : (
+                            pathwayNames.map(pathwayName => (
+                              <div key={pathwayName} style={{ marginBottom: '10px' }}>
+                                {pathwayNames.length > 1 && (
+                                  <p style={{ fontSize: '11px', fontWeight: '800', color: textMuted, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '.3px' }}>{pathwayName}</p>
+                                )}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '10px' }}>
+                                  {byPathway[pathwayName]
+                                    .slice()
+                                    .sort((a, b) => (b.session || 0) - (a.session || 0))
+                                    .map(card => {
+                                      const sc = statusColors(card.status);
+                                      return (
+                                        <div key={card._id} style={{ borderRadius: '10px', border: `1px solid ${border}`, background: dark ? 'rgba(255,255,255,0.03)' : '#fff', overflow: 'hidden' }}>
+                                          <div style={{ height: '3px', background: sc.text }} />
+                                          <div style={{ padding: '11px 12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                              <span style={{ fontSize: '11px', fontWeight: '800', color: '#4F46E5' }}>Session {card.session ?? '-'}</span>
+                                              <span style={{ fontSize: '9.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px', background: sc.bg, color: sc.text, whiteSpace: 'nowrap' }}>{card.status || 'Draft'}</span>
+                                            </div>
+                                            <p style={{ fontSize: '12.5px', fontWeight: '700', color: textPrimary, margin: '0 0 8px', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{card.Topic || 'Untitled'}</p>
+                                            <div style={{ display: 'flex', gap: '5px' }}>
+                                              <button onClick={() => navigate(`/admin/view-session-card/${card._id}`, { state: { session: card, playerId: player.playerId } })}
+                                                style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                <Eye size={12} /> View
+                                              </button>
+                                              {card.status?.toLowerCase() !== 'completed' && (
+                                                <button onClick={() => navigate(`/admin/edit-session-card/${card._id}`, { state: { batchId: selectedBatchId, playerId: player.playerId } })}
+                                                  style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                  <Edit3 size={12} /> Edit
+                                                </button>
+                                              )}
+                                              <button onClick={() => setDeleteConfirm(card._id)}
+                                                title="Delete card"
+                                                style={{ padding: '5px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                                <Trash2 size={12} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              </div>
+                            ))
                           )}
-                          {status === 'idle' && <span style={{ fontSize: '13px', color: textMuted }}>—</span>}
                         </div>
                       </div>
                     );
@@ -879,6 +1366,172 @@ const SessionCardManage = () => {
           </div>
         )}
       </div>
+
+      {/* Preview before generate - shows what session/topic each player will actually get */}
+      {showBatchPreview && (
+        <Modal
+          isOpen={showBatchPreview}
+          onClose={() => { if (!batchGenerating) setShowBatchPreview(false); }}
+          title={`Preview: Generate for ${selectedBatch?.batchName || 'batch'}`}
+        >
+          <div style={{ padding: '20px', width: 'min(90vw, 620px)' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#111827', marginBottom: '6px', textTransform: 'uppercase' }}>
+                Session Date
+              </label>
+              <input
+                type="date"
+                value={previewSessionDate}
+                onChange={(e) => setPreviewSessionDate(e.target.value)}
+                style={{ width: '100%', padding: '10px 12px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', background: 'white', cursor: 'pointer' }}
+              />
+            </div>
+
+            {!batchPreviewLoading && batchPreviewRows.some(r => !r.blocked || r.recoverable) && (
+              <button
+                type="button"
+                onClick={openBatchStagingEditor}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  padding: '10px 14px', marginBottom: '16px', borderRadius: '8px',
+                  background: '#F5F3FF', color: '#6D28D9', border: '1.5px solid #DDD6FE',
+                  fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                }}
+              >
+                <PencilLine size={14} /> Edit This Session for the Whole Batch
+              </button>
+            )}
+
+            {batchPreviewLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {[1, 2, 3].map(i => <Sk key={i} w="100%" h={54} r={10} />)}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '360px', overflowY: 'auto' }}>
+                {batchPreviewRows.map(row => {
+                  const hardBlocked = row.blocked && !row.recoverable;
+                  return (
+                  <div key={row.playerId} style={{
+                    display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: `1px solid ${hardBlocked ? '#FECACA' : row.recoverable ? '#FDE68A' : '#E5E7EB'}`,
+                    background: hardBlocked ? '#FEF2F2' : row.recoverable ? '#FFFBEB' : '#F9FAFB',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: '700', color: '#111827', margin: 0 }}>{row.playerName}</p>
+                      {hardBlocked ? (
+                        <p style={{ fontSize: '12px', color: '#DC2626', margin: '2px 0 0' }}>{row.reason}</p>
+                      ) : row.recoverable ? (
+                        <>
+                          <p style={{ fontSize: '11px', color: '#92400E', margin: '2px 0 0' }}>{row.reason}</p>
+                          {row.pathwaySession && (
+                            <p style={{ fontSize: '12px', color: '#4B5563', margin: '2px 0 0' }}>
+                              Session {row.nextSession}: <strong>{row.topic}</strong> · {row.activityCount} activities · {row.points} pts
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p style={{ fontSize: '12px', color: '#4B5563', margin: '2px 0 0' }}>
+                          Session {row.nextSession}: <strong>{row.topic}</strong> · {row.activityCount} activities · {row.points} pts
+                        </p>
+                      )}
+                    </div>
+                    {batchGenerating ? (() => {
+                      const st = batchGenStatus[row.playerId]?.state;
+                      if (st === 'success') return <CheckCircle size={16} color="#16A34A" style={{ flexShrink: 0 }} />;
+                      if (st === 'error') return <AlertTriangle size={16} color="#DC2626" style={{ flexShrink: 0 }} />;
+                      if (st === 'loading') return <Loader size={16} color="#4F46E5" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} />;
+                      return <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#CBD5E1', flexShrink: 0 }} />;
+                    })() : hardBlocked ? (
+                      <AlertTriangle size={16} color="#DC2626" style={{ flexShrink: 0 }} />
+                    ) : (
+                      <>
+                        {row.pathwaySession && (
+                          <button
+                            type="button"
+                            onClick={() => openStagingEditor(row)}
+                            title="Review and edit this session's activities before creating it"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px',
+                              background: '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '7px',
+                              fontSize: '11px', fontWeight: '700', cursor: 'pointer', flexShrink: 0,
+                            }}
+                          >
+                            <PencilLine size={12} /> Edit
+                          </button>
+                        )}
+                        <CheckCircle size={16} color={row.recoverable ? '#D97706' : '#10B981'} style={{ flexShrink: 0 }} />
+                      </>
+                    )}
+                  </div>
+                  );
+                })}
+                {batchPreviewRows.length === 0 && (
+                  <p style={{ fontSize: '13px', color: '#6B7280', textAlign: 'center', padding: '20px' }}>No players to preview</p>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '20px' }}>
+              <button type="button" onClick={() => setShowBatchPreview(false)} disabled={batchGenerating}
+                style={{ padding: '12px 16px', borderRadius: '8px', fontWeight: '600', background: '#F3F4F6', color: '#111827', border: '2px solid #E5E7EB', cursor: 'pointer', fontSize: '14px' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={confirmBatchGenerate} disabled={batchGenerating || batchPreviewLoading || batchPreviewRows.every(r => r.blocked && !r.recoverable)}
+                style={{
+                  padding: '12px 16px', borderRadius: '8px', fontWeight: '600',
+                  background: 'linear-gradient(135deg, #060030ff 0%, #000000ff 100%)', color: 'white', border: 'none',
+                  cursor: (batchGenerating || batchPreviewLoading) ? 'not-allowed' : 'pointer', fontSize: '14px',
+                  opacity: (batchGenerating || batchPreviewLoading) ? 0.8 : 1,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                }}>
+                {batchGenerating && <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+                {batchGenerating
+                  ? `Generating ${Object.values(batchGenStatus).filter(s => s.state === 'success' || s.state === 'error').length}/${selectedBatch?.players?.length || 0}…`
+                  : `Confirm & Generate ${batchPreviewRows.filter(r => !r.blocked || r.recoverable).length || ''}`}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Ask for a session date before jumping into the Custom card builder */}
+      {showCustomDatePrompt && (
+        <Modal
+          isOpen={showCustomDatePrompt}
+          onClose={() => setShowCustomDatePrompt(false)}
+          title={`Custom Cards for ${selectedBatch?.batchName || 'batch'}`}
+        >
+          <div style={{ padding: '20px', width: 'min(90vw, 420px)' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#111827', marginBottom: '6px', textTransform: 'uppercase' }}>
+              Session Date
+            </label>
+            <input
+              type="date"
+              value={customSessionDate}
+              onChange={(e) => setCustomSessionDate(e.target.value)}
+              style={{ width: '100%', padding: '10px 12px', border: '2px solid #E5E7EB', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', background: 'white', cursor: 'pointer' }}
+            />
+            <p style={{ fontSize: '12px', color: '#6B7280', margin: '8px 0 0' }}>
+              This date is stamped on every custom card you build next for {selectedBatch?.players?.length || 0} player{selectedBatch?.players?.length === 1 ? '' : 's'}.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '20px' }}>
+              <button type="button" onClick={() => setShowCustomDatePrompt(false)}
+                style={{ padding: '12px 16px', borderRadius: '8px', fontWeight: '600', background: '#F3F4F6', color: '#111827', border: '2px solid #E5E7EB', cursor: 'pointer', fontSize: '14px' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={confirmBatchCustom} disabled={!customSessionDate}
+                style={{
+                  padding: '12px 16px', borderRadius: '8px', fontWeight: '600',
+                  background: 'linear-gradient(135deg, #4F46E5, #6D28D9)', color: 'white', border: 'none',
+                  cursor: customSessionDate ? 'pointer' : 'not-allowed', fontSize: '14px', opacity: customSessionDate ? 1 : 0.7,
+                }}>
+                Continue
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Batch generate error detail modal */}
       {errorDetail && (

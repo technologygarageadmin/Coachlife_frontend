@@ -73,7 +73,7 @@ backend/
 | `CL_Generate_session_card` | Generate next sequential session card for a player |
 | `CL_Generate_Custom_Session_Card` | Generate a custom session card |
 | `CL_Regenerate_session_card` | Regenerate an existing session card |
-| `CL_View_SessionCard` | View a session card's details |
+| `CL_View_Sessioncard` | View a session card's details |
 | `CL_Update_Session_Card` | Edit a session card |
 | `CL_Start_Session` | Mark a session card as started |
 | `CL_Complete_Session` | Submit completed session (saves ratings + feedback) |

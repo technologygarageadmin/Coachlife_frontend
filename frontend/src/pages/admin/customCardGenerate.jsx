@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import { ArrowLeft, Loader, Sparkles, BookOpen, Zap, GripHorizontal, Trash2, Blocks, ArrowBigUp, ArrowBigDown, ArrowUpDown , CheckCircle2, X, Info, AlertTriangle, Clock } from 'lucide-react';
+import { ArrowLeft, Loader, Sparkles, BookOpen, Zap, GripHorizontal, Trash2, Blocks, ArrowBigUp, ArrowBigDown, ArrowUpDown , CheckCircle2, X, Info, AlertTriangle, Clock, PencilLine } from 'lucide-react';
 import axios from 'axios';
 
 const PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
@@ -22,6 +22,8 @@ const CustomCardGenerate = () => {
   const playerId = location.state?.playerId;
   const playerName = location.state?.playerName;
   const playerLearningPathway = location.state?.LearningPathway;
+  const sessionDate = location.state?.sessionDate;
+  const batchGroupId = location.state?.batchGroupId;
 
   // Batch mode: build one custom card definition, fire the API per player
   const batchMode = location.state?.batchMode || false;
@@ -29,6 +31,11 @@ const CustomCardGenerate = () => {
   const batchPlayers = location.state?.batchPlayers || [];
   const [batchStatus, setBatchStatus] = useState({}); // { [playerId]: { state, message } }
   const [batchDone, setBatchDone] = useState(false);
+
+  // Staging/preview mode: arrives pre-loaded with a standard pathway session's
+  // content (Topic/Objective/activities) so the admin can review and edit it
+  // before the card is actually created, instead of building one from scratch.
+  const prefill = location.state?.prefill || null;
 
   // Pathway states
   const [pathways, setPathways] = useState([]);
@@ -60,6 +67,54 @@ const CustomCardGenerate = () => {
     fetchedOnce.current = true;
     fetchPathways();
   }, []);
+
+  // Load the staged preview content once, if we arrived from a "preview before
+  // generate" entry point rather than starting a card from scratch. Skipped when
+  // returning from the activity editor (returnFormData below takes over instead) -
+  // location.state still carries the original `prefill` on that round trip since
+  // it's spread through unchanged, so without this guard it would stomp the edit.
+  const prefillApplied = useRef(false);
+  useEffect(() => {
+    if (!prefill || prefillApplied.current || location.state?.returnFormData) return;
+    prefillApplied.current = true;
+
+    setFormData(prev => ({
+      ...prev,
+      topic: prefill.Topic || '',
+      objective: prefill.Objective || '',
+    }));
+    setSessionTakeaways(prefill.sessionTakeaways || []);
+    setDraggedActivities((prefill.activities || []).map(activity => ({
+      id: Date.now() + Math.random(),
+      name: activity.activityTitle || activity.name || 'Activity',
+      description: activity.description || '',
+      story: activity.story || [],
+      code: activity.code || null,
+      instructionsToCoach: activity.instructionsToCoach || [],
+      project: activity.project || null,
+      aiTools: activity.aiTools || null,
+      points: activity.points || { total: 0, evaluationCriteria: [] },
+      duration: activity.duration || 0,
+      pathwayName: prefill.LearningPathway,
+      sessionNumber: prefill.session,
+    })));
+  }, [prefill]);
+
+  // Returning from the shared Learning Pathway activity editor: restore the
+  // (possibly edited) activity list it hands back, instead of re-running prefill.
+  const returnedFromEditorApplied = useRef(false);
+  useEffect(() => {
+    const rf = location.state?.returnFormData;
+    if (!rf || returnedFromEditorApplied.current) return;
+    returnedFromEditorApplied.current = true;
+
+    setFormData(prev => ({ ...prev, topic: rf.Topic ?? prev.topic }));
+    setDraggedActivities((rf.activities || []).map(activity => ({
+      ...activity,
+      id: activity.id || (Date.now() + Math.random()),
+      name: activity.activityTitle || activity.name || 'Activity',
+    })));
+  }, [location.state?.returnFormData]);
 
   // Hide footer on scroll
   useEffect(() => {
@@ -214,6 +269,57 @@ const CustomCardGenerate = () => {
     setDraggedActivities(draggedActivities.filter(a => a.id !== id));
   };
 
+  // Reuse the same activity editor the Learning Pathway builder uses (rich text,
+  // structured story/instructions/AI-tools/criteria lists) instead of a simpler
+  // one-off modal. It navigates away and back via route state; `...location.state`
+  // is spread both ways so this page's player/batch/prefill context survives the
+  // round trip untouched.
+  const toPathwayActivityShape = (a) => ({
+    ...a,
+    activityTitle: a.activityTitle || a.name || '',
+  });
+
+  const openActivityEditor = (activity, index) => {
+    navigate('/admin/learning-pathway/add/activity', {
+      state: {
+        ...location.state,
+        returnFormData: {
+          Topic: formData.topic,
+          activities: draggedActivities.map(toPathwayActivityShape),
+        },
+        activityIndex: index,
+        activity: toPathwayActivityShape(activity),
+        returnPath: '/admin/custom-generate-card',
+      },
+    });
+  };
+
+  const openAddActivity = () => {
+    navigate('/admin/learning-pathway/add/activity', {
+      state: {
+        ...location.state,
+        returnFormData: {
+          Topic: formData.topic,
+          activities: draggedActivities.map(toPathwayActivityShape),
+        },
+        activityIndex: null,
+        activity: {
+          activitySequence: (draggedActivities.length || 0) + 1,
+          activityTitle: '',
+          description: '',
+          duration: 0,
+          story: null,
+          instructionsToCoach: [],
+          project: null,
+          code: null,
+          aiTools: [],
+          points: { total: 0, evaluationCriteria: [] },
+        },
+        returnPath: '/admin/custom-generate-card',
+      },
+    });
+  };
+
   const moveActivityUp = (id) => {
     const index = draggedActivities.findIndex(a => a.id === id);
     if (index > 0) {
@@ -299,7 +405,9 @@ const CustomCardGenerate = () => {
       sessionTakeaways: sessionTakeaways.length > 0 ? sessionTakeaways : ['No session takeaway'],
       status: 'upcoming',
       rating: 0,
-      feedback: null
+      feedback: null,
+      sessionDate: sessionDate || undefined,
+      batchGroupId: batchGroupId || undefined,
     };
   };
 
@@ -310,7 +418,12 @@ const CustomCardGenerate = () => {
 
     for (const player of batchPlayers) {
       setBatchStatus(prev => ({ ...prev, [player.playerId]: { state: 'loading' } }));
-      const result = await postCustomCard(buildPayload(player.playerId, player.LearningPathway || playerLearningPathway));
+      // A staged (pathway-sourced) batch edit uses one shared pathway for every
+      // player, same as the standard batch-generate flow - not each player's own
+      // individual profile pathway, which is only the fallback for a from-scratch
+      // custom build.
+      const targetPathway = prefill?.LearningPathway || player.LearningPathway || playerLearningPathway;
+      const result = await postCustomCard(buildPayload(player.playerId, targetPathway));
       if (result.ok) {
         success += 1;
         setBatchStatus(prev => ({ ...prev, [player.playerId]: { state: 'success' } }));
@@ -902,6 +1015,19 @@ const CustomCardGenerate = () => {
           
           {/* LEFT: Your Session Arrangement */}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={openAddActivity}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+                  borderRadius: '8px', border: '1.5px solid #C7D2FE', background: '#EEF2FF',
+                  color: '#4F46E5', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+                }}
+              >
+                <PencilLine size={14} /> Add Activity
+              </button>
+            </div>
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -1007,6 +1133,29 @@ const CustomCardGenerate = () => {
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => openActivityEditor(activity, index)}
+                          title="Edit this activity"
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #C7D2FE',
+                            background: '#EEF2FF',
+                            color: '#4F46E5',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            gap: '4px',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#E0E7FF'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = '#EEF2FF'; }}
+                        >
+                          <PencilLine size={12} /> Edit
+                        </button>
                         {index > 0 && (
                           <button
                             onClick={() => moveActivityUp(activity.id)}
@@ -1197,7 +1346,7 @@ const CustomCardGenerate = () => {
                     name="objective"
                     value={formData.objective}
                     onChange={handleInputChange}
-                    placeholder="e.g., Students should understand the basics of AI"
+                    placeholder="e.g., Players should understand the basics of AI"
                     style={{
                       width: '100%',
                       padding: '10px 12px',

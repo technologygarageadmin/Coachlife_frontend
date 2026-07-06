@@ -172,7 +172,7 @@ const Dashboard = () => {
             Welcome back 👋
           </h1>
           <p style={{ fontSize: '14px', color: textSecondary, margin: 0, fontWeight: '500' }}>
-            Here's an overview — {totalPlayers} players and {totalCoaches} coaches in the system
+            Here's an overview - {totalPlayers} players and {totalCoaches} coaches in the system
           </p>
         </div>
 

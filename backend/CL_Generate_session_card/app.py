@@ -1,10 +1,15 @@
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pymongo import MongoClient
 from bson import ObjectId
 from bson.errors import InvalidId
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def today_ist_str():
+    return datetime.now(IST).strftime('%Y-%m-%d')
 
 # =====================================================
 # ENV VARIABLES
@@ -37,7 +42,8 @@ def cors_headers():
 # MAIN LOGIC
 # =====================================================
 
-def generate_session_card(player_id: str) -> dict:
+def generate_session_card(player_id: str, learning_pathway_override: str = None,
+                           batch_group_id: str = None, session_date_override: str = None) -> dict:
 
     try:
         player_object_id = ObjectId(player_id)
@@ -48,7 +54,10 @@ def generate_session_card(player_id: str) -> dict:
     if not player:
         return {"message": "Player not found"}
 
-    learning_pathway = player.get("LearningPathway")
+    # A batch (or an explicit caller) can specify which pathway to generate for,
+    # instead of always trusting the player's single profile field. This is what
+    # lets an individual card generated "from a batch" inherit the batch's curriculum.
+    learning_pathway = learning_pathway_override or player.get("LearningPathway")
 
     if not learning_pathway:
         return {"message": "LearningPathway missing"}
@@ -62,11 +71,24 @@ def generate_session_card(player_id: str) -> dict:
     if last_session:
         status = last_session.get("status")
 
-        if status not in ["upcoming", "in_progress", "in progress", "completed", "absent", "excused", "pending"]:
+        if status not in ["upcoming", "in_progress", "in progress", "completed",
+                           "not_completed", "absent", "excused", "pending"]:
             return {"message": f"Invalid session status: {status}"}
 
         if status in ["upcoming", "in_progress", "in progress"]:
-            return {"message": f"Previous session is still {status}"}
+            # Left hanging - the coach never submitted it. Rather than blocking this
+            # player (and stalling a whole batch-generate run on one stuck card),
+            # auto-close it as "pending" - the same recoverable-miss status already
+            # used for absent/excused - and continue generating the next session.
+            session_cards_col.update_one(
+                {"_id": last_session["_id"]},
+                {"$set": {
+                    "status": "pending",
+                    "autoClosedReason": f"Left {status} - auto-closed on next generation",
+                }}
+            )
+            last_session["status"] = "pending"
+            status = "pending"
 
     next_session = 1 if not last_session else last_session["session"] + 1
 
@@ -101,7 +123,8 @@ def generate_session_card(player_id: str) -> dict:
             "aiTools": act.get("aiTools"),
             "points": act.get("points"),
             "rating": None,
-            "feedback": None
+            "feedback": None,
+            "status": None,
         }
 
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -114,15 +137,28 @@ def generate_session_card(player_id: str) -> dict:
             if activity.get("points") and isinstance(activity["points"], dict):
                 total_points += activity["points"].get("total", 0)
 
-    session_cards_col.insert_one({
+    enriched_activities.sort(key=lambda a: a.get("activitySequence") or 0)
+
+    # NOTE (see flow spec): each session is kept WHOLE and SEPARATE. We do NOT
+    # merge a previous session's unfinished activities into this new card. If the
+    # last session was left Pending, it stays Pending as its own session - the
+    # coach finishes it later from the Pending Queue - and this new card is just a
+    # clean copy of the next pathway session. This preserves learning history and
+    # supports multiple pending sessions per student.
+    all_activities = enriched_activities
+    for idx, act in enumerate(all_activities, start=1):
+        act["activitySequence"] = idx
+
+    card_doc = {
         "playerId": player_id,
         "LearningPathway": learning_pathway,
         "session": next_session,
+        "sessionDate": session_date_override or today_ist_str(),
         "Topic": pathway.get("Topic"),
         "SessionType": pathway.get("SessionType"),
         "typeOfSessioncard": "default",
         "Objective": pathway.get("Objective"),
-        "activities": enriched_activities,
+        "activities": all_activities,
         "totalPoints": total_points,
         "sessionTakeaways": pathway.get("sessionTakeaways", []),
         "status": "upcoming",
@@ -130,11 +166,16 @@ def generate_session_card(player_id: str) -> dict:
         "feedback": None,
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "createdByCoach": player.get("primaryCoach"),
-    })
+    }
+    if batch_group_id:
+        card_doc["batchGroupId"] = batch_group_id
+
+    session_cards_col.insert_one(card_doc)
 
     return {
         "message": "Session created",
-        "session": next_session
+        "session": next_session,
+        "sessionDate": card_doc["sessionDate"],
     }
 
 # =====================================================
@@ -165,7 +206,11 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "playerId required"})
             }
 
-        result = generate_session_card(player_id)
+        learning_pathway_override = body.get("LearningPathway") if body else None
+        batch_group_id = body.get("batchGroupId") if body else None
+        session_date_override = body.get("sessionDate") if body else None
+
+        result = generate_session_card(player_id, learning_pathway_override, batch_group_id, session_date_override)
 
         # Map logical outcomes to real HTTP codes so the client can tell a genuine
         # "card created" from a no-op ("previous session still in progress", etc.)

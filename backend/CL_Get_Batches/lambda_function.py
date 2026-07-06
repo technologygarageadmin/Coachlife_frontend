@@ -107,6 +107,7 @@ def lambda_handler(event, context):
                 "days": batch.get("days", []),
                 "startTime": batch.get("startTime"),
                 "endTime": batch.get("endTime"),
+                "LearningPathway": batch.get("LearningPathway"),
                 "createdAt": batch.get("createdAt", ""),
             })
         return resp(200, {"batches": result})

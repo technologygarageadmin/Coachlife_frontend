@@ -116,7 +116,7 @@ const PastSessions = () => {
 
   const avgRating = sessions.length > 0
     ? (sessions.reduce((sum, s) => sum + (s.rating || 0), 0) / sessions.length).toFixed(1)
-    : '—';
+    : '-';
 
   return (
     <Layout>
@@ -200,7 +200,7 @@ const PastSessions = () => {
                     <div>
                       <p style={{ fontSize: '12px', color: textMuted, margin: '0 0 3px' }}>Session</p>
                       <p style={{ fontSize: '14px', fontWeight: '500', color: textPrimary, margin: 0 }}>
-                        {session.session ? `#${session.session}` : '—'}{session.Topic ? ` — ${session.Topic}` : ''}
+                        {session.session ? `#${session.session}` : '-'}{session.Topic ? ` - ${session.Topic}` : ''}
                       </p>
                     </div>
                     <div>

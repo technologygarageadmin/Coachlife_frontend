@@ -24,6 +24,19 @@ import {
   Layers,
 } from 'lucide-react';
 
+// Pages that live under /admin but are also reachable from the coach menu. Landing
+// on one must NOT flip a coach's sidebar into admin mode.
+const SHARED_ADMIN_PATHS = [
+  '/admin/session-card',
+  '/admin/view-session-card',
+  '/admin/edit-session-card',
+  '/admin/custom-generate-card',
+  '/admin/manage-batches',
+  '/admin/batches',
+  '/admin/learning-pathway/add/activity',
+];
+const isSharedAdminPath = (pathname) => SHARED_ADMIN_PATHS.some(p => pathname.startsWith(p));
+
 export const Sidebar = ({ onClose, isOpen = true }) => {
   const { currentUser, logout } = useStore();
   const { theme } = useTheme();
@@ -37,7 +50,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const hasBothRoles = userRoles.includes('admin') && userRoles.includes('coach');
   const [activeMode, setActiveMode] = useState(() => {
     if (location.pathname.startsWith('/coach')) return 'coach';
-    if (location.pathname.startsWith('/admin')) return 'admin';
+    if (location.pathname.startsWith('/admin') && !isSharedAdminPath(location.pathname)) return 'admin';
     return localStorage.getItem('coachlife_active_mode') || (currentUser?.role === 'coach' ? 'coach' : 'admin');
   });
 
@@ -45,7 +58,10 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
     if (location.pathname.startsWith('/coach')) {
       setActiveMode('coach');
       localStorage.setItem('coachlife_active_mode', 'coach');
-    } else if (location.pathname.startsWith('/admin')) {
+    } else if (location.pathname.startsWith('/admin') && !isSharedAdminPath(location.pathname)) {
+      // Shared pages (Session Card, Batches, …) live under /admin but are reachable
+      // from the coach menu too - don't force the sidebar into admin mode there, so
+      // a coach stays in the coach sidebar after opening them.
       setActiveMode('admin');
       localStorage.setItem('coachlife_active_mode', 'admin');
     }
@@ -81,7 +97,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
       { label: 'Assign Players',   path: '/admin/assign-players',   icon: UserPen,         color: '#FBBF24' },
       { label: 'Session Card',     path: '/admin/session-card',     icon: FileText,        color: '#A78BFA' },
       { label: 'Attendance',       path: '/admin/attendance',       icon: CalendarCheck,   color: '#F472B6' },
-      { label: 'Manage Batches',   path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
+      { label: 'Batches',          path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
       { label: 'Learning Pathway', path: '/admin/learning-pathway', icon: BookOpen,        color: '#6EE7B7' },
       { label: 'Leaderboard',      path: '/leaderboard',            icon: Trophy,          color: '#FCD34D' },
       { label: 'Rewards',          path: '/admin/rewards',          icon: Gift,            color: '#C084FC' },
@@ -91,6 +107,8 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
     coach: [
       { label: 'Dashboard',    path: '/coach',               icon: LayoutDashboard, color: '#818CF8' },
       { label: 'My Players',   path: '/coach/players',       icon: Users,           color: '#34D399' },
+      { label: 'Session Card', path: '/admin/session-card',  icon: FileText,        color: '#A78BFA' },
+      { label: 'Batches',      path: '/admin/manage-batches',icon: Layers,          color: '#FB7185' },
       { label: 'Leaderboard',  path: '/leaderboard',         icon: Trophy,          color: '#FCD34D' },
       { label: 'Start Session',path: '/coach/start-session', icon: BookOpen,        color: '#6EE7B7' },
       { label: 'Profile',      path: '/coach/profile',       icon: UserCheck,       color: '#94A3B8' },
