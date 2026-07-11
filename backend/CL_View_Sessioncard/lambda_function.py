@@ -75,6 +75,15 @@ def safe_datetime(value):
         return value
     return None
 
+# ------------------ CARD FORMATTER ------------------
+def format_card(card):
+    card = dict(card)
+    card["_id"] = str(card["_id"])
+    for field in ["createdAt", "updatedAt", "completedAt"]:
+        if field in card:
+            card[field] = safe_datetime(card[field])
+    return card
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -96,6 +105,74 @@ def lambda_handler(event, context):
 
         session_card_id = body.get("sessionCardId")
         player_id = body.get("playerId")
+        bulk_player_ids = body.get("playerIds")
+        bulk_card_ids = body.get("sessionCardIds")
+        want_full = bool(body.get("full"))
+
+        # ---- BULK MODE A: full card docs for many known card ids in ONE query ----
+        # Used by the "By Batch" full-history view, which used to fetch every
+        # player's every card one request at a time (an N*M fan-out).
+        if isinstance(bulk_card_ids, list) and bulk_card_ids:
+            is_super, own_player_ids = get_role_scope(user)
+            own_set = set(own_player_ids)
+
+            requested_ids = [str(cid) for cid in bulk_card_ids][:300]  # sane upper bound per call
+            oid_by_str = {}
+            for cid in requested_ids:
+                try:
+                    oid_by_str[cid] = ObjectId(cid)
+                except Exception:
+                    continue
+
+            cards_map = {cid: None for cid in requested_ids}
+            if oid_by_str:
+                for doc in session_cards.find({"_id": {"$in": list(oid_by_str.values())}}):
+                    if not is_super and doc.get("playerId") not in own_set:
+                        continue
+                    cards_map[str(doc["_id"])] = format_card(doc)
+
+            return cors_response(200, {
+                "message": "Session cards fetched successfully",
+                "cards": cards_map,
+            })
+
+        # ---- BULK MODE B: latest card for many players in ONE query ----
+        # Used by list/batch views that used to fire one request per player -
+        # a single aggregation replaces that N+1 pattern. Pass `full: true` to
+        # get the complete card doc instead of just the summary fields.
+        if isinstance(bulk_player_ids, list) and bulk_player_ids:
+            is_super, own_player_ids = get_role_scope(user)
+            requested = [str(p) for p in bulk_player_ids][:200]  # sane upper bound per call
+
+            if is_super:
+                allowed = requested
+            else:
+                own_set = set(own_player_ids)
+                allowed = [p for p in requested if p in own_set]
+
+            cards_map = {pid: None for pid in requested}
+            if allowed:
+                pipeline = [
+                    {"$match": {"playerId": {"$in": allowed}}},
+                    {"$sort": {"createdAt": DESCENDING}},
+                    {"$group": {"_id": "$playerId", "doc": {"$first": "$$ROOT"}}},
+                ]
+                for row in session_cards.aggregate(pipeline):
+                    doc = row["doc"]
+                    if want_full:
+                        cards_map[row["_id"]] = format_card(doc)
+                    else:
+                        cards_map[row["_id"]] = {
+                            "session": doc.get("session"),
+                            "sessionDate": doc.get("sessionDate"),
+                            "status": doc.get("status") or "",
+                            "cardId": str(doc["_id"]) if doc.get("_id") else None,
+                        }
+
+            return cors_response(200, {
+                "message": "Session cards fetched successfully",
+                "cards": cards_map,
+            })
 
         if not session_card_id and not player_id:
             return cors_response(400, {
@@ -134,17 +211,10 @@ def lambda_handler(event, context):
                     "message": "No session card found for this player"
                 })
 
-        # ---- FORMAT OUTPUT ----
-        card["_id"] = str(card["_id"])
-
-        for field in ["createdAt", "updatedAt", "completedAt"]:
-            if field in card:
-                card[field] = safe_datetime(card[field])
-
         return cors_response(200, {
             "message": "Session card fetched successfully",
             "accessedBy": "USER",               # 👈 not coach now
-            "sessionCard": card
+            "sessionCard": format_card(card)
         })
 
     except Exception as e:

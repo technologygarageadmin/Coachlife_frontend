@@ -346,29 +346,33 @@ const SessionCardManage = () => {
   // Read each player's real latest card (session number, date, status) - not guessed.
   // Returns the map directly (not just via setState) so callers can use it immediately
   // without racing React's async state update.
+  // One bulk call instead of one request per player - avoids the N+1 fan-out
+  // (and its tail-latency risk) that used to hit CL_View_Sessioncard once per
+  // player in the list/batch.
   const fetchBatchPlayerCardInfo = async (playerIds) => {
     setCardInfoLoading(true);
-    const map = {};
-    await Promise.all(playerIds.map(async (pid) => {
-      try {
-        const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', userToken },
-          body: JSON.stringify({ playerId: pid }),
-        });
-        if (!res.ok) { map[pid] = null; return; }
+    let map = {};
+    try {
+      const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', userToken },
+        body: JSON.stringify({ playerIds }),
+      });
+      if (res.ok) {
         const data = await res.json();
-        const card = data.sessionCard || data.data || data;
-        map[pid] = {
-          session: card?.session ?? null,
-          sessionDate: card?.sessionDate || null,
-          status: card?.status || '',
-          cardId: card?._id || null,
-        };
-      } catch {
-        map[pid] = null;
+        const cards = data.cards || {};
+        playerIds.forEach(pid => {
+          const card = cards[pid];
+          map[pid] = card
+            ? { session: card.session ?? null, sessionDate: card.sessionDate || null, status: card.status || '', cardId: card.cardId || null }
+            : null;
+        });
+      } else {
+        playerIds.forEach(pid => { map[pid] = null; });
       }
-    }));
+    } catch {
+      playerIds.forEach(pid => { map[pid] = null; });
+    }
     setPlayerCardInfo(map);
     setCardInfoLoading(false);
     return map;
@@ -376,48 +380,55 @@ const SessionCardManage = () => {
 
   // Fetch EVERY card for every player in the batch (complete history) so the
   // By Batch view can show all cards, grouped by pathway, with edit/delete.
+  // Two bulk calls total (one for known card ids, one for each player's latest
+  // card) instead of the old one-request-per-card-per-player fan-out.
   const fetchBatchAllCards = async (batchPlayers) => {
     setBatchCardsLoading(true);
     const map = {};
-    await Promise.all(batchPlayers.map(async (bp) => {
-      const profile = players.find(p => String(p.playerId) === String(bp.playerId));
-      const ids = Array.isArray(profile?.sessionCardIds) ? profile.sessionCardIds : [];
-      const cards = [];
-      await Promise.all(ids.map(async (id) => {
-        try {
-          const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', userToken },
-            body: JSON.stringify({ sessionCardId: id }),
-          });
-          if (!res.ok) return;
-          const data = await res.json();
-          const card = data.sessionCard || data.data || data;
+    try {
+      const idsByPlayer = {};
+      const allCardIds = [];
+      batchPlayers.forEach(bp => {
+        const profile = players.find(p => String(p.playerId) === String(bp.playerId));
+        const ids = Array.isArray(profile?.sessionCardIds) ? profile.sessionCardIds : [];
+        idsByPlayer[bp.playerId] = ids;
+        allCardIds.push(...ids);
+      });
+      const uniqueCardIds = [...new Set(allCardIds)];
+      const playerIds = batchPlayers.map(bp => bp.playerId);
+
+      const postJson = (payload) => fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', userToken },
+        body: JSON.stringify(payload),
+      }).then(r => (r.ok ? r.json() : { cards: {} })).catch(() => ({ cards: {} }));
+
+      const [byIdRes, byPlayerRes] = await Promise.all([
+        uniqueCardIds.length ? postJson({ sessionCardIds: uniqueCardIds }) : Promise.resolve({ cards: {} }),
+        playerIds.length ? postJson({ playerIds, full: true }) : Promise.resolve({ cards: {} }),
+      ]);
+      const cardsById = byIdRes.cards || {};
+      const latestByPlayer = byPlayerRes.cards || {};
+
+      batchPlayers.forEach(bp => {
+        const cards = [];
+        (idsByPlayer[bp.playerId] || []).forEach(id => {
+          const card = cardsById[id];
           if (card && (card.Topic || card.activities || card.status)) cards.push({ _id: id, ...card });
-        } catch { /* skip */ }
-      }));
-
-      // Also pull the authoritative current card by playerId and merge it if the
-      // cached sessionCardIds list hadn't caught up yet - keeps the newest card
-      // visible even when the players cache is stale.
-      try {
-        const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', userToken },
-          body: JSON.stringify({ playerId: bp.playerId }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          const card = data.sessionCard || data.data || data;
-          const cid = card?._id;
-          if (card && cid && (card.Topic || card.activities || card.status) && !cards.some(c => c._id === cid)) {
-            cards.push({ _id: cid, ...card });
-          }
-        }
-      } catch { /* skip */ }
 
-      map[bp.playerId] = cards;
-    }));
+        // Also merge in the authoritative current card by playerId if the
+        // cached sessionCardIds list hadn't caught up yet - keeps the newest
+        // card visible even when the players cache is stale.
+        const latest = latestByPlayer[bp.playerId];
+        const cid = latest?._id;
+        if (latest && cid && (latest.Topic || latest.activities || latest.status) && !cards.some(c => c._id === cid)) {
+          cards.push({ _id: cid, ...latest });
+        }
+
+        map[bp.playerId] = cards;
+      });
+    } catch { /* leave map with whatever was resolved so far */ }
     setBatchAllCards(map);
     setBatchCardsLoading(false);
   };
