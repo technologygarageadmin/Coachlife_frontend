@@ -688,8 +688,9 @@ const Coaches = () => {
 
           <SectionHeading>Role</SectionHeading>
           <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
-            {['coach','admin'].map(roleOption => {
+            {['coach','admin','superadmin'].map(roleOption => {
               const isSelected = (formData.role || []).includes(roleOption);
+              const roleLabel = roleOption === 'superadmin' ? 'Super Admin' : roleOption;
               return (
                 <button
                   key={roleOption} type="button" disabled={loading}
@@ -711,7 +712,7 @@ const Coaches = () => {
                     transition:'all .18s ease', opacity: loading ? 0.6 : 1,
                   }}
                 >
-                  {roleOption}
+                  {roleLabel}
                 </button>
               );
             })}

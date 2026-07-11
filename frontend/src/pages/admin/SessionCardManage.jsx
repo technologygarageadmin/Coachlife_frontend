@@ -5,7 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
-import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle, Calendar, PencilLine } from 'lucide-react';
+import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle, Calendar, PencilLine, Play } from 'lucide-react';
 
 // API Endpoints
 const API_ENDPOINTS = {
@@ -77,9 +77,11 @@ const SessionCardManage = () => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
   // Batch view state
-  const [viewMode, setViewMode] = useState('Player'); // 'Player' | 'batch'
+  const [viewMode, setViewMode] = useState('batch'); // 'Player' | 'batch'
   const [batches, setBatches] = useState([]);
-  const [selectedBatchId, setSelectedBatchId] = useState('');
+  const [selectedBatchId, setSelectedBatchId] = useState(() => {
+    try { return localStorage.getItem('cl_admin_sessioncard_batch') || ''; } catch { return ''; }
+  });
   const [batchGenStatus, setBatchGenStatus] = useState({}); // { [playerId]: { state, message } }
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [errorDetail, setErrorDetail] = useState(null); // { playerName, message }
@@ -119,6 +121,25 @@ const SessionCardManage = () => {
       setSelectedBatchId(batchId);
     }
   }, []);
+
+  // Remember the last selected batch so a page refresh returns to it.
+  useEffect(() => {
+    try {
+      if (selectedBatchId) localStorage.setItem('cl_admin_sessioncard_batch', selectedBatchId);
+      else localStorage.removeItem('cl_admin_sessioncard_batch');
+    } catch { /* ignore */ }
+  }, [selectedBatchId]);
+
+  // Whenever a batch is shown, pull a FRESH players list (bypassing the 5-min
+  // cache) so each member's sessionCardIds are current - this is what makes the
+  // card grid load reliably instead of from a stale cache after a
+  // generate/start/delete or a navigation back into the page.
+  useEffect(() => {
+    if (viewMode === 'batch' && selectedBatchId) {
+      fetchPlayers(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBatchId, viewMode]);
 
   const isFirstMount = useRef(true);
 
@@ -375,6 +396,26 @@ const SessionCardManage = () => {
           if (card && (card.Topic || card.activities || card.status)) cards.push({ _id: id, ...card });
         } catch { /* skip */ }
       }));
+
+      // Also pull the authoritative current card by playerId and merge it if the
+      // cached sessionCardIds list hadn't caught up yet - keeps the newest card
+      // visible even when the players cache is stale.
+      try {
+        const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', userToken },
+          body: JSON.stringify({ playerId: bp.playerId }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const card = data.sessionCard || data.data || data;
+          const cid = card?._id;
+          if (card && cid && (card.Topic || card.activities || card.status) && !cards.some(c => c._id === cid)) {
+            cards.push({ _id: cid, ...card });
+          }
+        }
+      } catch { /* skip */ }
+
       map[bp.playerId] = cards;
     }));
     setBatchAllCards(map);
@@ -655,7 +696,7 @@ const SessionCardManage = () => {
       }
     }
 
-    await fetchPlayers();
+    await fetchPlayers(true);
     setBatchGenerating(false);
     setToastMessage(failed === 0
       ? `Generated ${success} card${success === 1 ? '' : 's'} successfully!`
@@ -785,7 +826,7 @@ const SessionCardManage = () => {
 
       setShowGenerateModal(false);
 
-      const updatedPlayers = await fetchPlayers();
+      const updatedPlayers = await fetchPlayers(true);
       if (selectedPlayer) {
         const refreshedPlayer = updatedPlayers.find(p => p.playerId === selectedPlayer.playerId);
         if (refreshedPlayer) {
@@ -836,6 +877,9 @@ const SessionCardManage = () => {
         return next;
       });
       setDeleteConfirm(null);
+      // Refresh players so the removed id leaves each member's sessionCardIds and
+      // the batch grid stays in sync (bypass cache).
+      fetchPlayers(true);
 
     } catch (err) {
       console.error('Error deleting card:', err);
@@ -1328,6 +1372,13 @@ const SessionCardManage = () => {
                                                 <button onClick={() => navigate(`/admin/edit-session-card/${card._id}`, { state: { batchId: selectedBatchId, playerId: player.playerId } })}
                                                   style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                                   <Edit3 size={12} /> Edit
+                                                </button>
+                                              )}
+                                              {card.status?.toLowerCase() !== 'completed' && (
+                                                <button onClick={() => navigate(`/coach/start-session/${player.playerId}`)}
+                                                  title="Start this player's session"
+                                                  style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(16,185,129,0.15)' : '#DCFCE7', color: dark ? '#34D399' : '#15803D', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                  <Play size={12} /> Start
                                                 </button>
                                               )}
                                               <button onClick={() => setDeleteConfirm(card._id)}

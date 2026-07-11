@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from pymongo import MongoClient
+from bson import ObjectId
 
 # ------------------ CONFIG ------------------
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -65,6 +66,15 @@ def validate_user(event):
     user["_id"] = str(user["_id"])
     return user
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
 # ------------------ ADD PLAYER ------------------
 def lambda_handler(event, context):
 
@@ -118,6 +128,13 @@ def lambda_handler(event, context):
     }
 
     result = players.insert_one(player)
+
+    is_super, _ = get_role_scope(user)
+    if not is_super:
+        users.update_one(
+            {"_id": ObjectId(user["_id"])},
+            {"$addToSet": {"PlayersList": str(result.inserted_id)}}
+        )
 
     return response(
         201,

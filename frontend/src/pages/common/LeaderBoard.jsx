@@ -103,7 +103,9 @@ export default function LeaderBoard() {
   async function fetchPlayers() {
     try {
       setLoading(true);
-      const res = await fetch(API_ENDPOINT, {
+      // ?leaderboard=true bypasses the "my players only" scoping backend-side -
+      // the leaderboard is an org-wide ranking, not a per-coach management view.
+      const res = await fetch(`${API_ENDPOINT}?leaderboard=true`, {
         headers: { userToken },
       });
       const data = await res.json();

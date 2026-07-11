@@ -30,13 +30,30 @@ def cors_response(status_code, body):
 # ------------------ TOKEN VALIDATION ------------------
 def validate_user_token(event):
     headers = event.get("headers", {}) or {}
-    user_token = headers.get("userToken")
+
+    user_token = (
+        headers.get("userToken")
+        or headers.get("UserToken")
+        or headers.get("usertoken")
+    )
+
+    if not user_token:
+        auth = headers.get("Authorization") or headers.get("authorization")
+        if auth and auth.startswith("Bearer "):
+            user_token = auth.replace("Bearer ", "").strip()
 
     if not user_token:
         return None
 
     # Validate against Users collection
     return users.find_one({"userToken": user_token})
+
+# ------------------ ROLE SCOPE ------------------
+def is_super_admin(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "superadmin" in [r.lower() for r in roles]
 
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
@@ -52,6 +69,9 @@ def lambda_handler(event, context):
             401,
             {"message": "Unauthorized: Invalid or missing user token"}
         )
+
+    if not is_super_admin(user):
+        return cors_response(403, {"message": "Forbidden: superAdmin role required"})
 
     # -------- Body validation --------
     if "body" not in event or not event["body"]:

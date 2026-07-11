@@ -120,6 +120,10 @@ def lambda_handler(event, context):
 
         player_id = session_card.get("playerId")
         current_session = session_card.get("session")
+        # Session numbers restart per pathway, so all sequencing checks below must be
+        # scoped to THIS card's pathway. Without it a player who finished Session 7 of
+        # one pathway could not start Session 1 of another ("complete session 8 first").
+        current_pathway = session_card.get("LearningPathway")
 
         raw_status = session_card.get("status")
         current_status = normalize_status(raw_status)
@@ -127,12 +131,16 @@ def lambda_handler(event, context):
         if player_id is None or current_session is None:
             return response(400, {"message": "Invalid session card data"})
 
-        # -------- LAST COMPLETED SESSION --------
+        # -------- LAST COMPLETED SESSION (same pathway) --------
+        completed_query = {
+            "playerId": player_id,
+            "status": {"$regex": "^COMPLETED$", "$options": "i"}
+        }
+        if current_pathway:
+            completed_query["LearningPathway"] = current_pathway
+
         last_completed = session_cards.find_one(
-            {
-                "playerId": player_id,
-                "status": {"$regex": "^COMPLETED$", "$options": "i"}
-            },
+            completed_query,
             sort=[("session", -1)]
         )
 
@@ -150,11 +158,14 @@ def lambda_handler(event, context):
             # upcoming card (the regular forward flow).
             if current_status == "UPCOMING" and current_session != last_completed_session + 1:
                 # Allow starting if all sessions in the gap are pending (player was absent/excused)
+                gap_query = {
+                    "playerId": player_id,
+                    "session": {"$gt": last_completed_session, "$lt": current_session}
+                }
+                if current_pathway:
+                    gap_query["LearningPathway"] = current_pathway
                 gap_cards = list(session_cards.find(
-                    {
-                        "playerId": player_id,
-                        "session": {"$gt": last_completed_session, "$lt": current_session}
-                    },
+                    gap_query,
                     {"session": 1, "status": 1}
                 ))
                 all_skippable = bool(gap_cards) and all(

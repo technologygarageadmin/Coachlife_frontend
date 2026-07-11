@@ -50,15 +50,25 @@ def validate_user_token(event):
     return None, "INVALID_TOKEN"
 
 
+def is_super_admin(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "superadmin" in [r.lower() for r in roles]
+
+
 def lambda_handler(event, context):
 
     if event.get("httpMethod") == "OPTIONS":
         return cors_response(200, {"message": "CORS OK"})
 
-    _, error = validate_user_token(event)
+    user, error = validate_user_token(event)
 
     if error:
         return cors_response(401, {"message": "Unauthorized", "reason": error})
+
+    if not is_super_admin(user):
+        return cors_response(403, {"message": "Forbidden: superAdmin role required"})
 
     try:
         body = json.loads(event.get("body", "{}"))

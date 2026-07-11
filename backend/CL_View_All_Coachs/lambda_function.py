@@ -46,6 +46,13 @@ def validate_token(event):
 
     return users.find_one({"userToken": token}, {"password": 0})
 
+# ------------------ ROLE SCOPE ------------------
+def is_super_admin(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "superadmin" in [r.lower() for r in roles]
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -57,6 +64,9 @@ def lambda_handler(event, context):
     user = validate_token(event)
     if not user:
         return response(401, {"message": "Unauthorized or token missing"})
+
+    if not is_super_admin(user):
+        return response(403, {"message": "Forbidden: superAdmin role required"})
 
     # -------- LIST ALL COACHES --------
     coach_list = []

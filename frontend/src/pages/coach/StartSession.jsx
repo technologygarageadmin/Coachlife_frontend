@@ -55,7 +55,13 @@ const StartSession = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState(null);
   const [filterStage, setFilterStage] = useState('all');
-  const [viewMode, setViewMode] = useState('players');
+  const [viewMode, setViewModeState] = useState(() => {
+    try { return localStorage.getItem('cl_coach_start_view') || 'batches'; } catch { return 'batches'; }
+  });
+  const setViewMode = (v) => {
+    setViewModeState(v);
+    try { localStorage.setItem('cl_coach_start_view', v); } catch { /* ignore */ }
+  };
   const [batches, setBatches] = useState([]);
   const [batchesLoading, setBatchesLoading] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -658,7 +664,10 @@ const StartSession = () => {
                       </div>
                     )}
                     <button
-                      onClick={() => navigate('/coach/batch-session', { state: { batch } })}
+                      onClick={() => {
+                        try { localStorage.setItem('cl_coach_active_batch', JSON.stringify(batch)); } catch { /* ignore */ }
+                        navigate('/coach/batch-session', { state: { batch } });
+                      }}
                       style={{
                         width: '100%', padding: '11px 16px', borderRadius: '10px',
                         background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)', color: 'white', fontSize: '13px', fontWeight: '700',

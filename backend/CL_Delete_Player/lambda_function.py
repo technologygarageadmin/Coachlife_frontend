@@ -65,6 +65,15 @@ def validate_user_token(event):
     user["_id"] = str(user["_id"])
     return user
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -103,6 +112,10 @@ def lambda_handler(event, context):
             400,
             {"message": "Invalid playerId format"}
         )
+
+    is_super, player_ids = get_role_scope(user)
+    if not is_super and player_id not in player_ids:
+        return cors_response(403, {"message": "Forbidden: player is not in your assigned list"})
 
     # -------- DELETE PLAYER --------
     result = players.delete_one({"_id": obj_id})

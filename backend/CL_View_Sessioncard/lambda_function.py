@@ -58,6 +58,15 @@ def validate_user(event):
 
     return None, "INVALID_TOKEN"
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
 # ------------------ SAFE DATETIME HANDLER ------------------
 def safe_datetime(value):
     if isinstance(value, datetime):
@@ -93,6 +102,10 @@ def lambda_handler(event, context):
                 "message": "sessionCardId or playerId is required"
             })
 
+        is_super, player_ids = get_role_scope(user)
+        if not is_super and player_id and player_id not in player_ids:
+            return cors_response(403, {"message": "Forbidden: player is not in your assigned list"})
+
         if session_card_id:
             # Direct fetch by id - used when the caller already knows which card
             # (e.g. the last id in a player's sessionCardIds array) rather than
@@ -106,6 +119,9 @@ def lambda_handler(event, context):
                 return cors_response(404, {
                     "message": "Session card not found for this sessionCardId"
                 })
+
+            if not is_super and card.get("playerId") not in player_ids:
+                return cors_response(403, {"message": "Forbidden: player is not in your assigned list"})
         else:
             # ---- FETCH LATEST SESSION CARD FOR PLAYER ----
             card = session_cards.find_one(

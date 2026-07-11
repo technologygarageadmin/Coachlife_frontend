@@ -51,6 +51,15 @@ def validate_user(event):
     return user
 
 
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
+
 def now_ist():
     return datetime.now(IST)
 
@@ -106,11 +115,25 @@ def lambda_handler(event, context):
         return resp(400, {"message": "Invalid JSON body"})
 
     action = body.get("action")
+    is_super, scoped_player_ids = get_role_scope(user)
+    scoped_player_id_set = set(scoped_player_ids)
+
+    def batch_in_scope(batch_oid):
+        """A non-superAdmin caller may only mutate a batch that already contains
+        at least one of their own assigned players."""
+        if is_super:
+            return True
+        existing = batches_col.find_one({"_id": batch_oid}, {"playerIds": 1})
+        if not existing:
+            return False
+        return bool(scoped_player_id_set & set(existing.get("playerIds", [])))
 
     try:
         if action == "create":
             batch_name = body.get("batchName", "").strip()
             player_ids = unique_strings(body.get("playerIds", []))
+            if not is_super:
+                player_ids = [pid for pid in player_ids if pid in scoped_player_id_set]
             if not batch_name:
                 return resp(400, {"message": "batchName is required"})
             doc = {
@@ -135,11 +158,17 @@ def lambda_handler(event, context):
             if not batch_oid:
                 return resp(400, {"message": "Invalid batchId"})
 
+            if not batch_in_scope(batch_oid):
+                return resp(403, {"message": "Forbidden: batch is not in your assigned scope"})
+
             update = {}
             if "batchName" in body:
                 update["batchName"] = body["batchName"].strip()
             if "playerIds" in body:
-                update["playerIds"] = unique_strings(body["playerIds"])
+                new_player_ids = unique_strings(body["playerIds"])
+                if not is_super:
+                    new_player_ids = [pid for pid in new_player_ids if pid in scoped_player_id_set]
+                update["playerIds"] = new_player_ids
             if "days" in body:
                 update["days"] = [str(d).strip() for d in body["days"] if str(d).strip()]
             if "startTime" in body:
@@ -176,7 +205,12 @@ def lambda_handler(event, context):
             if not batch_oid:
                 return resp(400, {"message": "Invalid batchId"})
 
+            if not batch_in_scope(batch_oid):
+                return resp(403, {"message": "Forbidden: batch is not in your assigned scope"})
+
             player_ids = unique_strings(body.get("playerIds") or [body.get("playerId")])
+            if not is_super:
+                player_ids = [pid for pid in player_ids if pid in scoped_player_id_set]
             if not player_ids:
                 return resp(400, {"message": "playerId or playerIds is required"})
 
@@ -208,6 +242,9 @@ def lambda_handler(event, context):
             batch_oid = parse_object_id(batch_id)
             if not batch_oid:
                 return resp(400, {"message": "Invalid batchId"})
+
+            if not batch_in_scope(batch_oid):
+                return resp(403, {"message": "Forbidden: batch is not in your assigned scope"})
 
             player_ids = unique_strings(body.get("playerIds") or [body.get("playerId")])
             if not player_ids:
@@ -353,6 +390,9 @@ def lambda_handler(event, context):
             batch_oid = parse_object_id(batch_id)
             if not batch_oid:
                 return resp(400, {"message": "Invalid batchId"})
+
+            if not batch_in_scope(batch_oid):
+                return resp(403, {"message": "Forbidden: batch is not in your assigned scope"})
 
             result = batches_col.delete_one({"_id": batch_oid})
             if result.deleted_count == 0:

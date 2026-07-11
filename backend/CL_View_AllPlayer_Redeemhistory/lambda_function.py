@@ -56,6 +56,15 @@ def validate_user_token(event):
     user["_id"] = str(user["_id"])
     return user, None
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
 # ------------------ HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -71,9 +80,12 @@ def lambda_handler(event, context):
     if error:
         return response(401, {"message": error})
 
-    # -------- FETCH ALL REDEEM HISTORY --------
+    # -------- FETCH REDEEM HISTORY (SCOPED) --------
+    is_super, player_ids = get_role_scope(user)
+    query = {} if is_super else {"playerId": {"$in": player_ids}}
+
     cursor = redeem_collection.find(
-        {},
+        query,
         {"_id": 0}
     ).sort("redeemedAt", -1)
 

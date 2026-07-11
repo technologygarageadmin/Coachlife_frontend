@@ -47,6 +47,13 @@ def validate_user(event):
     # ✅ validate token inside Users collection
     return users.find_one({"userToken": user_token})
 
+# ------------------ ROLE SCOPE ------------------
+def is_super_admin(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "superadmin" in [r.lower() for r in roles]
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -65,6 +72,9 @@ def lambda_handler(event, context):
         return cors_response(401, {
             "message": "Unauthorized: Invalid or missing user token"
         })
+
+    if not is_super_admin(user):
+        return cors_response(403, {"message": "Forbidden: superAdmin role required"})
 
     try:
         body = json.loads(event.get("body") or "{}")

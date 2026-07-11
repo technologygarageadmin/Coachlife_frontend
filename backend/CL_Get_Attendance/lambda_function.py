@@ -70,6 +70,15 @@ def validate_user(event):
     return user
 
 
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
+
 def lambda_handler(event, context):
     if event.get("httpMethod") == "OPTIONS":
         return resp(200, {"message": "CORS OK"})
@@ -95,6 +104,14 @@ def lambda_handler(event, context):
         query["playerId"] = body["playerId"]
     if body.get("attendanceStatus") is not None:
         query["attendanceStatus"] = body["attendanceStatus"]
+
+    is_super, player_ids = get_role_scope(user)
+    if not is_super:
+        if query.get("playerId"):
+            if query["playerId"] not in player_ids:
+                query["playerId"] = "__NO_MATCH__"
+        else:
+            query["playerId"] = {"$in": player_ids}
 
     try:
         records = list(attendance_col.find(query).sort([("sessionDate", DESCENDING), ("markedAt", DESCENDING)]))

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
@@ -75,7 +75,19 @@ const BatchSessionView = () => {
   const location = useLocation();
   const { currentUser, fetchAssignedPlayersForCoach, fetchPlayers, userToken } = useStore();
 
-  const batch = location.state?.batch;
+  // On normal navigation the batch arrives via router state; persist it so a page
+  // refresh (which drops router state) recovers it instead of bouncing back to
+  // Start Session with no cards loaded.
+  const batch = useMemo(() => {
+    if (location.state?.batch) {
+      try { localStorage.setItem('cl_coach_active_batch', JSON.stringify(location.state.batch)); } catch { /* ignore */ }
+      return location.state.batch;
+    }
+    try {
+      const saved = localStorage.getItem('cl_coach_active_batch');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  }, [location.state]);
 
   const [batchPlayers, setBatchPlayers] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -184,13 +196,16 @@ const BatchSessionView = () => {
         // the assigned list left those players with empty sessionCardIds ("0 cards"),
         // even though they have generated cards. Merge so every batch member gets
         // their real sessionCardIds regardless of who they're assigned to.
-        const [result, allPlayers] = await Promise.all([
+        const [result, allPlayersRes] = await Promise.all([
           fetchAssignedPlayersForCoach(currentUser.id),
-          Promise.resolve(fetchPlayers ? fetchPlayers() : []).catch(() => []),
+          Promise.resolve(fetchPlayers ? fetchPlayers(true) : null).catch(() => null),
         ]);
+        // fetchPlayers returns an array on the cache path but { success, players }
+        // on a fresh fetch - normalize both so the merge below always runs.
+        const allPlayers = Array.isArray(allPlayersRes) ? allPlayersRes : (allPlayersRes?.players || []);
 
         const byId = {};
-        (Array.isArray(allPlayers) ? allPlayers : []).forEach(p => {
+        allPlayers.forEach(p => {
           const id = String(p.playerId || p._id || p.id);
           byId[id] = { name: p.playerName || p.name, LearningPathway: p.LearningPathway || '', sessionCardIds: p.sessionCardIds || [] };
         });
@@ -203,8 +218,11 @@ const BatchSessionView = () => {
             byId[id] = {
               name: p.playerName || p.name || prev.name,
               LearningPathway: p.LearningPathway || prev.LearningPathway || '',
-              // keep whichever source actually has card ids
-              sessionCardIds: (ids && ids.length) ? ids : (prev.sessionCardIds || []),
+              // UNION both sources - the assigned-players API can return a shorter,
+              // fresher list (e.g. only the newly generated card) while the full
+              // players list holds the rest of the history. Preferring one dropped
+              // cards, so merge and de-dupe to keep every card.
+              sessionCardIds: [...new Set([...(prev.sessionCardIds || []), ...ids])],
             };
           });
         }
@@ -250,17 +268,38 @@ const BatchSessionView = () => {
       }
     };
 
+    // The player's authoritative CURRENT card, straight from the backend by
+    // playerId (same call the admin Batch Detail uses). This reflects a freshly
+    // generated card even when the cached sessionCardIds array hasn't caught up,
+    // which is why the coach view used to miss a player's new session.
+    const fetchCurrentByPlayer = async (playerId) => {
+      try {
+        const res = await fetch(VIEW_SESSIONCARD_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'userToken': userToken },
+          body: JSON.stringify({ playerId }),
+          signal: controller.signal,
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const card = data.sessionCard || data.data || data;
+        if (!card || (card.session == null && !card.status && !card.Topic)) return null;
+        return card;
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Current card fetch failed', playerId, e);
+        return null;
+      }
+    };
+
     (async () => {
       setAllCardsLoading(true);
-      // mark every player's chip as loading up front
+      // mark every player's chip as loading up front - we now always look up each
+      // player's current card by playerId, so even a player with an empty cached
+      // sessionCardIds array must wait for that lookup rather than flash "no card".
       setCardStatus(prev => {
         const next = { ...prev };
         batchPlayers.forEach(p => {
-          if ((p.sessionCardIds || []).length === 0) {
-            next[p.playerId] = { activeCardId: null, loading: false, checked: true, isPending: false, sessionNumber: null };
-          } else {
-            next[p.playerId] = { ...(next[p.playerId] || {}), loading: true, checked: false };
-          }
+          next[p.playerId] = { ...(next[p.playerId] || {}), loading: true, checked: false };
         });
         return next;
       });
@@ -268,9 +307,18 @@ const BatchSessionView = () => {
       const collected = [];
       await Promise.all(batchPlayers.map(async (player) => {
         const { playerId, name, sessionCardIds } = player;
-        if (!sessionCardIds || sessionCardIds.length === 0) return;
 
-        const cards = (await Promise.all(sessionCardIds.map(fetchCard))).filter(Boolean);
+        // Full history from the player's sessionCardIds (may be stale/incomplete).
+        const cards = (await Promise.all((sessionCardIds || []).map(fetchCard))).filter(Boolean);
+
+        // Authoritative current card by playerId - merge it into the history if the
+        // cached id list didn't include it (the whole reason cards went "missing").
+        const current = await fetchCurrentByPlayer(playerId);
+        const idOf = (c) => c && (c._id || c.sessionCardId);
+        if (current && !cards.some(c => idOf(c) === idOf(current))) {
+          cards.push(current);
+        }
+
         cards.forEach(card => {
           collected.push({
             ...card,
@@ -280,20 +328,35 @@ const BatchSessionView = () => {
           });
         });
 
-        // latest = highest session number (fall back to last id fetched)
-        const latest = cards.reduce((max, c) => ((c.session || 0) >= (max?.session || 0) ? c : max), cards[0]);
-        const cardId = latest?._id || latest?.sessionCardId || sessionCardIds[sessionCardIds.length - 1];
-        const rawStatus = (latest?.status || '').toLowerCase().replace(/[\s_]/g, '');
+        // The card the coach needs today = the backend's current card for this
+        // player. Only if that lookup returns nothing do we derive from history:
+        // prefer an OPEN (non-completed) card - in-progress first, then the highest
+        // open session - and fall back to the latest completed as "done for today".
+        let chosen = current;
+        if (!chosen) {
+          const openCards = cards.filter(c => normStatus(c.status) !== 'completed');
+          chosen = openCards.length > 0
+            ? openCards.slice().sort((a, b) => {
+                const ai = normStatus(a.status) === 'inprogress' ? 1 : 0;
+                const bi = normStatus(b.status) === 'inprogress' ? 1 : 0;
+                if (ai !== bi) return bi - ai;
+                return (b.session || 0) - (a.session || 0);
+              })[0]
+            : (cards.length ? cards.reduce((max, c) => ((c.session || 0) >= (max?.session || 0) ? c : max), cards[0]) : null);
+        }
+
+        const cardId = idOf(chosen) || (sessionCardIds && sessionCardIds[sessionCardIds.length - 1]) || null;
+        const rawStatus = normStatus(chosen?.status);
         const isCompleted = rawStatus === 'completed';
         setCardStatus(prev => ({
           ...prev,
           [playerId]: {
-            activeCardId: isCompleted ? null : cardId,
+            activeCardId: (isCompleted || !cardId) ? null : cardId,
             loading: false,
             checked: true,
             isPending: rawStatus === 'pending',
-            rawStatus: latest?.status || '',
-            sessionNumber: latest?.session ?? null,
+            rawStatus: chosen?.status || '',
+            sessionNumber: chosen?.session ?? null,
             sessionCardId: cardId,
           }
         }));
@@ -944,6 +1007,12 @@ const BatchSessionView = () => {
                                                 <button onClick={() => navigate(`/admin/edit-session-card/${card._cardId}`, { state: { batchId: batch.batchId, playerId: player.playerId } })}
                                                   style={{ flex: 1, padding: '5px 8px', background: '#FEF3C7', color: '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                                   <Edit3 size={12} /> Edit
+                                                </button>
+                                              )}
+                                              {!isCompleted && (
+                                                <button onClick={() => navigate(`/coach/start-session/${player.playerId}`)} title="Start this player's session"
+                                                  style={{ flex: 1, padding: '5px 8px', background: '#DCFCE7', color: '#15803D', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                  <Play size={12} /> Start
                                                 </button>
                                               )}
                                               <button onClick={() => setDeleteCardId(card._cardId)} title="Delete card"

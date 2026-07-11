@@ -64,6 +64,15 @@ def validate_user(event):
     user["_id"] = str(user["_id"])
     return user
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
 # ------------------ UPDATE PLAYER ------------------
 def lambda_handler(event, context):
 
@@ -85,6 +94,10 @@ def lambda_handler(event, context):
     player_id = body.get("playerId")
     if not player_id:
         return response(400, {"message": "playerId is required"})
+
+    is_super, player_ids = get_role_scope(user)
+    if not is_super and player_id not in player_ids:
+        return response(403, {"message": "Forbidden: player is not in your assigned list"})
 
     # ------------------ ALLOWED UPDATE FIELDS ------------------
     updatable_fields = [

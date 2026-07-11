@@ -47,7 +47,14 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const location = useLocation();
 
   const userRoles = currentUser?.roles || [currentUser?.role].filter(Boolean);
-  const hasBothRoles = userRoles.includes('admin') && userRoles.includes('coach');
+  const isSuperAdmin = userRoles.includes('superadmin');
+  const isAdmin = userRoles.includes('admin');
+  const isCoach = userRoles.includes('coach');
+  // Anyone holding both admin and coach gets the mode toggle - superAdmin sees the
+  // full unrestricted admin menu on the admin side, a scoped (non-super) admin sees
+  // the restricted admin menu instead. Either way the coach side is the normal
+  // coach menu.
+  const hasBothRoles = isAdmin && isCoach;
   const [activeMode, setActiveMode] = useState(() => {
     if (location.pathname.startsWith('/coach')) return 'coach';
     if (location.pathname.startsWith('/admin') && !isSharedAdminPath(location.pathname)) return 'admin';
@@ -113,6 +120,21 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
       { label: 'Start Session',path: '/coach/start-session', icon: BookOpen,        color: '#6EE7B7' },
       { label: 'Profile',      path: '/coach/profile',       icon: UserCheck,       color: '#94A3B8' },
     ],
+    // Scoped admin (admin role without superAdmin) - no Coaches / Assign Players,
+    // and all data-bearing pages here are limited server-side to the admin's own
+    // assigned players/batches.
+    restrictedAdmin: [
+      { label: 'Dashboard',       path: '/admin',                  icon: LayoutDashboard, color: '#818CF8' },
+      { label: 'Players',         path: '/admin/players',          icon: Users,           color: '#34D399' },
+      { label: 'Session Card',    path: '/admin/session-card',     icon: FileText,        color: '#A78BFA' },
+      { label: 'Attendance',      path: '/admin/attendance',       icon: CalendarCheck,   color: '#F472B6' },
+      { label: 'Batches',         path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
+      { label: 'Learning Pathway',path: '/admin/learning-pathway', icon: BookOpen,        color: '#6EE7B7' },
+      { label: 'Leaderboard',     path: '/leaderboard',            icon: Trophy,          color: '#FCD34D' },
+      { label: 'Rewards',         path: '/admin/rewards',          icon: Gift,            color: '#C084FC' },
+      { label: 'Redemption',      path: '/admin/redeem-history',   icon: BarChart3,       color: '#2DD4BF' },
+      { label: 'Profile',         path: '/admin/profile',          icon: UserCheck,       color: '#94A3B8' },
+    ],
   };
 
   const sortItemsWithProfileLast = (items) => {
@@ -122,7 +144,15 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   };
 
   const getAllMenuItems = () => {
-    const mode = hasBothRoles ? activeMode : (currentUser?.role || userRoles[0]);
+    if (hasBothRoles) {
+      if (activeMode === 'coach') return sortItemsWithProfileLast(menuItems.coach);
+      return sortItemsWithProfileLast(isSuperAdmin ? menuItems.admin : menuItems.restrictedAdmin);
+    }
+    if (!isSuperAdmin && isAdmin) {
+      // Scoped admin only (no coach role) - restricted menu, no toggle.
+      return sortItemsWithProfileLast(menuItems.restrictedAdmin);
+    }
+    const mode = currentUser?.role || userRoles[0];
     return sortItemsWithProfileLast(menuItems[mode] || []);
   };
 
@@ -130,7 +160,9 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const initials = currentUser?.name?.charAt(0).toUpperCase();
   const roleName = hasBothRoles
     ? (activeMode === 'admin' ? 'Admin' : 'Coach')
-    : (currentUser?.role === 'admin' ? 'Admin' : currentUser?.role === 'coach' ? 'Coach' : 'Player');
+    : (!isSuperAdmin && isAdmin)
+      ? 'Admin'
+      : (currentUser?.role === 'admin' ? 'Admin' : currentUser?.role === 'coach' ? 'Coach' : 'Player');
 
   /* ---- colour shortcuts (pull from CSS vars at render time) ---- */
   const v = (name) => `var(${name})`;

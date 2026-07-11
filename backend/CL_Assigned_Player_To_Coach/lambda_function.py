@@ -42,6 +42,13 @@ def validate_user(event):
     # ✅ validate token inside Users collection
     return users.find_one({"userToken": user_token})
 
+# ------------------ ROLE SCOPE ------------------
+def is_super_admin(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "superadmin" in [r.lower() for r in roles]
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -55,6 +62,9 @@ def lambda_handler(event, context):
         return response(401, {
             "message": "Unauthorized: Invalid or missing user token"
         })
+
+    if not is_super_admin(logged_in_user):
+        return response(403, {"message": "Forbidden: superAdmin role required"})
 
     try:
         body = json.loads(event.get("body", "{}"))
@@ -81,28 +91,9 @@ def lambda_handler(event, context):
                 "message": "Coach ID not found"
             })
 
-        # ------------------ CHECK IF PLAYERS ALREADY ASSIGNED ------------------
-        already_assigned = list(users.find(
-            {
-                "_id": {"$ne": coach_obj_id},
-                "PlayersList": {"$in": player_ids}
-            },
-            {"_id": 1, "PlayersList": 1}
-        ))
-
-        if already_assigned:
-            return response(400, {
-                "message": "Players are already assigned to another coach",
-                "conflictCoaches": [
-                    {
-                        "coachId": str(c["_id"]),
-                        "players": list(set(player_ids) & set(c.get("PlayersList", [])))
-                    }
-                    for c in already_assigned
-                ]
-            })
-
         # ------------------ ADD PLAYERS SAFELY TO USERS ------------------
+        # A player may be assigned to more than one coach at once (same model as
+        # assigning a coach to a batch) - no single-coach conflict check here.
         users.update_one(
             {"_id": coach_obj_id},
             {

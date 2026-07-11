@@ -55,6 +55,15 @@ def validate_user(event):
     return user
 
 
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
+
 def now_ist():
     return datetime.now(IST)
 
@@ -280,6 +289,7 @@ def lambda_handler(event, context):
         return resp(400, {"message": "Invalid JSON body"})
 
     marked_by = {"id": user["_id"], "name": user.get("name", "")}
+    is_super, scoped_player_ids = get_role_scope(user)
 
     # Delete/reset: clear attendance for a batch+date (or one player+date). Used to
     # clean up records left behind after their session cards were deleted, and to
@@ -294,11 +304,16 @@ def lambda_handler(event, context):
         if not batch_id and not player_id:
             return resp(400, {"message": "batchId or playerId is required to delete attendance"})
 
+        if not is_super and player_id and player_id not in scoped_player_ids:
+            return resp(403, {"message": "Forbidden: player is not in your assigned list"})
+
         del_filter = {"sessionDate": session_date}
         if batch_id:
             del_filter["batchId"] = batch_id
         if player_id:
             del_filter["playerId"] = player_id
+        if not is_super:
+            del_filter["playerId"] = {"$in": scoped_player_ids} if not player_id else player_id
 
         result = attendance_col.delete_many(del_filter)
         return resp(200, {
@@ -319,6 +334,8 @@ def lambda_handler(event, context):
             return resp(target['statusCode'], {'message': target['error']})
 
         player_ids = target['playerIds']
+        if not is_super:
+            player_ids = [pid for pid in player_ids if pid in scoped_player_ids]
         if not player_ids:
             return resp(400, {'message': 'No players available for bulk mark'})
 
@@ -371,6 +388,9 @@ def lambda_handler(event, context):
 
     if not player_id:
         return resp(400, {"message": "playerId is required"})
+
+    if not is_super and player_id not in scoped_player_ids:
+        return resp(403, {"message": "Forbidden: player is not in your assigned list"})
 
     if attendance_status is None:
         return resp(400, {'message': 'attendanceStatus must be one of Present, Absent, Late, Excused or empty'})

@@ -41,6 +41,15 @@ def validate_user(event):
         return None
     return users.find_one({"userToken": token})
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
 # ------------------ LAMBDA HANDLER ------------------
 def lambda_handler(event, context):
 
@@ -58,18 +67,25 @@ def lambda_handler(event, context):
         if not coach_id:
             return response(400, {"message": "coachId is required"})
 
-        try:
-            coach_obj_id = ObjectId(coach_id)
-        except Exception:
-            return response(400, {"message": "Invalid coachId format"})
+        is_super, own_player_ids = get_role_scope(logged_in_user)
 
-        # Fetch coach document with role = "coach"
-        coach_doc = users.find_one({"_id": coach_obj_id, "role": "coach"})
-        if not coach_doc:
-            return response(404, {"message": "Coach not found"})
+        if not is_super:
+            # Self-service only: a non-superAdmin caller (coach or scoped admin) can
+            # only ever fetch their own roster, regardless of the coachId requested.
+            coach_id = str(logged_in_user["_id"])
+            player_ids = own_player_ids
+        else:
+            try:
+                coach_obj_id = ObjectId(coach_id)
+            except Exception:
+                return response(400, {"message": "Invalid coachId format"})
 
-        # Get assigned player IDs from field 'PlayersList' (change if your field is different)
-        player_ids = coach_doc.get("PlayersList", [])
+            coach_doc = users.find_one({"_id": coach_obj_id, "role": "coach"})
+            if not coach_doc:
+                return response(404, {"message": "Coach not found"})
+
+            player_ids = coach_doc.get("PlayersList", [])
+
         if not player_ids:
             return response(200, {"coachId": coach_id, "players": []})
 

@@ -53,11 +53,14 @@ def validate_coach(event):
     if not token:
         return None
 
-    # 🔐 Ensure only users having role = "coach" are allowed (optional but safer)
-    return users.find_one({
-        "userToken": token,
-        "role": "coach"          # remove if your DB doesn’t store role
-    })
+    return users.find_one({"userToken": token})
+
+
+def is_super_admin(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    return "superadmin" in [r.lower() for r in roles]
 
 # =====================================================
 # LAMBDA HANDLER
@@ -73,7 +76,10 @@ def lambda_handler(event, context):
 
     coach = validate_coach(event)
     if not coach:
-        return response(401, {"message": "Unauthorized: Coach access required"})
+        return response(401, {"message": "Unauthorized: valid user token required"})
+
+    if not is_super_admin(coach):
+        return response(403, {"message": "Forbidden: superAdmin role required"})
 
     try:
         body = json.loads(event.get("body") or "{}")

@@ -10,7 +10,7 @@ import StatusBadge from '../../components/StatusBadge';
 import {
   Layers, ChevronLeft, Users, UserCheck, UserPlus, Trash2, X, Loader,
   Calendar, Clock, CheckCircle, Zap, Settings as SettingsIcon, CalendarCheck,
-  Eye, Edit3, ChevronDown, AlertTriangle,
+  Eye, Edit3, ChevronDown, AlertTriangle, Play,
 } from 'lucide-react';
 
 const BRAND = '#060030ff';
@@ -89,7 +89,7 @@ export default function BatchDetail() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([loadBatch(), fetchPlayers(), fetchCoaches(), fetchLearningPathway()])
+    Promise.all([loadBatch(), fetchPlayers(true), fetchCoaches(), fetchLearningPathway()])
       .catch(() => showToast('Failed to load batch', 'error'))
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,6 +257,11 @@ function OverviewTab({ batch, coaches, headers, players, cardInfo, cardInfoLoadi
   const [assigning, setAssigning] = useState(false);
   const [removingCoachId, setRemovingCoachId] = useState('');
   const [removingPlayerId, setRemovingPlayerId] = useState('');
+  // Set when the selected coach doesn't already have every batch player in their
+  // own roster - confirming assigns the coach to the batch AND adds the missing
+  // players to that coach's PlayersList in the same call (CL_Manage_Batch's
+  // assign_coach action already does both server-side).
+  const [confirmAssign, setConfirmAssign] = useState(null);
 
   const assignedCoachIds = (batch.coachIds || []).map(String);
   const availableCoaches = coaches.filter(c => !assignedCoachIds.includes(String(c.coachId || c._id)));
@@ -268,16 +273,30 @@ function OverviewTab({ batch, coaches, headers, players, cardInfo, cardInfoLoadi
     return fromStore?.name || 'Coach';
   };
 
-  const handleAssignCoach = async () => {
-    if (!coachToAssign) { showToast('Select a coach first', 'error'); return; }
+  const doAssignCoach = async (coachId) => {
     setAssigning(true);
     try {
-      await axios.post(CL_MANAGE_BATCH_URL, { action: 'assign_coach', batchId: batch.batchId, coachId: coachToAssign }, { headers });
+      await axios.post(CL_MANAGE_BATCH_URL, { action: 'assign_coach', batchId: batch.batchId, coachId }, { headers });
       setCoachToAssign('');
+      setConfirmAssign(null);
       await reload();
       showToast('Coach assigned');
     } catch { showToast('Failed to assign coach', 'error'); }
     finally { setAssigning(false); }
+  };
+
+  const handleAssignCoach = () => {
+    if (!coachToAssign) { showToast('Select a coach first', 'error'); return; }
+
+    const coach = coaches.find(c => String(c.coachId || c._id) === String(coachToAssign));
+    const coachPlayerIds = (coach?.assignedPlayers || coach?.PlayersList || []).map(String);
+    const unassigned = (batch.players || []).filter(p => !coachPlayerIds.includes(String(p.playerId)));
+
+    if (unassigned.length > 0) {
+      setConfirmAssign({ coachId: coachToAssign, coachLabel: coach?.name || 'this coach', unassigned });
+    } else {
+      doAssignCoach(coachToAssign);
+    }
   };
 
   const handleRemoveCoach = async (coachId) => {
@@ -368,6 +387,34 @@ function OverviewTab({ batch, coaches, headers, players, cardInfo, cardInfoLoadi
           {(batch.players?.length ?? 0) === 0 && <p style={{ fontSize: '13px', color: '#9CA3AF', margin: 0 }}>No players in this batch.</p>}
         </div>
       </div>
+
+      <Modal isOpen={!!confirmAssign} onClose={() => setConfirmAssign(null)} title="Player(s) not assigned to this coach">
+        {confirmAssign && (
+          <div>
+            <p style={{ fontSize: '13px', color: '#4B5563', margin: '0 0 12px' }}>
+              These {confirmAssign.unassigned.length} player(s) in this batch aren't currently assigned to <strong>{confirmAssign.coachLabel}</strong>:
+            </p>
+            <ul style={{ margin: '0 0 14px', paddingLeft: '20px', maxHeight: '160px', overflowY: 'auto' }}>
+              {confirmAssign.unassigned.map(p => (
+                <li key={p.playerId} style={{ fontSize: '13px', color: '#111827', marginBottom: '4px' }}>{p.playerName}</li>
+              ))}
+            </ul>
+            <p style={{ fontSize: '13px', color: '#4B5563', margin: '0 0 16px' }}>
+              Continuing will assign this batch to <strong>{confirmAssign.coachLabel}</strong> and add these player(s) to their roster in one step.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button onClick={() => setConfirmAssign(null)} disabled={assigning}
+                style={{ padding: '10px', borderRadius: '8px', border: '1.5px solid #E5E7EB', background: '#F9FAFB', color: '#374151', fontSize: '13px', fontWeight: '600', cursor: assigning ? 'not-allowed' : 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={() => doAssignCoach(confirmAssign.coachId)} disabled={assigning}
+                style={{ padding: '10px', borderRadius: '8px', border: 'none', background: `linear-gradient(135deg, ${BRAND}, #000)`, color: 'white', fontSize: '13px', fontWeight: '700', cursor: assigning ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                {assigning ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <UserPlus size={14} />} Continue & Assign
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -538,6 +585,12 @@ function SessionsTab({ batch, cardInfo, cardInfoLoading, players, userToken, sho
                                         <button onClick={() => navigate(`/admin/edit-session-card/${card._id}`, { state: { batchId: batch.batchId, playerId: p.playerId } })}
                                           style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                           <Edit3 size={12} /> Edit
+                                        </button>
+                                      )}
+                                      {!isCompleted && (
+                                        <button onClick={() => navigate(`/coach/start-session/${p.playerId}`)} title="Start this player's session"
+                                          style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(16,185,129,0.15)' : '#DCFCE7', color: dark ? '#34D399' : '#15803D', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                          <Play size={12} /> Start
                                         </button>
                                       )}
                                       <button onClick={() => setDeleteCardId(card._id)} title="Delete card"

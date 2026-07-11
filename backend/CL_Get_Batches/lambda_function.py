@@ -52,6 +52,15 @@ def validate_user(event):
     return user
 
 
+def get_role_scope(user):
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return is_super, (user.get("PlayersList") or [])
+
+
 def lambda_handler(event, context):
     if event.get("httpMethod") == "OPTIONS":
         return resp(200, {"message": "CORS OK"})
@@ -63,6 +72,9 @@ def lambda_handler(event, context):
     if not user:
         return resp(401, {"message": "Unauthorized or token missing"})
 
+    is_super, scoped_player_ids = get_role_scope(user)
+    scoped_player_id_set = set(scoped_player_ids)
+
     try:
         batch_list = list(batches_col.find({}))
         result = []
@@ -70,6 +82,9 @@ def lambda_handler(event, context):
             player_ids = batch.get("playerIds", [])
             if len(player_ids) == 0:
                 batches_col.delete_one({"_id": batch["_id"]})
+                continue
+
+            if not is_super and not (scoped_player_id_set & set(player_ids)):
                 continue
 
             oid_list = []
@@ -83,6 +98,9 @@ def lambda_handler(event, context):
                 {"playerId": str(p["_id"]), "playerName": p.get("playerName", "")}
                 for p in players
             ]
+            if not is_super:
+                player_ids = [pid for pid in player_ids if pid in scoped_player_id_set]
+                player_info = [p for p in player_info if p["playerId"] in scoped_player_id_set]
 
             coach_ids = batch.get("coachIds", [])
             coach_oid_list = []

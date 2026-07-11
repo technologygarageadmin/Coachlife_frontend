@@ -2,6 +2,7 @@ import json
 import os
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from datetime import datetime
+from bson import ObjectId
 
 # ------------------ CONFIG ------------------
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -57,6 +58,21 @@ def validate_user(event):
     user["_id"] = str(user["_id"])
     return user
 
+# ------------------ ROLE SCOPE ------------------
+def get_role_scope(user):
+    """Any non-superAdmin caller (admin or coach) is restricted to their own
+    PlayersList by default - this endpoint backs Players/Session Card/Batches
+    management views, which must only show a coach their own roster. The
+    Leaderboard is the one legitimate exception (it needs the org-wide ranking,
+    not just "my players") and opts out explicitly via the `leaderboard` flag
+    (see lambda_handler)."""
+    roles = user.get("role") or []
+    if isinstance(roles, str):
+        roles = [roles]
+    roles = [r.lower() for r in roles]
+    is_super = "superadmin" in roles
+    return (not is_super), (user.get("PlayersList") or [])
+
 # ------------------ SERIALIZER ------------------
 def serialize_player(doc, session_map):
     player = {}
@@ -106,6 +122,23 @@ def lambda_handler(event, context):
 
     if body.get("status"):
         query["status"] = body["status"]
+
+    # -------- LEADERBOARD OPT-OUT --------
+    # The Leaderboard needs every player ranked org-wide, not just "my players" -
+    # it sends ?leaderboard=true to explicitly bypass the scoping below.
+    qs = event.get("queryStringParameters") or {}
+    is_leaderboard = str(qs.get("leaderboard") or body.get("leaderboard") or "").lower() in ("1", "true", "yes")
+
+    # -------- ROLE SCOPE --------
+    should_scope, player_ids = get_role_scope(user)
+    if should_scope and not is_leaderboard:
+        scoped_oids = []
+        for pid in player_ids:
+            try:
+                scoped_oids.append(ObjectId(pid))
+            except Exception:
+                continue
+        query["_id"] = {"$in": scoped_oids}
 
     # -------- SORT --------
     sort_by = body.get("sortBy", "createdAt")

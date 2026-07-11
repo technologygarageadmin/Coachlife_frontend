@@ -543,13 +543,14 @@ export const useStore = create(
   },
 
   // Players: remote API integrations
-  fetchPlayers: async () => {
+  fetchPlayers: async (force = false) => {
     try {
       const state = get();
-      
-      // Enable cache - use cached data if available
+
+      // Enable cache - use cached data if available (skip when force=true, e.g. the
+      // batch card views need fresh sessionCardIds right after a generate/start/delete)
       const now = Date.now();
-      if (state.players.length > 0 && (now - state.playersLastFetchTime) < state.CACHE_DURATION) {
+      if (!force && state.players.length > 0 && (now - state.playersLastFetchTime) < state.CACHE_DURATION) {
         return state.players;
       }
       

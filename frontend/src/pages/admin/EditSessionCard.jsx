@@ -4,12 +4,15 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { Toast } from '../../components/Toast';
-import { ArrowLeft, Loader, Save, Plus, SquarePen, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader, Save, Plus, SquarePen, Trash2, AlertCircle, CheckCircle2, Download, BookOpen, Zap, X } from 'lucide-react';
 
 const API_ENDPOINTS = {
   VIEW_SESSION_CARD: 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
   UPDATE_SESSION_CARD: 'https://78nwtutkw0.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Session_Card',
+  GET_LEARNING_PATHWAY: 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway',
 };
+
+const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, '').trim();
 
 const getStatusColor = (status) => {
   switch(status?.toLowerCase()) {
@@ -53,6 +56,13 @@ const EditSessionCard = () => {
   const [activityModalOpen, setActivityModalOpen] = useState(false);
   const [editingActivityIndex, setEditingActivityIndex] = useState(null);
   const [editedActivity, setEditedActivity] = useState(null);
+
+  // Import activities from existing pathway sessions
+  const [importPathways, setImportPathways] = useState([]);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importPathway, setImportPathway] = useState(null);
+  const [importSession, setImportSession] = useState(null);
+  const [importedKeys, setImportedKeys] = useState([]);
   
   // Activity form input states
   const [instructionInput, setInstructionInput] = useState('');
@@ -137,6 +147,71 @@ const EditSessionCard = () => {
       fetchSessionCard();
     }
   }, [id, userToken]);
+
+  // Fetch available pathway sessions so their activities can be imported
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchPathways = async () => {
+      try {
+        const response = await fetch(API_ENDPOINTS.GET_LEARNING_PATHWAY, {
+          headers: { 'Content-Type': 'application/json', ...(userToken && { userToken }) },
+          signal: controller.signal
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        let sessions = [];
+        if (Array.isArray(data)) sessions = data;
+        else if (data.sessions && Array.isArray(data.sessions)) sessions = data.sessions;
+        else if (data.data && Array.isArray(data.data)) sessions = data.data;
+        else if (data.pathways && Array.isArray(data.pathways)) sessions = data.pathways;
+        else if (data.body && typeof data.body === 'string') {
+          try {
+            const parsed = JSON.parse(data.body);
+            sessions = Array.isArray(parsed) ? parsed : parsed.sessions || parsed.data || [];
+          } catch { sessions = []; }
+        }
+        const grouped = {};
+        sessions.forEach(s => {
+          const name = s.LearningPathway || 'Unknown Pathway';
+          if (!grouped[name]) grouped[name] = { LearningPathway: name, sessions: [] };
+          grouped[name].sessions.push({
+            title: s.Topic,
+            sessionNumber: s.session,
+            activities: s.activities || []
+          });
+        });
+        setImportPathways(Object.values(grouped).sort((a, b) => a.LearningPathway.localeCompare(b.LearningPathway)));
+      } catch { /* ignore fetch/abort errors */ }
+    };
+    if (userToken) fetchPathways();
+    return () => controller.abort();
+  }, [userToken]);
+
+  const importActivity = (activity, key) => {
+    const normalized = {
+      activitySequence: (formData.Activities?.length || 0) + 1,
+      activityTitle: activity.activityTitle || activity.activityName || activity.name || '',
+      description: activity.description || '',
+      duration: activity.duration || 15,
+      story: activity.story || [],
+      code: activity.code || null,
+      instructionsToCoach: activity.instructionsToCoach || [],
+      project: activity.project || null,
+      aiTools: activity.aiTools || [],
+      points: {
+        total: typeof activity.points === 'object' ? (activity.points?.total || 10) : (activity.points || 10),
+        evaluationCriteria: activity.points?.evaluationCriteria || []
+      },
+      rating: 5,
+      feedback: ''
+    };
+    setFormData(prev => ({
+      ...prev,
+      Activities: [...(prev.Activities || []), normalized]
+    }));
+    setImportedKeys(prev => [...prev, key]);
+    setHasUnsavedChanges(true);
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -702,34 +777,68 @@ const EditSessionCard = () => {
                       {formData.Activities?.length || 0} activity{formData.Activities?.length !== 1 ? 'ies' : ''} • {totalActivityPoints} points
                     </p>
                   </div>
-                  <button
-                    onClick={addActivity}
-                    type="button"
-                    style={{
-                      padding: '10px 16px',
-                      backgroundColor: '#060030ff',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#0a0040';
-                      e.currentTarget.style.transform = 'translateY(-2px)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#060030ff';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                    }}
-                  >
-                    <Plus size={16} /> Add Activity
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        setImportPathway(null);
+                        setImportSession(null);
+                        setImportModalOpen(true);
+                      }}
+                      type="button"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '10px 16px',
+                        background: 'white',
+                        color: '#060030ff',
+                        border: '1px solid #060030ff',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#F5F3FF';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'white';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <Download size={16} /> Import Activities
+                    </button>
+                    <button
+                      onClick={addActivity}
+                      type="button"
+                      style={{
+                        padding: '10px 16px',
+                        backgroundColor: '#060030ff',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#0a0040';
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#060030ff';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <Plus size={16} /> Add Activity
+                    </button>
+                  </div>
                 </div>
 
                 {formData.Activities && formData.Activities.length > 0 ? (
@@ -1787,6 +1896,235 @@ const EditSessionCard = () => {
                     <CheckCircle2 size={16} /> Save Activity
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Import Activity Modal */}
+        {importModalOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '28px',
+              maxWidth: '640px',
+              width: '90%',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              boxShadow: '0 20px 25px rgba(0, 0, 0, 0.15)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                <div>
+                  <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: '0 0 4px 0' }}>Import Activities</h2>
+                  <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                    {!importPathway
+                      ? 'Select a learning pathway'
+                      : !importSession
+                      ? `Pick a session for ${importPathway.LearningPathway}`
+                      : 'Add activities into this session card'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setImportModalOpen(false)}
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7280', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {!importPathway ? (
+                importPathways.length === 0 ? (
+                  <p style={{ fontSize: '13px', color: '#999', textAlign: 'center', padding: '20px' }}>No pathways available</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {importPathways.map((pathway, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => { setImportPathway(pathway); setImportSession(null); }}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: '10px',
+                          border: '1px solid #E5E7EB',
+                          background: 'white',
+                          color: '#111827',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = '#060030ff';
+                          e.currentTarget.style.background = '#F5F3FF';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = '#E5E7EB';
+                          e.currentTarget.style.background = 'white';
+                        }}
+                      >
+                        <BookOpen size={16} style={{ color: '#060030ff' }} /> {pathway.LearningPathway}
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : !importSession ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setImportPathway(null)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      padding: '8px 12px', background: '#F3F4F6', color: '#6B7280',
+                      border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '12px',
+                      fontWeight: '600', cursor: 'pointer', marginBottom: '16px'
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Back to Pathways
+                  </button>
+                  {!importPathway.sessions || importPathway.sessions.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#999', textAlign: 'center', padding: '20px' }}>No sessions in this pathway</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {importPathway.sessions.map((session, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setImportSession(session)}
+                          style={{
+                            padding: '12px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #E5E7EB',
+                            background: 'white',
+                            color: '#111827',
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            textAlign: 'left',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = '#060030ff';
+                            e.currentTarget.style.background = '#F5F3FF';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = '#E5E7EB';
+                            e.currentTarget.style.background = 'white';
+                          }}
+                        >
+                          <Zap size={16} style={{ color: '#060030ff' }} />
+                          {session.sessionNumber ? `Session ${session.sessionNumber}: ` : ''}{session.title || 'Session'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setImportSession(null)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      padding: '8px 12px', background: '#F3F4F6', color: '#6B7280',
+                      border: '1px solid #E5E7EB', borderRadius: '8px', fontSize: '12px',
+                      fontWeight: '600', cursor: 'pointer', marginBottom: '16px'
+                    }}
+                  >
+                    <ArrowLeft size={14} /> Back to Sessions
+                  </button>
+                  {!importSession.activities || importSession.activities.length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#999', textAlign: 'center', padding: '20px' }}>No activities in this session</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {importSession.activities.map((activity, index) => {
+                        const key = `${importPathway.LearningPathway}-${importSession.sessionNumber}-${index}`;
+                        const added = importedKeys.includes(key);
+                        return (
+                          <div
+                            key={index}
+                            style={{
+                              padding: '12px 14px',
+                              borderRadius: '10px',
+                              border: '1px solid #E5E7EB',
+                              background: added ? '#F0FDF4' : '#FAFBFC',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '12px'
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: '13px', fontWeight: '600', color: '#111827', margin: 0 }}>
+                                {activity.activityTitle || activity.name || 'Activity'}
+                              </p>
+                              <p style={{ fontSize: '11px', color: '#888', margin: '4px 0 0 0' }}>
+                                {stripHtml(activity.description)?.substring(0, 60)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => importActivity(activity, key)}
+                              disabled={added}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                padding: '6px 14px',
+                                backgroundColor: added ? '#DCFCE7' : '#060030ff',
+                                color: added ? '#15803D' : 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                cursor: added ? 'default' : 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {added ? 'Added' : <><Plus size={14} /> Add</>}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+                <button
+                  type="button"
+                  onClick={() => setImportModalOpen(false)}
+                  style={{
+                    padding: '10px 24px',
+                    backgroundColor: '#060030ff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Done
+                </button>
               </div>
             </div>
           </div>
