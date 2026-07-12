@@ -4,6 +4,7 @@ import { Layout } from '../../components/Layout';
 import CryptoJS from 'crypto-js';
 
 const CHANGE_PASSWORD_URL = 'https://sn11kysiv0.execute-api.ap-south-1.amazonaws.com/CL_Change_Password';
+const UPDATE_PROFILE_URL = 'https://xggjjmbhh9.execute-api.ap-south-1.amazonaws.com/CL_Update_Profile';
 import {
   Mail,
   Phone,
@@ -39,6 +40,7 @@ const UserProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
   const fetchedUserIdRef = useRef(null);
@@ -117,9 +119,34 @@ const UserProfile = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = () => {
-    // TODO: Save profile to backend
-    setIsEditing(false);
+  const handleSave = async () => {
+    setSavingProfile(true);
+    try {
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        address: formData.address,
+        specialization: formData.specialization,
+      };
+      const res = await fetch(UPDATE_PROFILE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(userToken && { userToken }) },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to update profile');
+
+      // Reflect the change locally and in the persisted auth store so it survives reload.
+      setProfileData(prev => ({ ...(prev || {}), ...payload }));
+      useStore.setState(s => ({ currentUser: { ...s.currentUser, ...payload } }));
+      setIsEditing(false);
+      alert('Profile updated successfully');
+    } catch (err) {
+      alert(err.message || 'Failed to update profile');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const handleCancel = () => {
@@ -490,18 +517,20 @@ const UserProfile = () => {
                   <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
                     <button
                       onClick={handleSave}
+                      disabled={savingProfile}
                       style={{
                         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                         padding: '12px 16px',
                         background: 'linear-gradient(135deg, #060030 0%, #1a0060 55%, #3b0080 100%)',
                         border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '13px',
-                        cursor: 'pointer', transition: 'all 0.25s ease'
+                        cursor: savingProfile ? 'not-allowed' : 'pointer', opacity: savingProfile ? 0.7 : 1,
+                        transition: 'all 0.25s ease'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                      onMouseEnter={(e) => { if (!savingProfile) e.currentTarget.style.transform = 'translateY(-2px)'; }}
                       onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                     >
                       <Save size={16} />
-                      Save Changes
+                      {savingProfile ? 'Saving…' : 'Save Changes'}
                     </button>
                     <button
                       onClick={handleCancel}

@@ -18,7 +18,7 @@ export const Login = () => {
     setLoading(true);
     setError('');
 
-    const keysToPreserve = ['coachlife_auth', 'coachlife-store'];
+    const keysToPreserve = ['coachlife_auth', 'coachlife-store', 'coachlife_theme'];
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
