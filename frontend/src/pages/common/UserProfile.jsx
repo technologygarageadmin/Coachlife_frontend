@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
+import CryptoJS from 'crypto-js';
+
+const CHANGE_PASSWORD_URL = 'https://sn11kysiv0.execute-api.ap-south-1.amazonaws.com/CL_Change_Password';
 import {
   Mail,
   Phone,
@@ -32,9 +35,10 @@ const Sk = ({ w, h, r = 8, style = {} }) => (
 );
 
 const UserProfile = () => {
-  const { currentUser, fetchUserProfile } = useStore();
+  const { currentUser, fetchUserProfile, userToken } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
   const fetchedUserIdRef = useRef(null);
@@ -134,7 +138,11 @@ const UserProfile = () => {
     setPasswordData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleUpdatePassword = () => {
+  const handleUpdatePassword = async () => {
+    if (!passwordData.currentPassword) {
+      alert('Enter your current password');
+      return;
+    }
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       alert('New passwords do not match');
       return;
@@ -143,10 +151,34 @@ const UserProfile = () => {
       alert('Password must be at least 6 characters');
       return;
     }
-    // TODO: Call password update API
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    setShowPasswordForm(false);
-    alert('Password updated successfully');
+    if (passwordData.newPassword === passwordData.currentPassword) {
+      alert('New password must be different from the current password');
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      // Hash both with SHA256 before sending - same scheme as login, so the plaintext
+      // never leaves the browser and the backend compares/stores only hashes.
+      const res = await fetch(CHANGE_PASSWORD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(userToken && { userToken }) },
+        body: JSON.stringify({
+          currentPassword: CryptoJS.SHA256(passwordData.currentPassword).toString(),
+          newPassword: CryptoJS.SHA256(passwordData.newPassword).toString(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to update password');
+
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setShowPasswordForm(false);
+      alert('Password updated successfully');
+    } catch (err) {
+      alert(err.message || 'Failed to update password');
+    } finally {
+      setUpdatingPassword(false);
+    }
   };
 
   if (!currentUser) {
@@ -545,17 +577,19 @@ const UserProfile = () => {
                       </div>
                       <button
                         onClick={handleUpdatePassword}
+                        disabled={updatingPassword}
                         style={{
                           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                           padding: '12px 16px', background: '#DC2626', border: 'none',
                           borderRadius: '10px', color: '#fff', fontWeight: '700', fontSize: '13px',
-                          cursor: 'pointer', transition: 'all 0.25s ease'
+                          cursor: updatingPassword ? 'not-allowed' : 'pointer', opacity: updatingPassword ? 0.7 : 1,
+                          transition: 'all 0.25s ease'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                        onMouseEnter={(e) => { if (!updatingPassword) e.currentTarget.style.transform = 'translateY(-1px)'; }}
                         onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                       >
                         <Shield size={16} />
-                        Update Password
+                        {updatingPassword ? 'Updating…' : 'Update Password'}
                       </button>
                     </div>
                   )}
