@@ -35,8 +35,17 @@ def get_token(event):
     return token
 
 
+def get_method(event):
+    # REST/proxy v1 puts it on httpMethod; HTTP API (payload v2) puts it under
+    # requestContext.http.method.
+    return (
+        event.get("httpMethod")
+        or (event.get("requestContext", {}) or {}).get("http", {}).get("method")
+    )
+
+
 def lambda_handler(event, context):
-    if event.get("httpMethod") == "OPTIONS":
+    if get_method(event) == "OPTIONS":
         return resp(200, {"message": "CORS OK"})
 
     # Authenticate the caller via their session token.
