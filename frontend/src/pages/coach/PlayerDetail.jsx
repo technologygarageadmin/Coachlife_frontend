@@ -4,7 +4,7 @@ import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import StatusBadge from '../../components/StatusBadge';
-import { User, Mail, Award, TrendingUp, FileText, BookOpen, ArrowLeft, ChevronRight, Calendar, Zap, Loader, Clock, CheckCircle, Sparkles, CalendarCheck, Eye, Edit3 } from 'lucide-react';
+import { User, Mail, Award, TrendingUp, FileText, BookOpen, ArrowLeft, ChevronRight, Calendar, Zap, Loader, Clock, CheckCircle, Sparkles, CalendarCheck, Eye, Edit3, Play } from 'lucide-react';
 
 const normSt = (s) => (s || '').toLowerCase().replace(/[\s_]/g, '');
 const statusColors = (status) => {
@@ -16,7 +16,7 @@ const statusColors = (status) => {
 };
 
 // Compact session card - same look as the Session Card "By Batch" workspace.
-const SessionMiniCard = ({ session, dark, onView, onEdit }) => {
+const SessionMiniCard = ({ session, dark, onView, onEdit, onStart }) => {
   const [hov, setHov] = useState(false);
   const sc = statusColors(session.status);
   const border = dark ? 'var(--cl-border)' : '#E5E7EB';
@@ -43,13 +43,16 @@ const SessionMiniCard = ({ session, dark, onView, onEdit }) => {
           {onEdit && (
             <button onClick={onEdit} style={{ flex: 1, padding: '7px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><Edit3 size={13} /> Edit</button>
           )}
+          {onStart && (
+            <button onClick={onStart} style={{ flex: 1, padding: '7px 8px', background: dark ? 'rgba(16,185,129,0.15)' : '#DCFCE7', color: dark ? '#34D399' : '#15803D', border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><Play size={13} /> Start</button>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-const GENERATE_CARD_URL = 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating';
+const GENERATE_CARD_URL = 'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating';
 const GET_ALL_PLAYERS_URL = 'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players';
 const GET_ATTENDANCE_URL = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 
@@ -113,6 +116,9 @@ const PlayerDetail = () => {
   // This page is shared with the coach route. isAdmin only affects where the
   // View action links (read-only admin view vs. the coach teaching view).
   const isAdmin = currentUser?.role === 'admin' || (currentUser?.roles || []).includes('admin');
+  // The Start action depends on the ROUTE, not the role - a user who is both admin
+  // and coach still gets Start when they open this page via the coach route.
+  const isCoachView = location.pathname.startsWith('/coach');
 
   const convertProgressToPercentage = (progress) => {
     if (typeof progress === 'number') return progress;
@@ -637,6 +643,7 @@ const PlayerDetail = () => {
                             dark={dark}
                             onView={() => navigate(sessionLink(session), { state: { session, player } })}
                             onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                            onStart={isCoachView && !isCompleted(session.status) ? () => navigate(`/coach/session/${session._id}`, { state: { session, player } }) : null}
                           />
                         ))}
                       </div>
@@ -672,6 +679,7 @@ const PlayerDetail = () => {
                             dark={dark}
                             onView={() => navigate(sessionLink(session), { state: { session, player } })}
                             onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                            onStart={isCoachView && !isCompleted(session.status) ? () => navigate(`/coach/session/${session._id}`, { state: { session, player } }) : null}
                           />
                         ))}
                       </div>
@@ -708,6 +716,7 @@ const PlayerDetail = () => {
                             dark={dark}
                             onView={() => navigate(sessionLink(session), { state: { session, player } })}
                             onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                            onStart={isCoachView && !isCompleted(session.status) ? () => navigate(`/coach/session/${session._id}`, { state: { session, player } }) : null}
                           />
                         ))}
                       </div>
@@ -744,6 +753,7 @@ const PlayerDetail = () => {
                             dark={dark}
                             onView={() => navigate(sessionLink(session), { state: { session, player } })}
                             onEdit={!isCompleted(session.status) ? () => navigate(`/admin/edit-session-card/${session._id}`, { state: { playerId: player.playerId } }) : null}
+                            onStart={isCoachView && !isCompleted(session.status) ? () => navigate(`/coach/session/${session._id}`, { state: { session, player } }) : null}
                           />
                         ))}
                       </div>

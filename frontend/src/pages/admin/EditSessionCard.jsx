@@ -19,6 +19,7 @@ const getStatusColor = (status) => {
     case 'completed': return { bg: '#DCFCE7', color: '#166534', text: 'Completed' };
     case 'upcoming': return { bg: '#FEF3C7', color: '#92400E', text: 'Upcoming' };
     case 'in progress': return { bg: '#DBEAFE', color: '#075985', text: 'In Progress' };
+    case 'pending': return { bg: '#FFFBEB', color: '#D97706', text: 'Pending' };
     default: return { bg: '#F3F4F6', color: '#6B7280', text: 'Draft' };
   }
 };
@@ -904,10 +905,6 @@ const EditSessionCard = () => {
                               <p style={{ fontSize: '14px', fontWeight: '700', color: '#111827', margin: 0 }}>
                                 {activity.activityTitle || 'Untitled Activity'}
                               </p>
-                              <p style={{ fontSize: '12px', color: '#6B7280', margin: '4px 0 0 0' }}>
-                                {activity.description?.substring(0, 60) || 'No description provided'}
-                                {activity.description?.length > 60 ? '...' : ''}
-                              </p>
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', paddingLeft: '44px' }}>
@@ -1064,6 +1061,7 @@ const EditSessionCard = () => {
                   <option value="draft">Draft</option>
                   <option value="upcoming">Upcoming</option>
                   <option value="in progress">In Progress</option>
+                  <option value="pending">Pending</option>
                   <option value="completed">Completed</option>
                 </select>
               </div>

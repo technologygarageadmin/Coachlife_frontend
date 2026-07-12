@@ -32,9 +32,22 @@ const CL_GET_ATTENDANCE_URL   = 'https://expqdxymlf.execute-api.ap-south-1.amazo
 const CL_MARK_ATTENDANCE_URL  = 'https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance';
 const CL_START_SESSION_URL    = 'https://rslqy219i9.execute-api.ap-south-1.amazonaws.com/default/CL_Start_Session';
 const DELETE_SESSIONCARD_URL  = 'https://rmauptygg5.execute-api.ap-south-1.amazonaws.com/Coachlife-com/CL_Deleting_Sessioncard';
-const GENERATE_CARD_URL       = 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating';
+const GENERATE_CARD_URL       = 'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating';
 
 const normStatus = (s) => (s || '').toLowerCase().replace(/[\s_]/g, '');
+
+// The batch's "current" card = the HIGHEST session number present (that's where the
+// batch actually is), preferring a non-completed card at that level. Keying off the
+// max session avoids surfacing a stale LOWER pending session (e.g. showing Session 3
+// as current when the batch has already completed Session 4). 'empty' (soft-deleted)
+// slots are ignored.
+const pickRepCard = (cards) => {
+  const real = (cards || []).filter(c => normStatus(c.status) !== 'empty');
+  if (real.length === 0) return null;
+  const maxSession = Math.max(...real.map(c => c.session || 0));
+  const atMax = real.filter(c => (c.session || 0) === maxSession);
+  return atMax.find(c => normStatus(c.status) !== 'completed') || atMax[0] || null;
+};
 const statusColors = (status) => {
   const s = normStatus(status);
   if (s === 'completed') return { bg: '#DCFCE7', text: '#16A34A' };
@@ -104,7 +117,10 @@ const BatchSessionView = () => {
   // ── top-level view: 'class' (attendance + coach) | 'details' (batch overview) ──
   const [view, setView] = useState('class');
   // ── class step: 'attendance' (roster + Start Session) | 'active' (coach) ──
-  const [classStep, setClassStep] = useState('attendance');
+  // Returning from a just-completed player's session (SessionDetail sets
+  // resumeActive) lands straight back on the coaching view, not the roster - the
+  // class is already running, so we don't ask the coach to Start Session again.
+  const [classStep, setClassStep] = useState(location.state?.resumeActive ? 'active' : 'attendance');
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState('');
 
@@ -126,6 +142,10 @@ const BatchSessionView = () => {
   const [batchGenDone, setBatchGenDone]           = useState(false);
   const [batchGenStatus, setBatchGenStatus]       = useState({});    // { [playerId]: { state, message, session } }
   const sessionDateApplied = useRef(false);
+  // Auto-resume the coaching view at most once per mount. Lets a page refresh land
+  // back on 'active' (the class is already running) without forcing 'active' again
+  // when the coach later edits attendance and browses other dates.
+  const autoResumedRef = useRef(!!location.state?.resumeActive);
   const [toastMsg, setToastMsg]   = useState('');
   const [toastType, setToastType] = useState('success');
 
@@ -161,9 +181,15 @@ const BatchSessionView = () => {
           if (r.playerId != null) next[String(r.playerId)] = r.attendanceStatus || 'Present';
         });
         setStatuses(next);
-        if (records.length > 0 && attendanceDate === today) {
-          setAlreadyMarked(true);
-          setClassStep('active');
+        if (records.length > 0) {
+          if (attendanceDate === today) setAlreadyMarked(true);
+          // Class already started for this date → resume the coaching view. Keyed off
+          // the records (not "=== today"), so a refresh resumes even when the session's
+          // own date isn't literally today. Only once, so Edit Attendance still works.
+          if (!autoResumedRef.current) {
+            autoResumedRef.current = true;
+            setClassStep('active');
+          }
         }
       } catch (e) {
         if (e.name !== 'AbortError') console.error('Failed to load attendance', e);
@@ -380,6 +406,10 @@ const BatchSessionView = () => {
   async function startClass() {
     if (!batch?.batchId) { toast('Batch not found', 'error'); return; }
     if (batchPlayers.length === 0) { toast('No players to mark', 'error'); return; }
+    // Card statuses load in a separate pass; starting before they're ready would mark
+    // attendance with no sessionCardId and skip moving cards to In Progress (the
+    // "click Start twice" bug). Wait until each player's current card is known.
+    if (allCardsLoading || attendanceLoading) { toast('Still loading players — one moment…'); return; }
     setStarting(true);
     setStartError('');
     try {
@@ -422,7 +452,10 @@ const BatchSessionView = () => {
         } catch { /* non-fatal */ }
       }));
 
-      const missingCards = presentPlayers.filter(p => !cardStatus[p.playerId]?.activeCardId).map(p => p.name);
+      // "Missing" = has NO card at all. A completed player has activeCardId=null
+      // (nothing startable) but still owns a card, so key off sessionCardId - otherwise
+      // finishing a player would wrongly flag them as needing "Generate".
+      const missingCards = presentPlayers.filter(p => !cardStatus[p.playerId]?.sessionCardId).map(p => p.name);
 
       setFetchKey(prev => prev + 1);
       setCardRefreshKey(prev => prev + 1);
@@ -431,7 +464,7 @@ const BatchSessionView = () => {
       if (missingCards.length > 0) {
         setStartError(`No session card yet for: ${missingCards.join(', ')}. Use "Generate" on their card below to create it.`);
       }
-      toast('Class started');
+      toast('Session started');
     } catch (e) {
       console.error('Failed to Start Session', e);
       toast('Failed to Start Session', 'error');
@@ -446,9 +479,7 @@ const BatchSessionView = () => {
   // roster afterward.
   useEffect(() => {
     if (sessionDateApplied.current || allCards.length === 0) return;
-    const rep =
-      allCards.filter(c => normStatus(c.status) !== 'completed').sort((a, b) => (b.session || 0) - (a.session || 0))[0]
-      || allCards.slice().sort((a, b) => (b.session || 0) - (a.session || 0))[0];
+    const rep = pickRepCard(allCards);
     const sd = rep?.sessionDate;
     if (sd && /^\d{4}-\d{2}-\d{2}$/.test(sd)) {
       sessionDateApplied.current = true;
@@ -486,6 +517,26 @@ const BatchSessionView = () => {
 
   const presentPlayers = batchPlayers.filter(p => (statuses[String(p.playerId)] || 'Present') === 'Present');
   const absentCount = batchPlayers.length - presentPlayers.length;
+
+  // "Manage & Generate Sessions" shows once the current session is SETTLED for every
+  // player - i.e. nobody is still upcoming/in-progress. Completed (done) and pending
+  // (missed/absent → make-up later) both count as settled, so an absent player doesn't
+  // block advancing the batch. Requires each card to be checked so we don't flash it
+  // while statuses load.
+  const readyForNext = batchPlayers.length > 0 && batchPlayers.every(p => {
+    const cs = cardStatus[p.playerId];
+    if (!cs || !cs.checked) return false;
+    const s = normStatus(cs.rawStatus);
+    return s !== 'upcoming' && s !== 'draft' && s !== 'inprogress';
+  });
+
+  // The class is already running once any player's current card is in-progress or
+  // completed. In that state, the roster (reached via "Edit Attendance") is an
+  // UPDATE, not a fresh start - so the primary button says "Update Attendance".
+  const classInProgress = batchPlayers.some(p => {
+    const s = normStatus(cardStatus[p.playerId]?.rawStatus);
+    return s === 'inprogress' || s === 'completed';
+  });
 
   // Batch Details view: one expandable section per player, each holding that
   // player's full card history grouped by pathway (same UI as the admin Sessions
@@ -570,10 +621,7 @@ const BatchSessionView = () => {
 
   // "Preview" = today's session content. Best representative: an active
   // (non-completed) card everyone's roughly on; else the newest card overall.
-  const representativeCard =
-    allCards.filter(c => normStatus(c.status) !== 'completed').sort((a, b) => (b.session || 0) - (a.session || 0))[0]
-    || allCards.slice().sort((a, b) => (b.session || 0) - (a.session || 0))[0]
-    || null;
+  const representativeCard = pickRepCard(allCards);
 
   return (
     <Layout>
@@ -800,19 +848,23 @@ const BatchSessionView = () => {
             <div style={{ padding: '18px 24px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC' }}>
               <button
                 onClick={startClass}
-                disabled={starting || initialLoading || batchPlayers.length === 0}
+                disabled={starting || initialLoading || allCardsLoading || attendanceLoading || batchPlayers.length === 0}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
                   padding: '14px', borderRadius: '12px', border: 'none',
                   background: 'linear-gradient(135deg, #060030 0%, #3b0080 100%)', color: 'white',
                   fontWeight: '800', fontSize: '15px',
-                  cursor: (starting || initialLoading || batchPlayers.length === 0) ? 'not-allowed' : 'pointer',
-                  opacity: (starting || initialLoading || batchPlayers.length === 0) ? 0.7 : 1,
+                  cursor: (starting || initialLoading || allCardsLoading || attendanceLoading || batchPlayers.length === 0) ? 'not-allowed' : 'pointer',
+                  opacity: (starting || initialLoading || allCardsLoading || attendanceLoading || batchPlayers.length === 0) ? 0.7 : 1,
                   boxShadow: '0 8px 24px rgba(6,0,48,.3)',
                 }}
               >
                 {starting
-                  ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> Starting Session…</>
+                  ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> {classInProgress ? 'Updating attendance…' : 'Starting Session…'}</>
+                  : (allCardsLoading || attendanceLoading)
+                  ? <><Loader size={18} style={{ animation: 'spin 1s linear infinite' }} /> Loading players…</>
+                  : classInProgress
+                  ? <><RotateCcw size={18} /> Update Attendance{absentCount > 0 ? ` (${presentPlayers.length} present)` : ''}</>
                   : <><Play size={18} /> Start Session{absentCount > 0 ? ` (${presentPlayers.length} present)` : ''}</>}
               </button>
             </div>
@@ -831,13 +883,13 @@ const BatchSessionView = () => {
                   </p>
                 )}
               </div>
-              {batchPlayers.length > 0 && (
+              {readyForNext && (
                 <button
-                  onClick={() => { setBatchGenDone(false); setBatchGenStatus({}); setShowBatchGen(true); }}
-                  title="Generate the next session card for every player in the batch"
+                  onClick={() => navigate('/admin/session-card', { state: { batchId: batch.batchId } })}
+                  title="Open Session Card Management for this batch to manage and generate sessions"
                   style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', background: 'linear-gradient(135deg, #060030, #3b0080)', color: '#fff', border: 'none', fontSize: '12.5px', fontWeight: '700', cursor: 'pointer', flexShrink: 0 }}
                 >
-                  <Sparkles size={14} /> Generate Next Session (Batch)
+                  <Sparkles size={14} /> Manage &amp; Generate Sessions
                 </button>
               )}
             </div>

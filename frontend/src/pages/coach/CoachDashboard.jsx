@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../../context/store';
@@ -317,6 +317,21 @@ export default function CoachDashboard() {
     return myBatches.filter(b => Array.isArray(b.days) && b.days.includes(todayAbbr));
   }, [myBatches]);
 
+  // Is this batch's current session already finished? True when every player's
+  // latest (highest-session, non-empty) card is Completed - used to show a "Done"
+  // state on Today's Sessions instead of nagging the coach to Start it again.
+  const isBatchSessionDone = useCallback((batch) => {
+    const ids = batch.playerIds || (batch.players || []).map(p => p.playerId);
+    if (!ids || ids.length === 0) return false;
+    return ids.every(pid => {
+      const cards = (cardsMap[String(pid)] || []).filter(c => normStatus(c.status) !== 'empty');
+      if (cards.length === 0) return false;
+      const maxS = Math.max(...cards.map(c => c.session || 0));
+      const atMax = cards.filter(c => (c.session || 0) === maxS);
+      return atMax.length > 0 && atMax.every(isDoneCard);
+    });
+  }, [cardsMap]);
+
   // playerId → their batch { batchId, batchName } (for the queue label + so an
   // attendance mark from an opened card can be stamped with the right batch).
   const playerBatch = useMemo(() => {
@@ -375,6 +390,9 @@ export default function CoachDashboard() {
         if (!isDoneCard(c)) return;
         (c.activities || []).forEach(a => {
           if (normStatus(a.status) !== 'notcompleted') return;
+          // Already carried into a later session's card - the coach now handles it
+          // there, so it drops off this actionable list (no double-handling).
+          if (a.carriedForwardToSession) return;
           rows.push({
             cardId: c.sessionCardId || c._id,
             playerId: p.playerId,
@@ -581,10 +599,12 @@ export default function CoachDashboard() {
               </span>
             </div>
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              {todaysClasses.map(batch => (
+              {todaysClasses.map(batch => {
+                const done = isBatchSessionDone(batch);
+                return (
                 <div key={batch.batchId} style={{
                   flex: '1 1 260px', minWidth: '240px', background: '#fff', borderRadius: '12px',
-                  border: '1.5px solid #FDE68A', padding: '14px 16px',
+                  border: `1.5px solid ${done ? '#BBF7D0' : '#FDE68A'}`, padding: '14px 16px',
                   display: 'flex', alignItems: 'center', gap: '12px',
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -596,19 +616,35 @@ export default function CoachDashboard() {
                       {(batch.players?.length ?? batch.playerIds?.length ?? 0)} kids
                     </p>
                   </div>
-                  <button
-                    onClick={() => navigate('/coach/batch-session', { state: { batch } })}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px',
-                      borderRadius: '9px', background: 'linear-gradient(135deg, #060030, #000)',
-                      color: '#fff', border: 'none', fontSize: '12.5px', fontWeight: '700',
-                      cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <Play size={13} /> Start Session
-                  </button>
+                  {done ? (
+                    <span
+                      onClick={() => navigate('/coach/batch-session', { state: { batch } })}
+                      title="Session complete for today - click to review"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px',
+                        borderRadius: '9px', background: '#DCFCE7', color: '#15803D',
+                        border: '1px solid #BBF7D0', fontSize: '12.5px', fontWeight: '700',
+                        cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <CheckCircle size={13} /> Completed
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => navigate('/coach/batch-session', { state: { batch } })}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px',
+                        borderRadius: '9px', background: 'linear-gradient(135deg, #060030, #000)',
+                        color: '#fff', border: 'none', fontSize: '12.5px', fontWeight: '700',
+                        cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Play size={13} /> Start Session
+                    </button>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

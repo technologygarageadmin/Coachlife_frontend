@@ -229,6 +229,10 @@ def lambda_handler(event, context):
         set_fields = {
             "activities.$.status": status,
             "activities.$.feedback": activity.get("feedback"),
+            # Carry-forward only applies while an activity is not_completed; a completed
+            # activity never carries. The next-session generator reads this flag to
+            # decide whether to pull the activity into the following card.
+            "activities.$.carryForward": bool(activity.get("carryForward")) if status == "not_completed" else False,
             "updatedAt": now,
             "updatedBy": {"id": user["_id"], "name": user.get("name")},
         }

@@ -12,6 +12,7 @@ db = client[DB_NAME]
 
 users = db["Users"]      # Users collection (coaches + others)
 players = db["Players"]  # Players collection
+session_cards = db["SessionCards"]  # to derive each player's real session-card count
 
 # ------------------ CORS RESPONSE ------------------
 CORS_HEADERS = {
@@ -99,6 +100,20 @@ def lambda_handler(event, context):
 
         # Fetch player documents
         player_docs = list(players.find({"_id": {"$in": object_player_ids}}, {"password": 0}))
+
+        # Derive each player's real session-card ids from the SessionCards collection
+        # (the player doc's own sessionCardIds field is not kept up to date). This
+        # mirrors CL_Get_All_Players so the coach view and admin view agree.
+        player_id_strings = [str(p["_id"]) for p in player_docs]
+        session_map = {}
+        for sc in session_cards.find(
+            {"playerId": {"$in": player_id_strings}},
+            {"_id": 1, "playerId": 1}
+        ):
+            session_map.setdefault(sc["playerId"], []).append(str(sc["_id"]))
+
+        for p in player_docs:
+            p["sessionCardIds"] = session_map.get(str(p["_id"]), [])
 
         return response(200, {
             "requestedBy": logged_in_user.get("role", "user"),

@@ -39,6 +39,50 @@ def cors_headers():
     }
 
 # =====================================================
+# CARRY-FORWARD
+# =====================================================
+
+def claim_carry_forward_activity(player_id, learning_pathway, next_session):
+    """Find ONE activity the coach flagged to carry forward (not_completed +
+    carryForward, not yet carried), claim it by stamping the old card so it can't be
+    picked again, and return a clean copy to inject into the new card. Oldest session
+    (then lowest sequence) wins. Returns the injectable activity dict, or None."""
+    cursor = session_cards_col.find(
+        {"playerId": player_id, "LearningPathway": learning_pathway},
+        sort=[("session", 1)],
+    )
+    for card in cursor:
+        for act in sorted(card.get("activities", []), key=lambda a: a.get("activitySequence") or 0):
+            if (str(act.get("status", "")).lower() == "not_completed"
+                    and act.get("carryForward") is True
+                    and not act.get("carriedForwardToSession")):
+                # Claim it on the old card - keeps its not_completed history but marks
+                # it as moved, so it drops off the dashboard's actionable home tasks and
+                # can't be carried twice.
+                session_cards_col.update_one(
+                    {"_id": card["_id"], "activities.activitySequence": act.get("activitySequence")},
+                    {"$set": {"activities.$.carriedForwardToSession": next_session}},
+                )
+                return {
+                    "activitySequence": None,
+                    "activityTitle": act.get("activityTitle"),
+                    "description": act.get("description"),
+                    "story": act.get("story", []),
+                    "code": act.get("code") if isinstance(act.get("code"), dict) else None,
+                    "instructionsToCoach": act.get("instructionsToCoach", []),
+                    "project": act.get("project"),
+                    "aiTools": act.get("aiTools"),
+                    "points": act.get("points"),
+                    "rating": None,
+                    "feedback": None,
+                    "status": None,
+                    "carryForward": False,
+                    "isCarriedForward": True,
+                    "carriedFromSession": card.get("session"),
+                }
+    return None
+
+# =====================================================
 # MAIN LOGIC
 # =====================================================
 
@@ -72,8 +116,12 @@ def generate_session_card(player_id: str, learning_pathway_override: str = None,
         status = last_session.get("status")
 
         if status not in ["upcoming", "in_progress", "in progress", "completed",
-                           "not_completed", "absent", "excused", "pending"]:
+                           "not_completed", "absent", "excused", "pending", "empty"]:
             return {"message": f"Invalid session status: {status}"}
+
+        # "empty" is a soft-deleted slot kept only to hold its session number in
+        # the sequence. It's not a real card, so it neither blocks nor gets
+        # auto-closed - generation just appends the next session after it.
 
         if status in ["upcoming", "in_progress", "in progress"]:
             # Left hanging - the coach never submitted it. Rather than blocking this
@@ -139,13 +187,17 @@ def generate_session_card(player_id: str, learning_pathway_override: str = None,
 
     enriched_activities.sort(key=lambda a: a.get("activitySequence") or 0)
 
-    # NOTE (see flow spec): each session is kept WHOLE and SEPARATE. We do NOT
-    # merge a previous session's unfinished activities into this new card. If the
-    # last session was left Pending, it stays Pending as its own session - the
-    # coach finishes it later from the Pending Queue - and this new card is just a
-    # clean copy of the next pathway session. This preserves learning history and
-    # supports multiple pending sessions per student.
+    # A session's own activities are kept WHOLE and SEPARATE - a Pending session stays
+    # its own session in the Pending Queue. The ONE exception is an activity the coach
+    # explicitly flagged "carry forward": we pull a single such activity into this new
+    # card (oldest first) and prepend it, so the player picks up exactly where they owe.
     all_activities = enriched_activities
+    carried = claim_carry_forward_activity(player_id, learning_pathway, next_session)
+    if carried:
+        all_activities = [carried] + all_activities
+        if isinstance(carried.get("points"), dict):
+            total_points += carried["points"].get("total", 0)
+
     for idx, act in enumerate(all_activities, start=1):
         act["activitySequence"] = idx
 
@@ -170,7 +222,14 @@ def generate_session_card(player_id: str, learning_pathway_override: str = None,
     if batch_group_id:
         card_doc["batchGroupId"] = batch_group_id
 
-    session_cards_col.insert_one(card_doc)
+    insert_result = session_cards_col.insert_one(card_doc)
+
+    # Keep the player's sessionCardIds in sync (source of truth read by the batch /
+    # session-card views). $addToSet is idempotent, so re-generation never duplicates.
+    player_col.update_one(
+        {"_id": player_object_id},
+        {"$addToSet": {"sessionCardIds": str(insert_result.inserted_id)}},
+    )
 
     return {
         "message": "Session created",

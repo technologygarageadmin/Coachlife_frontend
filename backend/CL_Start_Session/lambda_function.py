@@ -152,6 +152,19 @@ def lambda_handler(event, context):
 
         # -------- START SESSION --------
         if current_status in ("UPCOMING", "pending"):
+            # One active session per player: if another card is already in progress,
+            # block until the coach completes or closes it. Prevents the "two
+            # In Progress sessions" state.
+            other_active = session_cards.find_one({
+                "playerId": player_id,
+                "_id": {"$ne": ObjectId(session_card_id)},
+                "status": {"$regex": "^in[ _-]?progress$", "$options": "i"}
+            })
+            if other_active:
+                return response(409, {
+                    "message": f"This player already has Session {other_active.get('session')} in progress. Complete or close it before starting another."
+                })
+
             # A pending card is a MAKE-UP for a missed/unfinished session - the coach
             # clears it out of order, any time, so it is never gated on completing an
             # earlier session. The sequential order-check applies only to a normal

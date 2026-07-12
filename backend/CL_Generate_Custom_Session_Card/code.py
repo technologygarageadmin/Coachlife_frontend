@@ -115,6 +115,43 @@ End clearly mentioning {topic}.
 # CORE LOGIC
 # =====================================================
  
+def claim_carry_forward_activity(player_id, learning_pathway, next_session):
+    """Claim ONE coach-flagged carry-forward activity (not_completed + carryForward,
+    not yet carried) from the player's previous cards, stamp the old card so it can't
+    be reused, and return a clean copy to inject. Oldest session first. See the
+    standard generator for the mirror of this logic."""
+    cursor = session_cards_col.find(
+        {"playerId": player_id, "LearningPathway": learning_pathway},
+        sort=[("session", 1)],
+    )
+    for card in cursor:
+        for act in sorted(card.get("activities", []), key=lambda a: a.get("activitySequence") or 0):
+            if (str(act.get("status", "")).lower() == "not_completed"
+                    and act.get("carryForward") is True
+                    and not act.get("carriedForwardToSession")):
+                session_cards_col.update_one(
+                    {"_id": card["_id"], "activities.activitySequence": act.get("activitySequence")},
+                    {"$set": {"activities.$.carriedForwardToSession": next_session}},
+                )
+                return {
+                    "activitySequence": None,
+                    "activityTitle": act.get("activityTitle"),
+                    "description": act.get("description"),
+                    "story": act.get("story", []),
+                    "code": act.get("code") if isinstance(act.get("code"), dict) else None,
+                    "instructionsToCoach": act.get("instructionsToCoach", []),
+                    "project": act.get("project"),
+                    "aiTools": act.get("aiTools"),
+                    "points": act.get("points"),
+                    "rating": None,
+                    "feedback": None,
+                    "status": None,
+                    "carryForward": False,
+                    "isCarriedForward": True,
+                    "carriedFromSession": card.get("session"),
+                }
+    return None
+
 def create_custom_session_card(payload):
  
     player_id = payload.get("playerId")
@@ -129,52 +166,103 @@ def create_custom_session_card(payload):
         return {"message": "Player not found"}
  
     age = int(player.get("age", 0))
- 
-    # FIND NEXT SESSION NUMBER
+
+    learning_pathway = payload.get("LearningPathway") or player.get("LearningPathway")
+
+    def enrich(activities):
+        enriched, total = [], 0
+
+        def process_activity(activity):
+            story = activity.get("story")
+            if not story or len(story) == 0:
+                story = call_llm(build_prompt(payload.get("Topic"), activity, age))
+            activity["story"] = story
+            return activity
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(process_activity, act) for act in activities]
+            for future in as_completed(futures):
+                act = future.result()
+                enriched.append(act)
+                total += act.get("points", {}).get("total", 0)
+        return enriched, total
+
+    # REGENERATE-IN-PLACE - refilling a soft-deleted ("empty") slot. We update the
+    # existing document instead of inserting, so the session number is preserved and
+    # no duplicate/extra session is created. Status becomes "pending".
+    regenerate_id = payload.get("sessionCardId")
+    if regenerate_id:
+        try:
+            card_obj_id = ObjectId(regenerate_id)
+        except (InvalidId, TypeError):
+            return {"message": "Invalid sessionCardId"}
+
+        existing = session_cards_col.find_one({"_id": card_obj_id})
+        if not existing:
+            return {"message": "Session card not found"}
+
+        enriched_activities, total_points = enrich(payload.get("activities", []))
+
+        session_cards_col.update_one(
+            {"_id": card_obj_id},
+            {"$set": {
+                "LearningPathway": learning_pathway,
+                "Topic": payload.get("Topic"),
+                "typeOfSessioncard": payload.get("typeOfSessioncard", "Custom"),
+                "Objective": payload.get("Objective"),
+                "activities": enriched_activities,
+                "totalPoints": total_points,
+                "sessionTakeaways": payload.get("sessionTakeaways", []),
+                "status": "pending",
+                "sessionDate": payload.get("sessionDate") or today_ist_str(),
+                "regeneratedAt": datetime.now(timezone.utc).isoformat(),
+            }, "$unset": {"emptiedAt": "", "emptiedBy": ""}}
+        )
+
+        return {
+            "message": "Custom session card regenerated",
+            "session": existing.get("session"),
+        }
+
+    # FIND NEXT SESSION NUMBER - scoped to this pathway, matching the standard
+    # generate flow so custom cards continue the same per-pathway sequence.
     last_session = session_cards_col.find_one(
-        {"playerId": player_id},
+        {"playerId": player_id, "LearningPathway": learning_pathway},
         sort=[("session", -1)],
     )
 
     if last_session:
         last_status = str(last_session.get("status", "")).lower().replace(" ", "_")
         if last_status in ("upcoming", "in_progress"):
-            return {
-                "message": f"Previous session card is still {last_status.replace('_', ' ')}. Please complete or close it before creating a new card."
-            }
+            # Left hanging - the coach never submitted it. Rather than blocking this
+            # player, auto-close it as "pending" - the same recoverable-miss status
+            # already used for absent/excused - and continue generating the next card.
+            session_cards_col.update_one(
+                {"_id": last_session["_id"]},
+                {"$set": {
+                    "status": "pending",
+                    "autoClosedReason": f"Left {last_status.replace('_', ' ')} - auto-closed on next generation",
+                }}
+            )
+            last_session["status"] = "pending"
 
     next_session = 1 if not last_session else last_session["session"] + 1
- 
-    activities = payload.get("activities", [])
-    enriched_activities = []
-    total_points = 0
- 
-    def process_activity(activity):
-        story = activity.get("story")
- 
-        if not story or len(story) == 0:
-            story = call_llm(
-                build_prompt(
-                    payload.get("Topic"),
-                    activity,
-                    age,
-                )
-            )
- 
-        activity["story"] = story
-        return activity
- 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(process_activity, act) for act in activities]
- 
-        for future in as_completed(futures):
-            act = future.result()
-            enriched_activities.append(act)
-            total_points += act.get("points", {}).get("total", 0)
- 
+
+    enriched_activities, total_points = enrich(payload.get("activities", []))
+
+    # Pull in one coach-flagged carry-forward activity (oldest first) and prepend it,
+    # then resequence so the whole card is 1..N.
+    carried = claim_carry_forward_activity(player_id, learning_pathway, next_session)
+    if carried:
+        enriched_activities = [carried] + list(enriched_activities)
+        if isinstance(carried.get("points"), dict):
+            total_points += carried["points"].get("total", 0)
+        for idx, act in enumerate(enriched_activities, start=1):
+            act["activitySequence"] = idx
+
     session_doc = {
         "playerId": player_id,
-        "LearningPathway": payload.get("LearningPathway"),
+        "LearningPathway": learning_pathway,
         "Topic": payload.get("Topic"),
         "session": next_session,
         "sessionDate": payload.get("sessionDate") or today_ist_str(),
@@ -192,8 +280,15 @@ def create_custom_session_card(payload):
     if payload.get("batchGroupId"):
         session_doc["batchGroupId"] = payload["batchGroupId"]
 
-    session_cards_col.insert_one(session_doc)
- 
+    insert_result = session_cards_col.insert_one(session_doc)
+
+    # Keep the player's sessionCardIds in sync (source of truth for the batch /
+    # session-card views). Idempotent via $addToSet.
+    players_col.update_one(
+        {"_id": player_obj_id},
+        {"$addToSet": {"sessionCardIds": str(insert_result.inserted_id)}},
+    )
+
     return {
         "message": "Custom session card created",
         "session": next_session,

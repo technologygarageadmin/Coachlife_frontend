@@ -24,6 +24,9 @@ const CustomCardGenerate = () => {
   const playerLearningPathway = location.state?.LearningPathway;
   const sessionDate = location.state?.sessionDate;
   const batchGroupId = location.state?.batchGroupId;
+  // Set when refilling a soft-deleted ("empty") slot - the backend updates this
+  // exact document in place (keeping its session number) instead of inserting a new one.
+  const regenerateCardId = location.state?.regenerateCardId;
 
   // Batch mode: build one custom card definition, fire the API per player
   const batchMode = location.state?.batchMode || false;
@@ -408,6 +411,7 @@ const CustomCardGenerate = () => {
       feedback: null,
       sessionDate: sessionDate || undefined,
       batchGroupId: batchGroupId || undefined,
+      sessionCardId: regenerateCardId || undefined,
     };
   };
 
@@ -444,7 +448,7 @@ const CustomCardGenerate = () => {
   // Low-level POST to the custom-card API. Returns { ok, message }.
   const postCustomCard = async (payload) => {
     try {
-      const API_URL = 'https://txxt9hve7k.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Custome_Sessioncard';
+      const API_URL = 'https://jdwg58ic9k.execute-api.ap-south-1.amazonaws.com/default/CL_Custome_Sessioncard';
       const headers = {
         'Content-Type': 'application/json',
         'Accept': '*/*'
@@ -545,7 +549,7 @@ const CustomCardGenerate = () => {
     if (!payload) return;
 
     try {
-      const API_URL = 'https://txxt9hve7k.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Custome_Sessioncard';
+      const API_URL = 'https://jdwg58ic9k.execute-api.ap-south-1.amazonaws.com/default/CL_Custome_Sessioncard';
       
       // Prepare headers following Postman pattern
       const headers = {

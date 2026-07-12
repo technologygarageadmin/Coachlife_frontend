@@ -13,7 +13,7 @@ const API_ENDPOINTS = {
   VIEW_SESSION_CARD: 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
   DELETE_SESSION_CARD: 'https://rmauptygg5.execute-api.ap-south-1.amazonaws.com/Coachlife-com/CL_Deleting_Sessioncard',
   GET_BATCHES: 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches',
-  GENERATE_SESSION_CARD: 'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
+  GENERATE_SESSION_CARD: 'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating',
   UPDATE_SESSION_CARD: 'https://78nwtutkw0.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Session_Card',
 };
 
@@ -801,7 +801,7 @@ const SessionCardManage = () => {
       };
 
       const response = await fetch(
-        'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
+        'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating',
         {
           method: 'POST',
           headers: headers,
@@ -873,24 +873,34 @@ const SessionCardManage = () => {
         body: JSON.stringify({ sessionCardId: deleteConfirm })
       });
 
+      if (response.status === 409) {
+        const data = await response.json().catch(() => ({}));
+        setToastMessage(data.message || 'Cannot delete a completed session card');
+        setToastType('error');
+        setDeleteConfirm(null);
+        return;
+      }
+
       if (!response.ok) throw new Error('Failed to delete session card');
 
       await response.json();
 
-      setToastMessage('Session card deleted successfully!');
+      setToastMessage('Session card removed');
       setToastType('success');
 
-      setSessionCards(prev => prev.filter(card => card._id !== deleteConfirm));
-      // also drop it from the By Batch all-cards map
+      // SOFT DELETE - the card stays as an "empty" tombstone (keeps its session
+      // number) so the sequence doesn't drift. Mark it empty locally instead of
+      // dropping it, and show the refill (Generate) action.
+      const markEmpty = c => (c._id === deleteConfirm
+        ? { ...c, status: 'empty', activities: [], totalPoints: 0 }
+        : c);
+      setSessionCards(prev => prev.map(markEmpty));
       setBatchAllCards(prev => {
         const next = {};
-        Object.keys(prev).forEach(pid => { next[pid] = prev[pid].filter(c => c._id !== deleteConfirm); });
+        Object.keys(prev).forEach(pid => { next[pid] = prev[pid].map(markEmpty); });
         return next;
       });
       setDeleteConfirm(null);
-      // Refresh players so the removed id leaves each member's sessionCardIds and
-      // the batch grid stays in sync (bypass cache).
-      fetchPlayers(true);
 
     } catch (err) {
       console.error('Error deleting card:', err);
@@ -922,6 +932,36 @@ const SessionCardManage = () => {
     if (v === 'in progress') return { bg: '#DBEAFE', text: '#075985' };
     if (v === 'upcoming') return { bg: '#FEF3C7', text: '#92400E' };
     return { bg: dark ? 'rgba(255,255,255,0.08)' : '#F3F4F6', text: dark ? '#94A3B8' : '#6B7280' };
+  };
+
+  const cardStatusLabel = (s) => (String(s || '').toLowerCase() === 'empty' ? 'Removed' : (s || 'Draft'));
+
+  // Refill a soft-deleted ("empty") slot. Opens the custom-generate page prefilled
+  // with that session's pathway content, passing the card's own id so the backend
+  // updates the existing document in place (keeps its session number) rather than
+  // inserting a new one.
+  const regenerateEmptyCard = (card, player) => {
+    const pathwayName = card.LearningPathway || player.LearningPathway;
+    const pathwaySession = (learningPathway || []).find(
+      s => s.LearningPathway === pathwayName && Number(s.session) === Number(card.session)
+    );
+    navigate('/admin/custom-generate-card', {
+      state: {
+        playerId: player.playerId,
+        playerName: player.playerName || player.name,
+        LearningPathway: pathwayName,
+        sessionDate: todayStr(),
+        regenerateCardId: card._id,
+        prefill: {
+          Topic: pathwaySession?.Topic || card.Topic || '',
+          Objective: pathwaySession?.Objective || card.Objective || '',
+          LearningPathway: pathwayName,
+          session: card.session,
+          activities: pathwaySession?.activities || [],
+          sessionTakeaways: pathwaySession?.sessionTakeaways || [],
+        },
+      },
+    });
   };
 
   return (
@@ -1163,7 +1203,7 @@ const SessionCardManage = () => {
                                       <span style={{ fontSize: '12px', fontWeight: '800', color: dark ? '#818CF8' : '#4F46E5' }}>{sessionNum}</span>
                                     </div>
                                     <span style={{ fontSize: '10px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: sc.bg, color: sc.text, whiteSpace: 'nowrap' }}>
-                                      {card.status || 'Draft'}
+                                      {cardStatusLabel(card.status)}
                                     </span>
                                   </div>
                                   <p style={{ fontSize: '13.5px', fontWeight: '700', color: textPrimary, margin: '0 0 4px', lineHeight: '1.3' }}>{card.Topic || 'Untitled'}</p>
@@ -1173,23 +1213,33 @@ const SessionCardManage = () => {
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
                                     <span style={{ fontSize: '11px', color: textMuted, fontWeight: '500' }}>⏱ {card.totalDuration || 30} min</span>
                                     <div style={{ display: 'flex', gap: '5px' }}>
-                                      <button onClick={e => { e.stopPropagation(); handleOpenSessionCard(card); }}
-                                        style={{ padding: '5px 10px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: dark ? '#818CF8' : '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                        onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(99,102,241,0.25)' : '#E0E7FF'}
-                                        onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF'}
-                                      ><Eye size={12} /> View</button>
-                                      {card.status?.toLowerCase() !== 'completed' && (
-                                        <button onClick={e => { e.stopPropagation(); handleEditSessionCard(card._id); }}
-                                          style={{ padding: '5px 10px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                          onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(245,158,11,0.25)' : '#FDE68A'}
-                                          onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7'}
-                                        ><Edit3 size={12} /> Edit</button>
+                                      {card.status?.toLowerCase() === 'empty' ? (
+                                        <button onClick={e => { e.stopPropagation(); regenerateEmptyCard(card, selectedPlayer); }}
+                                          style={{ padding: '5px 10px', background: 'linear-gradient(135deg, #4F46E5, #6D28D9)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                        ><Sparkles size={12} /> Generate</button>
+                                      ) : (
+                                        <>
+                                          <button onClick={e => { e.stopPropagation(); handleOpenSessionCard(card); }}
+                                            style={{ padding: '5px 10px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: dark ? '#818CF8' : '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(99,102,241,0.25)' : '#E0E7FF'}
+                                            onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF'}
+                                          ><Eye size={12} /> View</button>
+                                          {card.status?.toLowerCase() !== 'completed' && (
+                                            <button onClick={e => { e.stopPropagation(); handleEditSessionCard(card._id); }}
+                                              style={{ padding: '5px 10px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                              onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(245,158,11,0.25)' : '#FDE68A'}
+                                              onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7'}
+                                            ><Edit3 size={12} /> Edit</button>
+                                          )}
+                                          {card.status?.toLowerCase() !== 'completed' && (
+                                            <button onClick={e => { e.stopPropagation(); setDeleteConfirm(card._id); }}
+                                              style={{ padding: '5px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                                              onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(239,68,68,0.2)' : '#FECACA'}
+                                              onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2'}
+                                            ><Trash2 size={12} /></button>
+                                          )}
+                                        </>
                                       )}
-                                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(card._id); }}
-                                        style={{ padding: '5px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                                        onMouseEnter={e => e.currentTarget.style.background = dark ? 'rgba(239,68,68,0.2)' : '#FECACA'}
-                                        onMouseLeave={e => e.currentTarget.style.background = dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2'}
-                                      ><Trash2 size={12} /></button>
                                     </div>
                                   </div>
                                 </div>
@@ -1371,32 +1421,44 @@ const SessionCardManage = () => {
                                           <div style={{ padding: '11px 12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
                                               <span style={{ fontSize: '11px', fontWeight: '800', color: '#4F46E5' }}>Session {card.session ?? '-'}</span>
-                                              <span style={{ fontSize: '9.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px', background: sc.bg, color: sc.text, whiteSpace: 'nowrap' }}>{card.status || 'Draft'}</span>
+                                              <span style={{ fontSize: '9.5px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px', background: sc.bg, color: sc.text, whiteSpace: 'nowrap' }}>{cardStatusLabel(card.status)}</span>
                                             </div>
                                             <p style={{ fontSize: '12.5px', fontWeight: '700', color: textPrimary, margin: '0 0 8px', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{card.Topic || 'Untitled'}</p>
                                             <div style={{ display: 'flex', gap: '5px' }}>
-                                              <button onClick={() => navigate(`/admin/view-session-card/${card._id}`, { state: { session: card, playerId: player.playerId } })}
-                                                style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                <Eye size={12} /> View
-                                              </button>
-                                              {card.status?.toLowerCase() !== 'completed' && (
-                                                <button onClick={() => navigate(`/admin/edit-session-card/${card._id}`, { state: { batchId: selectedBatchId, playerId: player.playerId } })}
-                                                  style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                  <Edit3 size={12} /> Edit
+                                              {card.status?.toLowerCase() === 'empty' ? (
+                                                <button onClick={() => regenerateEmptyCard(card, player)}
+                                                  title="Refill this removed session"
+                                                  style={{ flex: 1, padding: '5px 8px', background: 'linear-gradient(135deg, #4F46E5, #6D28D9)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                  <Sparkles size={12} /> Generate
                                                 </button>
+                                              ) : (
+                                                <>
+                                                  <button onClick={() => navigate(`/admin/view-session-card/${card._id}`, { state: { session: card, playerId: player.playerId } })}
+                                                    style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(99,102,241,0.15)' : '#EEF2FF', color: '#4F46E5', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                    <Eye size={12} /> View
+                                                  </button>
+                                                  {card.status?.toLowerCase() !== 'completed' && (
+                                                    <button onClick={() => navigate(`/admin/edit-session-card/${card._id}`, { state: { batchId: selectedBatchId, playerId: player.playerId } })}
+                                                      style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(245,158,11,0.15)' : '#FEF3C7', color: dark ? '#FBBF24' : '#92400E', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                      <Edit3 size={12} /> Edit
+                                                    </button>
+                                                  )}
+                                                  {card.status?.toLowerCase() !== 'completed' && (
+                                                    <button onClick={() => navigate(`/coach/start-session/${player.playerId}`)}
+                                                      title="Start this player's session"
+                                                      style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(16,185,129,0.15)' : '#DCFCE7', color: dark ? '#34D399' : '#15803D', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                      <Play size={12} /> Start
+                                                    </button>
+                                                  )}
+                                                  {card.status?.toLowerCase() !== 'completed' && (
+                                                    <button onClick={() => setDeleteConfirm(card._id)}
+                                                      title="Delete card"
+                                                      style={{ padding: '5px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                                      <Trash2 size={12} />
+                                                    </button>
+                                                  )}
+                                                </>
                                               )}
-                                              {card.status?.toLowerCase() !== 'completed' && (
-                                                <button onClick={() => navigate(`/coach/start-session/${player.playerId}`)}
-                                                  title="Start this player's session"
-                                                  style={{ flex: 1, padding: '5px 8px', background: dark ? 'rgba(16,185,129,0.15)' : '#DCFCE7', color: dark ? '#34D399' : '#15803D', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                  <Play size={12} /> Start
-                                                </button>
-                                              )}
-                                              <button onClick={() => setDeleteConfirm(card._id)}
-                                                title="Delete card"
-                                                style={{ padding: '5px 8px', background: dark ? 'rgba(239,68,68,0.1)' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                                                <Trash2 size={12} />
-                                              </button>
                                             </div>
                                           </div>
                                         </div>

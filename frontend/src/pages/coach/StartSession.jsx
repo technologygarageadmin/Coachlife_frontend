@@ -129,7 +129,7 @@ const StartSession = () => {
       }
       if (!token) { setGenerateError('No authentication token found. Please login again.'); setIsGenerating(false); return; }
       const response = await fetch(
-        'https://7mbaul8uz9.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Session_Card_Generating',
+        'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating',
         { method: 'POST', headers: { 'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ playerId: selectedPlayer.playerId }) }
       );
       if (!response.ok) {

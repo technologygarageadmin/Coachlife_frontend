@@ -359,6 +359,8 @@ const SessionDetail = () => {
   const saveActivityFeedback = (activityIndex, feedbackData) => {
     try {
       const status = feedbackData.status || 'completed';
+      // Carry-forward only applies to a not_completed activity; it's cleared otherwise.
+      const carryForward = status === 'not_completed' ? !!feedbackData.carryForward : false;
       const feedbackOnly = { rating: feedbackData.rating, coachComment: feedbackData.coachComment };
       setSessionData(prev => {
         const updated = { ...prev };
@@ -367,7 +369,8 @@ const SessionDetail = () => {
           updated.activities[activityIndex] = {
             ...updated.activities[activityIndex],
             feedback: feedbackOnly,
-            status
+            status,
+            carryForward
           };
         }
         return updated;
@@ -564,7 +567,8 @@ const SessionDetail = () => {
         activitySequence: activity.activitySequence || (index + 1),
         status: activity.status || 'completed',
         rating: activity.feedback?.rating || 0,
-        feedback: activity.feedback?.coachComment || ''
+        feedback: activity.feedback?.coachComment || '',
+        carryForward: activity.status === 'not_completed' ? !!activity.carryForward : false
       }));
 
       const avgActivityRating = activitiesFeedback.length > 0
@@ -610,7 +614,9 @@ const SessionDetail = () => {
         // the rest of the class.
         const fromBatch = location.state?.batch;
         if (fromBatch) {
-          navigate('/coach/batch-session', { replace: true, state: { batch: fromBatch } });
+          // resumeActive: land back on the batch coaching view (not the attendance
+          // roster) so the coach continues with the rest of the class.
+          navigate('/coach/batch-session', { replace: true, state: { batch: fromBatch, resumeActive: true } });
           return;
         }
         const playerId = playerData?._id || playerData?.playerId || playerData?.id;
@@ -1934,6 +1940,24 @@ const SessionDetail = () => {
                                     NOT COMPLETED
                                   </span>
                                 )}
+                                {activity.carriedForwardToSession && (
+                                  <span style={{
+                                    fontSize: '10px', fontWeight: '700', padding: '2px 8px',
+                                    borderRadius: '999px', background: '#EEF2FF', color: '#4F46E5',
+                                    letterSpacing: '0.3px'
+                                  }}>
+                                    CARRIED FORWARD → SESSION {activity.carriedForwardToSession}
+                                  </span>
+                                )}
+                                {activity.isCarriedForward && (
+                                  <span style={{
+                                    fontSize: '10px', fontWeight: '700', padding: '2px 8px',
+                                    borderRadius: '999px', background: '#F3E8FF', color: '#7C3AED',
+                                    letterSpacing: '0.3px'
+                                  }}>
+                                    CARRIED FROM SESSION {activity.carriedFromSession}
+                                  </span>
+                                )}
                               </div>
                               {editingActivityId !== index && (
                                 <button
@@ -1946,7 +1970,8 @@ const SessionDetail = () => {
                                           [index]: {
                                             rating: activity.feedback?.rating || 0,
                                             coachComment: activity.feedback?.coachComment || '',
-                                            status: activity.status || 'completed'
+                                            status: activity.status || 'completed',
+                                            carryForward: activity.carryForward || false
                                           }
                                         };
                                         return updated;
@@ -2007,9 +2032,25 @@ const SessionDetail = () => {
                                     })}
                                   </div>
                                   {getCurrentActivityFeedback().status === 'not_completed' && (
-                                    <p style={{ fontSize: '11px', color: '#7C3AED', margin: '8px 0 0', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: '6px', padding: '7px 10px', lineHeight: 1.5 }}>
-                                      This activity becomes a <strong>home task</strong> for the player - the session still completes, and it's flagged on your dashboard to follow up.
-                                    </p>
+                                    <>
+                                      <p style={{ fontSize: '11px', color: '#7C3AED', margin: '8px 0 0', background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: '6px', padding: '7px 10px', lineHeight: 1.5 }}>
+                                        This activity becomes a <strong>home task</strong> for the player - the session still completes, and it's flagged on your dashboard to follow up.
+                                      </p>
+                                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', margin: '8px 0 0', cursor: 'pointer' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={!!getCurrentActivityFeedback().carryForward}
+                                          onChange={(e) => {
+                                            const currentFeedback = getCurrentActivityFeedback();
+                                            setCurrentActivityFeedback({ ...currentFeedback, carryForward: e.target.checked });
+                                          }}
+                                          style={{ width: '15px', height: '15px', marginTop: '1px', accentColor: '#4F46E5', cursor: 'pointer', flexShrink: 0 }}
+                                        />
+                                        <span style={{ fontSize: '11px', color: textSecondary, lineHeight: 1.5 }}>
+                                          <strong style={{ color: textPrimary }}>Carry forward to next session</strong> — this activity will be added to the player's next generated session card.
+                                        </span>
+                                      </label>
+                                    </>
                                   )}
                                 </div>
 

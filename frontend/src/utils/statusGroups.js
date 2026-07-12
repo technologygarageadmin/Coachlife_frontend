@@ -1,4 +1,4 @@
-import { Clock, PlayCircle, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Clock, PlayCircle, CheckCircle2, AlertTriangle, Ban } from 'lucide-react';
 
 // Every session card carries one of ~10 raw statuses (draft, upcoming, in_progress,
 // "in progress", completed, pending, not_completed, absent, excused, ...). Users
@@ -33,6 +33,14 @@ export const STATUS_GROUPS = {
     label: 'Pending',
     bg: '#FFFBEB', color: '#D97706', dot: '#F59E0B',
     Icon: AlertTriangle,
+  },
+  // "Empty" = a soft-deleted slot kept only as a tombstone so the session
+  // sequence doesn't drift. Not a real card - it's refilled via custom generate.
+  empty: {
+    statuses: ['empty'],
+    label: 'Removed',
+    bg: '#F3F4F6', color: '#6B7280', dot: '#9CA3AF',
+    Icon: Ban,
   },
 };
 

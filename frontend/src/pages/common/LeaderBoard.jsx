@@ -49,6 +49,7 @@ export default function LeaderBoard() {
   const [players, setPlayers] = useState([]);
   const [assignedPlayerIds, setAssignedPlayerIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
   const [view, setView] = useState("grid"); // grid | list
   const fetchIntervalRef = useRef(null);
 
@@ -97,6 +98,8 @@ export default function LeaderBoard() {
       }
     } catch (err) {
       console.error("Failed to load coach assignments", err);
+    } finally {
+      setAssignmentsLoaded(true);
     }
   }
 
@@ -152,17 +155,29 @@ export default function LeaderBoard() {
     }
   }
 
-  const sortedPlayers = useMemo(
-    () => [...players].sort((a, b) => b.totalPoints - a.totalPoints),
-    [players]
+  // Coaches see ONLY their assigned players ranked among themselves; admins (and
+  // anyone without the coach role) see the org-wide board.
+  const isCoachView = hasRole('coach');
+  const visiblePlayers = useMemo(
+    () => (isCoachView ? players.filter(p => assignedPlayerIds.has(p.id)) : players),
+    [players, assignedPlayerIds, isCoachView]
   );
 
+  const sortedPlayers = useMemo(
+    () => [...visiblePlayers].sort((a, b) => b.totalPoints - a.totalPoints),
+    [visiblePlayers]
+  );
+
+  // Coaches must also wait for their assignment list before we can filter, or the
+  // board would flash "no players" for a moment.
+  const busy = loading || (isCoachView && !assignmentsLoaded);
+
   const topScorer = sortedPlayers[0];
-  const avgPoints = players.length
-    ? Math.round(players.reduce((s, p) => s + p.totalPoints, 0) / players.length)
+  const avgPoints = visiblePlayers.length
+    ? Math.round(visiblePlayers.reduce((s, p) => s + p.totalPoints, 0) / visiblePlayers.length)
     : 0;
-  const topBalance = players.length
-    ? Math.max(...players.map(p => p.balance))
+  const topBalance = visiblePlayers.length
+    ? Math.max(...visiblePlayers.map(p => p.balance))
     : 0;
 
   return (
@@ -170,24 +185,24 @@ export default function LeaderBoard() {
       <style>{`@keyframes skPulse { 0%,100%{opacity:.5}50%{opacity:1} }`}</style>
       <div style={{ ...styles.page, background: dark ? 'var(--cl-bg)' : '#F8FAFC' }} className="page-container">
         <Hero
-          totalPlayers={players.length}
+          totalPlayers={visiblePlayers.length}
           topPlayer={sortedPlayers[0]}
           view={view}
           setView={setView}
-          loading={loading}
+          loading={busy}
         />
 
         {/* Summary row */}
-        {!loading && players.length > 0 && (
+        {!busy && visiblePlayers.length > 0 && (
           <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-            <SummaryCard label="Total Players" value={players.length} icon={Users} accent="#6366F1" dark={dark} />
+            <SummaryCard label="Total Players" value={visiblePlayers.length} icon={Users} accent="#6366F1" dark={dark} />
             <SummaryCard label="Top Scorer" value={topScorer?.name || '-'} icon={Trophy} accent="#F59E0B" dark={dark} />
             <SummaryCard label="Avg Points" value={avgPoints.toLocaleString()} icon={Star} accent="#10B981" dark={dark} />
             <SummaryCard label="Top Balance" value={topBalance.toLocaleString()} icon={Award} accent="#EC4899" dark={dark} />
           </div>
         )}
 
-        {loading ? (
+        {busy ? (
           <Skeleton />
         ) : sortedPlayers.length === 0 ? (
           <EmptyState />
