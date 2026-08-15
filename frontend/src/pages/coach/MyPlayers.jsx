@@ -4,6 +4,7 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Users, Star, Search, Filter, GridIcon, ListIcon, ChevronRight, CheckCircle2, Trophy } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
+import { normalizeSessionCardIds } from '../../utils/dataService';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -85,7 +86,7 @@ const MyPlayers = () => {
               age: player.age,
               totalPointsRedeemed: player.TotalPointsRedeemed || 0,
               pointBalance: player.currentPoints,
-              sessionCardIds: item.sessionCardIds || []
+              sessionCardIds: normalizeSessionCardIds(item)
             };
           });
 
@@ -95,7 +96,7 @@ const MyPlayers = () => {
             const playerId = player._id || player.playerId;
             playersData[playerId] = {
               player: transformedPlayers[idx],
-              sessionCardIds: item.sessionCardIds || []
+              sessionCardIds: normalizeSessionCardIds(item)
             };
           });
 

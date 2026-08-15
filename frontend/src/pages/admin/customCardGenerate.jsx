@@ -6,9 +6,8 @@ import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import { ArrowLeft, Loader, Sparkles, BookOpen, Zap, GripHorizontal, Trash2, Blocks, ArrowBigUp, ArrowBigDown, ArrowUpDown , CheckCircle2, X, Info, AlertTriangle, Clock, PencilLine } from 'lucide-react';
-import axios from 'axios';
+import { getLearningPathway, invalidateSessionCards, normalizeSessionCardIds } from '../../utils/dataService';
 
-const PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 const GET_PLAYERS_API = 'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players';
 
 const CustomCardGenerate = () => {
@@ -128,33 +127,7 @@ const CustomCardGenerate = () => {
     setPathwaysLoading(true);
     setPathwaysError('');
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(userToken && { 'userToken': userToken })
-      };
-
-      const response = await axios.get(PATHWAY_API_URL, { headers });
-      
-      const data = response.data || {};
-      
-      // Extract sessions from the API response
-      let sessions = [];
-      if (Array.isArray(data)) {
-        sessions = data;
-      } else if (data.sessions && Array.isArray(data.sessions)) {
-        sessions = data.sessions;
-      } else if (data.data && Array.isArray(data.data)) {
-        sessions = data.data;
-      } else if (data.pathways && Array.isArray(data.pathways)) {
-        sessions = data.pathways;
-      } else if (data.body && typeof data.body === 'string') {
-        try {
-          const parsed = JSON.parse(data.body);
-          sessions = Array.isArray(parsed) ? parsed : parsed.sessions || parsed.data || [];
-        } catch {
-          sessions = [];
-        }
-      }
+      const sessions = await getLearningPathway({ userToken });
 
       // Group sessions by learning pathway
       const groupedPathways = {};
@@ -437,6 +410,7 @@ const CustomCardGenerate = () => {
       }
     }
 
+    if (success > 0) invalidateSessionCards();
     setBatchDone(true);
     setLoading(false);
     setToastMessage(failed === 0
@@ -491,6 +465,7 @@ const CustomCardGenerate = () => {
 
   const refetchPlayersAndRedirect = async () => {
     try {
+      invalidateSessionCards();
       // Refetch players to get updated sessionCardIds
       const response = await fetch(GET_PLAYERS_API, {
         headers: {
@@ -528,7 +503,7 @@ const CustomCardGenerate = () => {
             totalPoints: updatedPlayer.TotalPoints || updatedPlayer.totalPoints || 0,
             phone: updatedPlayer.phone || updatedPlayer.mobile || '',
             address: updatedPlayer.address || '',
-            sessionCardIds: updatedPlayer.sessionCardIds || []
+            sessionCardIds: normalizeSessionCardIds(updatedPlayer)
           };
           
           // Update selected player in store

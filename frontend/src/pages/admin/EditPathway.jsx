@@ -5,8 +5,8 @@ import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { AlertCircle, Loader, SquarePen, Trash, Plus, Download, BookOpen, Zap, X, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
+import { getLearningPathway, invalidateLearningPathway } from '../../utils/dataService';
 
-const GET_PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 const EDIT_PATHWAY_API_URL = 'https://cup8xy9gvd.execute-api.ap-south-1.amazonaws.com/default/CL_Update_LearningPathway';
 
 const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, '').trim();
@@ -61,28 +61,20 @@ const EditPathway = () => {
 
   useEffect(() => {
     if (returningFromEditor) return;
-    const controller = new AbortController();
-    fetchPathwayData(controller.signal);
-    return () => controller.abort();
+    let cancelled = false;
+    fetchPathwayData(() => cancelled);
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Fetch all pathway sessions so their activities can be imported into this one
+  // Fetch all pathway sessions so their activities can be imported into this one.
+  // Shares the cached catalog with fetchPathwayData above - one network call, not two.
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     const fetchImportPathways = async () => {
       try {
-        const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
-        const response = await axios.get(GET_PATHWAY_API_URL, { headers, signal: controller.signal });
-        let data = response.data || {};
-        if (data.body && typeof data.body === 'string') {
-          try { data = JSON.parse(data.body); } catch { /* ignore */ }
-        }
-        let sessions = [];
-        if (Array.isArray(data)) sessions = data;
-        else if (data.sessions) sessions = data.sessions;
-        else if (data.data) sessions = data.data;
-        else if (data.pathways) sessions = data.pathways;
+        const sessions = await getLearningPathway({ userToken });
+        if (cancelled) return;
 
         const grouped = {};
         sessions.forEach(s => {
@@ -95,12 +87,12 @@ const EditPathway = () => {
           });
         });
         setImportPathways(Object.values(grouped).sort((a, b) => a.LearningPathway.localeCompare(b.LearningPathway)));
-      } catch (err) {
-        if (err.name !== 'CanceledError') setImportPathways([]);
+      } catch {
+        if (!cancelled) setImportPathways([]);
       }
     };
     fetchImportPathways();
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [userToken]);
 
   const importActivity = (activity, key) => {
@@ -115,21 +107,12 @@ const EditPathway = () => {
     setImportedKeys(prev => [...prev, key]);
   };
 
-  const fetchPathwayData = async (signal) => {
+  const fetchPathwayData = async (isCancelled = () => false) => {
     setLoading(true);
     setError('');
     try {
-      const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
-      const response = await axios.get(GET_PATHWAY_API_URL, { headers, signal });
-      let data = response.data || {};
-      if (data.body && typeof data.body === 'string') {
-        try { data = JSON.parse(data.body); } catch { /* ignore */ }
-      }
-      let pathways = [];
-      if (Array.isArray(data)) pathways = data;
-      else if (data.sessions) pathways = data.sessions;
-      else if (data.data) pathways = data.data;
-      else if (data.pathways) pathways = data.pathways;
+      const pathways = await getLearningPathway({ userToken });
+      if (isCancelled()) return;
 
       let pathway = pathways.find(p => p.mongoId === id || p._id === id);
       if (!pathway) pathway = pathways.find(p => `${p.session}-${p.Topic}` === decodeURIComponent(id));
@@ -148,7 +131,7 @@ const EditPathway = () => {
         totalPoints: pathway.totalPoints || 0
       });
     } catch (err) {
-      if (err.name !== 'CanceledError') setError(err.response?.data?.message || err.message || 'Failed to fetch pathway');
+      if (!isCancelled()) setError(err.response?.data?.message || err.message || 'Failed to fetch pathway');
     } finally {
       setLoading(false);
     }
@@ -240,6 +223,7 @@ const EditPathway = () => {
       const response = await axios.post(EDIT_PATHWAY_API_URL, payload, { headers });
       if (response.data && (response.data.statusCode === 200 || response.data.statusCode === 201 || response.status === 200 || response.status === 201)) {
         markClean();
+        invalidateLearningPathway();
         navigate('/admin/learning-pathway');
       } else {
         setError('Failed to update pathway. Please try again.');

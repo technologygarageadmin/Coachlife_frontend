@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import CryptoJS from 'crypto-js';
 import axios from 'axios';
+import { clearApiCache } from '../utils/apiCache';
+import { getLearningPathway, normalizeSessionCardIds } from '../utils/dataService';
 
 // Debug logging utility - disable in production
 const DEBUG = import.meta.env.MODE === 'development';
@@ -22,7 +24,6 @@ const UPDATE_COACH_URL = 'https://3fae11rhag.execute-api.ap-south-1.amazonaws.co
 const DELETE_COACH_URL = 'https://950582ec8g.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Deleting_Coaches';
 const UPDATE_REMOVE_ASSIGNED_PLAYER_URL = 'https://50mhdn561a.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Update_Remove_Assigned_Player';
 const ASSIGN_PLAYERS_TO_COACH_URL = 'https://2tvxk1vikd.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_Assigned_Player_To_Coaches';
-const GET_LEARNING_PATHWAY_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 const VIEW_USER_PROFILE_URL = 'https://0lvq0g7g24.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_User_Profile';
 
 // Setup axios interceptor to add userToken to all requests
@@ -313,11 +314,19 @@ export const useStore = create(
           userToken: userToken
         };
 
+        // Cached responses belong to whoever fetched them - start this session clean
+        clearApiCache();
+
         set({
           currentUser: authData.currentUser,
           isAuthenticated: true,
           userToken: userToken,
-          unauthorizedErrorCount: 0
+          unauthorizedErrorCount: 0,
+          players: [],
+          coaches: [],
+          learningPathway: [],
+          playersLastFetchTime: 0,
+          coachesLastFetchTime: 0
         });
 
         setupAxiosInterceptor(userToken);
@@ -435,7 +444,8 @@ export const useStore = create(
     try {
       // Clear axios interceptors and headers first for immediate response
       clearAxiosInterceptor();
-      
+      clearApiCache();
+
       // Immediately clear auth state for fast logout
       set({
         currentUser: null,
@@ -471,7 +481,9 @@ export const useStore = create(
     try {
       // Immediately clear auth state without waiting for API
       clearAxiosInterceptor();
-      
+      clearApiCache();
+
+
       set({
         currentUser: null,
         isAuthenticated: false,
@@ -597,11 +609,7 @@ export const useStore = create(
         PointBalance: p.currentPoints || p.PointBalance || p.pointBalance || p.Point_Balance || p.PointsBalance || 0,
         progress: p.progress || 0,
         email: p.email || `${(p.playerName || 'player').toLowerCase().replace(/\s+/g, '.')}@example.com`,
-        sessionCardIds: Array.isArray(p.sessionCardIds)
-          ? p.sessionCardIds
-          : (Array.isArray(p.sessionCards)
-            ? p.sessionCards.map((card) => card?.sessionCardId || card?._id || card).filter(Boolean)
-            : []),
+        sessionCardIds: normalizeSessionCardIds(p),
       }));
 
       set({ players: normalized, playersLastFetchTime: Date.now(), playersLoading: false });
@@ -1096,38 +1104,10 @@ export const useStore = create(
     }
   },
 
-  // Fetch learning pathways
-  fetchLearningPathway: async () => {
+  // Fetch learning pathways (shared cache - see utils/dataService.js)
+  fetchLearningPathway: async (force = false) => {
     try {
-      const state = get();
-      const token = state.userToken;
-      const headers = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['userToken'] = token;
-      }
-
-      const response = await axios.get(GET_LEARNING_PATHWAY_URL, { headers });
-      let payload = response.data;
-
-      if (payload && payload.body && typeof payload.body === 'string') {
-        try {
-          payload = JSON.parse(payload.body);
-        } catch {
-          // leave payload as-is if parsing fails
-        }
-      }
-
-
-      let sessions = [];
-      if (Array.isArray(payload)) {
-        sessions = payload;
-      } else if (Array.isArray(payload?.sessions)) {
-        sessions = payload.sessions;
-      } else if (Array.isArray(payload?.data)) {
-        sessions = payload.data;
-      }
-
-
+      const sessions = await getLearningPathway({ userToken: get().userToken, force });
       set({ learningPathway: sessions });
       return { success: true, sessions };
     } catch (error) {

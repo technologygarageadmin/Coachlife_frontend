@@ -12,17 +12,16 @@ import {
   ChevronLeft, ChevronRight, UserCheck, BarChart2, User,
   Calendar, CircleHelp, Layers, Trash2, AlertTriangle, Loader,
 } from 'lucide-react';
+import { getBatches, getCurrentCardsByPlayer, invalidateSessionCards } from '../../utils/dataService';
 
 const BRAND  = '#060030ff';
 const DAYS   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December'];
 
-const CL_GET_BATCHES_URL     = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
 const CL_MANAGE_BATCH_URL    = 'https://rwl4dpqgu5.execute-api.ap-south-1.amazonaws.com/default/CL_Manage_Batch';
 const CL_GET_ATTENDANCE_URL  = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 const CL_MARK_ATTENDANCE_URL    = 'https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance';
-const CL_VIEW_SESSIONCARD_URL   = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 
 const STATUS_CONFIG = {
   Present: { bg: '#dcfce7', color: '#16a34a', border: '#bbf7d0', dot: '#16a34a' },
@@ -259,12 +258,8 @@ export default function Attendance() {
   }, []);
 
   const loadBatches = useCallback(async () => {
-    if (!CL_GET_BATCHES_URL) { setBatches([]); return; }
-    const res = await axios.get(CL_GET_BATCHES_URL, { headers });
-    let d = res.data;
-    if (d?.body && typeof d.body === 'string') d = JSON.parse(d.body);
-    setBatches(d.batches || []);
-  }, [headers]);
+    setBatches(await getBatches({ userToken }));
+  }, [userToken]);
 
   const loadAllRecords = useCallback(async () => {
     if (!CL_GET_ATTENDANCE_URL) { setAllRecords([]); return; }
@@ -351,34 +346,24 @@ export default function Attendance() {
     setCardInfoLoading(true);
     const map = new Map();
 
-    await Promise.all(playerIds.map(async (pid) => {
-      try {
-        const res = await axios.post(
-          CL_VIEW_SESSIONCARD_URL,
-          { playerId: pid },
-          { headers }
-        );
-        let d = res.data;
-        if (d?.body && typeof d.body === 'string') d = JSON.parse(d.body);
-        const card = d?.sessionCard || d?.data || d;
-        const sessionNumber = Number(card?.session);
-        if (!Number.isFinite(sessionNumber) || sessionNumber <= 0) return;
+    // One bulk call for the batch rather than one per player. A player with no
+    // card is simply left unset, so the UI shows "-" instead of a guessed number.
+    const cards = await getCurrentCardsByPlayer(playerIds, { userToken });
+    playerIds.forEach((pid) => {
+      const card = cards[pid];
+      const sessionNumber = Number(card?.session);
+      if (!Number.isFinite(sessionNumber) || sessionNumber <= 0) return;
 
-        const rawStatus = String(card?.status || '').toLowerCase().replace(/[\s_]/g, '');
-        map.set(String(pid), {
-          sessionNumber,
-          status: rawStatus,
-          sessionDate: card?.sessionDate || null,
-        });
-      } catch {
-        // No card yet for this player, or the request failed - leave unset so the
-        // UI shows "-" rather than a guessed number.
-      }
-    }));
+      map.set(String(pid), {
+        sessionNumber,
+        status: String(card?.status || '').toLowerCase().replace(/[\s_]/g, ''),
+        sessionDate: card?.sessionDate || null,
+      });
+    });
 
     setPlayerCardInfo(map);
     setCardInfoLoading(false);
-  }, [headers]);
+  }, [userToken]);
 
   // Fetch card info whenever the selected batch changes
   useEffect(() => {
@@ -656,6 +641,9 @@ export default function Attendance() {
         }, { headers });
       }));
       setEdits({});
+      // Marking attendance moves cards server-side (Absent → pending, Present →
+      // can restore an upcoming card), so cached cards must be dropped.
+      invalidateSessionCards();
       await Promise.all([loadBatchRecords(selectedBatchId, batchDate), loadAllRecords()]);
       toast(`Saved ${changedKeys.length} record(s)`);
     } catch {
@@ -681,6 +669,7 @@ export default function Attendance() {
       if (selectedBatchId === 'general') payload.playerIds = activeBatch.playerIds || [];
       await axios.post(CL_MARK_ATTENDANCE_URL, payload, { headers });
       setEdits({});
+      invalidateSessionCards();
       await Promise.all([loadBatchRecords(selectedBatchId, batchDate), loadAllRecords()]);
       toast('All players marked Present');
     } catch {
@@ -702,6 +691,7 @@ export default function Attendance() {
       if (deleteTarget.batchId) payload.batchId = deleteTarget.batchId;
       const res = await axios.post(CL_MARK_ATTENDANCE_URL, payload, { headers });
       const deleted = res.data?.deleted ?? res.data?.body;
+      invalidateSessionCards();
       await loadAllRecords();
       if (selectedBatchId && activeTab === 'batch') await loadBatchRecords(selectedBatchId, batchDate);
       if (selectedPlayerId && activeTab === 'player') await loadPlayerRecords(selectedPlayerId);
@@ -742,6 +732,7 @@ export default function Attendance() {
         }, { headers });
       }));
       setPlayerEdits({});
+      invalidateSessionCards();
       await Promise.all([loadPlayerRecords(selectedPlayerId), loadAllRecords()]);
       toast(`Updated ${changedKeys.length} player attendance record(s)`);
     } catch {

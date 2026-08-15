@@ -7,6 +7,7 @@ import {
   Calendar, Award, ArrowLeft, BookOpen, TrendingUp, Target,
   ChevronRight, CheckCircle, Clock, AlertCircle,
 } from 'lucide-react';
+import { getSessionCards, normalizeSessionCardIds } from '../../utils/dataService';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -87,7 +88,8 @@ const PlayerSessions = () => {
 
         const p = matched.player || matched;
         setPlayer({ playerId: p._id || p.id || p.playerId, playerName: p.playerName || p.name || '', name: p.playerName || p.name || '' });
-        setSessionCardIds(matched.sessionCardIds || p.sessionCardIds || []);
+        const ids = normalizeSessionCardIds(matched);
+        setSessionCardIds(ids.length ? ids : normalizeSessionCardIds(p));
       } catch {
         setError('Failed to load player data');
         setLoading(false);
@@ -102,39 +104,25 @@ const PlayerSessions = () => {
       setLoading(false);
       return;
     }
-    const controller = new AbortController();
+    let cancelled = false;
     setLoading(true);
     setError(null);
 
     const token = userToken || JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken;
-    const headers = { 'Content-Type': 'application/json', ...(token && { userToken: token }) };
 
-    Promise.all(
-      sessionCardIds.map(id =>
-        fetch('https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ sessionCardId: id }),
-          signal: controller.signal,
-        })
-          .then(r => r.ok ? r.json() : null)
-          .then(d => {
-            if (!d) return null;
-            const card = d.sessionCard || d.data || d;
-            return card && !card.message ? { _id: id, ...card } : null;
-          })
-          .catch(() => null)
-      )
-    ).then(results => {
-      if (!controller.signal.aborted) {
-        setSessions(results.filter(Boolean));
+    getSessionCards(sessionCardIds, { userToken: token })
+      .then(cards => {
+        if (cancelled) return;
+        setSessions(Object.values(cards).filter(Boolean));
         setLoading(false);
-      }
-    }).catch(err => {
-      if (err.name !== 'AbortError') { setError('Failed to load sessions'); setLoading(false); }
-    });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError('Failed to load sessions');
+        setLoading(false);
+      });
 
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [sessionCardIds, userToken]);
 
   if (!loading && !player) {

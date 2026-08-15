@@ -5,11 +5,11 @@ import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { Toast } from '../../components/Toast';
 import { ArrowLeft, Loader, Save, Plus, SquarePen, Trash2, AlertCircle, CheckCircle2, Download, BookOpen, Zap, X } from 'lucide-react';
+import { getLearningPathway, invalidateSessionCard, invalidateSessionCards } from '../../utils/dataService';
 
 const API_ENDPOINTS = {
   VIEW_SESSION_CARD: 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
   UPDATE_SESSION_CARD: 'https://78nwtutkw0.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Session_Card',
-  GET_LEARNING_PATHWAY: 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway',
 };
 
 const stripHtml = (html) => (html || '').replace(/<[^>]+>/g, '').trim();
@@ -151,26 +151,12 @@ const EditSessionCard = () => {
 
   // Fetch available pathway sessions so their activities can be imported
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     const fetchPathways = async () => {
       try {
-        const response = await fetch(API_ENDPOINTS.GET_LEARNING_PATHWAY, {
-          headers: { 'Content-Type': 'application/json', ...(userToken && { userToken }) },
-          signal: controller.signal
-        });
-        if (!response.ok) return;
-        const data = await response.json();
-        let sessions = [];
-        if (Array.isArray(data)) sessions = data;
-        else if (data.sessions && Array.isArray(data.sessions)) sessions = data.sessions;
-        else if (data.data && Array.isArray(data.data)) sessions = data.data;
-        else if (data.pathways && Array.isArray(data.pathways)) sessions = data.pathways;
-        else if (data.body && typeof data.body === 'string') {
-          try {
-            const parsed = JSON.parse(data.body);
-            sessions = Array.isArray(parsed) ? parsed : parsed.sessions || parsed.data || [];
-          } catch { sessions = []; }
-        }
+        const sessions = await getLearningPathway({ userToken });
+        if (cancelled) return;
+
         const grouped = {};
         sessions.forEach(s => {
           const name = s.LearningPathway || 'Unknown Pathway';
@@ -182,10 +168,10 @@ const EditSessionCard = () => {
           });
         });
         setImportPathways(Object.values(grouped).sort((a, b) => a.LearningPathway.localeCompare(b.LearningPathway)));
-      } catch { /* ignore fetch/abort errors */ }
+      } catch { /* ignore fetch errors */ }
     };
     if (userToken) fetchPathways();
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [userToken]);
 
   const importActivity = (activity, key) => {
@@ -456,6 +442,10 @@ const EditSessionCard = () => {
       if (!response.ok) {
         throw new Error(result.message || `Failed to update session card: ${response.status}`);
       }
+
+      // A batch apply rewrites other players' cards too, so drop them all
+      if (applyToBatch) invalidateSessionCards();
+      else invalidateSessionCard(id);
 
       setToastMessage(
         applyToBatch && result.propagatedToCount

@@ -4,9 +4,9 @@ import { Gift, Edit2, Trash2, Package, Search, Plus, X, Loader, CheckCircle, Tre
 import { useState, useEffect, useRef, useMemo, createElement } from 'react';
 import { Toast } from '../../components/Toast';
 import { useTheme } from '../../context/ThemeContext';
+import { getRewards, invalidateRewards } from '../../utils/dataService';
 
 const API_ENDPOINTS = {
-  VIEW:   'https://vzcyj52ypb.execute-api.ap-south-1.amazonaws.com/default/CL_View_Reward',
   ADD:    'https://rk37pftip6.execute-api.ap-south-1.amazonaws.com/default/CL_Add_Reward',
   UPDATE: 'https://5rb7nhg1rg.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Reward',
   DELETE: 'https://dxliwg58k2.execute-api.ap-south-1.amazonaws.com/default/CL_Delete_Reward',
@@ -195,12 +195,10 @@ const Rewards = () => {
     fetchRewards();
   }, []); // eslint-disable-line
 
-  const fetchRewards = async () => {
+  const fetchRewards = async (force = false) => {
     try {
       setLoading(true);
-      const response = await fetch(API_ENDPOINTS.VIEW, { headers:{ 'userToken':userToken } });
-      const data = await response.json();
-      if (data.data) setRewards(data.data);
+      setRewards(await getRewards({ userToken, force }));
     } catch {
       showToast('Failed to load rewards', 'error');
       setRewards([]);
@@ -224,7 +222,8 @@ const Rewards = () => {
       if (response.ok) {
         showToast('Reward deleted successfully');
         setDeleteModalOpen(false);
-        fetchRewards();
+        invalidateRewards();
+        fetchRewards(true);
       } else {
         showToast('Failed to delete reward', 'error');
       }
@@ -251,7 +250,9 @@ const Rewards = () => {
       });
       if (response.ok) {
         showToast(editingReward ? 'Reward updated successfully' : 'Reward added successfully');
-        handleCloseModal(); fetchRewards();
+        handleCloseModal();
+        invalidateRewards();
+        fetchRewards(true);
       } else {
         showToast(editingReward ? 'Failed to update reward' : 'Failed to add reward', 'error');
       }

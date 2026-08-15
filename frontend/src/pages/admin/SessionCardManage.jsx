@@ -6,13 +6,12 @@ import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import { Users, Search, Edit3, Trash2, Plus, Eye, ChevronLeft, Loader, Sparkles, Mail, Cake, Phone, Star, Layers, User, CheckCircle, Info, AlertTriangle, Calendar, PencilLine, Play } from 'lucide-react';
+import { getSessionCards, getCurrentCardsByPlayer, getBatches, invalidateSessionCard, invalidateSessionCards, normalizeSessionCardIds } from '../../utils/dataService';
 
 // API Endpoints
 const API_ENDPOINTS = {
   GET_PLAYERS: 'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players',
-  VIEW_SESSION_CARD: 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
   DELETE_SESSION_CARD: 'https://rmauptygg5.execute-api.ap-south-1.amazonaws.com/Coachlife-com/CL_Deleting_Sessioncard',
-  GET_BATCHES: 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches',
   GENERATE_SESSION_CARD: 'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating',
   UPDATE_SESSION_CARD: 'https://78nwtutkw0.execute-api.ap-south-1.amazonaws.com/default/CL_Update_Session_Card',
 };
@@ -54,6 +53,8 @@ const SummaryCard = ({ label, value, icon: SIcon, accent, dark }) => {
 const SessionCardManage = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  // Where to go "back" to, when another page linked us here
+  const returnTo = location.state?.from || null;
   const { userToken, selectedPlayer, setSelectedPlayer, learningPathway, fetchLearningPathway } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
@@ -217,7 +218,7 @@ const SessionCardManage = () => {
         totalPoints: p.TotalPoints || p.totalPoints || 0,
         phone: p.phone || p.mobile || '',
         address: p.address || '',
-        sessionCardIds: p.sessionCardIds || []
+        sessionCardIds: normalizeSessionCardIds(p)
       }));
 
       setPlayers(transformedPlayers);
@@ -235,47 +236,20 @@ const SessionCardManage = () => {
   // Fetch all batches
   const fetchBatches = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.GET_BATCHES, {
-        headers: {
-          'userToken': userToken,
-          'Content-Type': 'application/json'
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch batches');
-      let data = await response.json();
-      if (data?.body && typeof data.body === 'string') data = JSON.parse(data.body);
-      setBatches(Array.isArray(data) ? data : (data.batches || []));
+      setBatches(await getBatches({ userToken }));
     } catch (err) {
       console.error('Error fetching batches:', err);
       setBatches([]);
     }
   };
 
-  // Fetch session cards for selected player
+  // Fetch session cards for selected player - one bulk call, cached per card
+  // (this used to await one request per card, in sequence)
   const fetchPlayerSessionCards = async (sessionCardIds) => {
     try {
       setIsLoadingSessionCards(true);
-      const cards = [];
-      for (const cardId of sessionCardIds) {
-        const response = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
-          method: 'POST',
-          headers: {
-            'userToken': userToken,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ sessionCardId: cardId })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          const sessionCard = data.sessionCard || data.data || data;
-          cards.push({
-            _id: cardId,
-            ...sessionCard
-          });
-        }
-      }
-      setSessionCards(cards);
+      const cards = await getSessionCards(sessionCardIds, { userToken });
+      setSessionCards(sessionCardIds.map(id => cards[String(id)]).filter(Boolean));
     } catch (err) {
       console.error('Error fetching session cards:', err);
       setSessionCards([]);
@@ -349,30 +323,18 @@ const SessionCardManage = () => {
   // One bulk call instead of one request per player - avoids the N+1 fan-out
   // (and its tail-latency risk) that used to hit CL_View_Sessioncard once per
   // player in the list/batch.
+  // Deliberately uncached: this drives what "generate next" will do, so it must
+  // reflect the player's real current card every time.
   const fetchBatchPlayerCardInfo = async (playerIds) => {
     setCardInfoLoading(true);
-    let map = {};
-    try {
-      const res = await fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', userToken },
-        body: JSON.stringify({ playerIds }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const cards = data.cards || {};
-        playerIds.forEach(pid => {
-          const card = cards[pid];
-          map[pid] = card
-            ? { session: card.session ?? null, sessionDate: card.sessionDate || null, status: card.status || '', cardId: card.cardId || null }
-            : null;
-        });
-      } else {
-        playerIds.forEach(pid => { map[pid] = null; });
-      }
-    } catch {
-      playerIds.forEach(pid => { map[pid] = null; });
-    }
+    const map = {};
+    const cards = await getCurrentCardsByPlayer(playerIds, { userToken });
+    playerIds.forEach(pid => {
+      const card = cards[pid];
+      map[pid] = card
+        ? { session: card.session ?? null, sessionDate: card.sessionDate || null, status: card.status || '', cardId: card.cardId || null }
+        : null;
+    });
     setPlayerCardInfo(map);
     setCardInfoLoading(false);
     return map;
@@ -397,23 +359,15 @@ const SessionCardManage = () => {
       const uniqueCardIds = [...new Set(allCardIds)];
       const playerIds = batchPlayers.map(bp => bp.playerId);
 
-      const postJson = (payload) => fetch(API_ENDPOINTS.VIEW_SESSION_CARD, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', userToken },
-        body: JSON.stringify(payload),
-      }).then(r => (r.ok ? r.json() : { cards: {} })).catch(() => ({ cards: {} }));
-
-      const [byIdRes, byPlayerRes] = await Promise.all([
-        uniqueCardIds.length ? postJson({ sessionCardIds: uniqueCardIds }) : Promise.resolve({ cards: {} }),
-        playerIds.length ? postJson({ playerIds, full: true }) : Promise.resolve({ cards: {} }),
+      const [cardsById, latestByPlayer] = await Promise.all([
+        getSessionCards(uniqueCardIds, { userToken }),
+        getCurrentCardsByPlayer(playerIds, { userToken, full: true }),
       ]);
-      const cardsById = byIdRes.cards || {};
-      const latestByPlayer = byPlayerRes.cards || {};
 
       batchPlayers.forEach(bp => {
         const cards = [];
         (idsByPlayer[bp.playerId] || []).forEach(id => {
-          const card = cardsById[id];
+          const card = cardsById[String(id)];
           if (card && (card.Topic || card.activities || card.status)) cards.push({ _id: id, ...card });
         });
 
@@ -554,7 +508,7 @@ const SessionCardManage = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', userToken },
           body: JSON.stringify({ sessionCardId: r.cardId, status: 'pending' }),
-        }).catch(() => {})
+        }).then(() => invalidateSessionCard(r.cardId)).catch(() => {})
       ));
     }
 
@@ -587,7 +541,7 @@ const SessionCardManage = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', userToken },
           body: JSON.stringify({ sessionCardId: r.cardId, status: 'pending' }),
-        }).catch(() => {})
+        }).then(() => invalidateSessionCard(r.cardId)).catch(() => {})
       ));
     }
 
@@ -625,7 +579,7 @@ const SessionCardManage = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', userToken },
         body: JSON.stringify({ sessionCardId: row.cardId, status: 'pending' }),
-      }).catch(() => {});
+      }).then(() => invalidateSessionCard(row.cardId)).catch(() => {});
     }
 
     navigate('/admin/custom-generate-card', {
@@ -707,6 +661,7 @@ const SessionCardManage = () => {
       }
     }
 
+    invalidateSessionCards();
     await fetchPlayers(true);
     setBatchGenerating(false);
     setToastMessage(failed === 0
@@ -836,6 +791,7 @@ const SessionCardManage = () => {
       setToastType('success');
 
       setShowGenerateModal(false);
+      invalidateSessionCards();
 
       const updatedPlayers = await fetchPlayers(true);
       if (selectedPlayer) {
@@ -885,6 +841,7 @@ const SessionCardManage = () => {
 
       await response.json();
 
+      invalidateSessionCard(deleteConfirm);
       setToastMessage('Session card removed');
       setToastType('success');
 
@@ -985,6 +942,22 @@ const SessionCardManage = () => {
           boxShadow: '0 8px 32px rgba(6,0,48,.3)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            {/* Shown when another page (e.g. the Calendar) sent us here, so the
+                click-through isn't a one-way trip. */}
+            {returnTo && (
+              <button
+                onClick={() => navigate(returnTo)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+                  borderRadius: '8px', background: 'rgba(255,255,255,0.12)',
+                  border: '1px solid rgba(255,255,255,0.2)', color: 'white',
+                  fontSize: '13px', fontWeight: '600', cursor: 'pointer', flexShrink: 0,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <ChevronLeft size={14} /> {location.state?.fromLabel || 'Back'}
+              </button>
+            )}
             <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Sparkles size={20} color="#fff" />
             </div>

@@ -5,9 +5,9 @@ import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { AlertCircle, Plus, Trash, SquarePen, Loader, BookOpen, Zap, ArrowLeft, X, Download } from 'lucide-react';
 import axios from 'axios';
+import { getLearningPathway, invalidateLearningPathway } from '../../utils/dataService';
 
 const ADD_PATHWAY_API_URL = 'https://u49kegogke.execute-api.ap-south-1.amazonaws.com/default/CL_Add_Master_LearningPathway';
-const GET_PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 
 const AddPathway = () => {
   const { userToken } = useStore();
@@ -24,32 +24,12 @@ const AddPathway = () => {
   const [importedKeys, setImportedKeys] = useState([]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     const fetchAvailablePathways = async () => {
       try {
-        const headers = {
-          'Content-Type': 'application/json',
-          ...(userToken && { 'userToken': userToken })
-        };
-        const response = await axios.get(GET_PATHWAY_API_URL, { headers, signal: controller.signal });
-        const data = response.data || {};
-        let sessions = [];
-        if (Array.isArray(data)) {
-          sessions = data;
-        } else if (data.sessions && Array.isArray(data.sessions)) {
-          sessions = data.sessions;
-        } else if (data.data && Array.isArray(data.data)) {
-          sessions = data.data;
-        } else if (data.pathways && Array.isArray(data.pathways)) {
-          sessions = data.pathways;
-        } else if (data.body && typeof data.body === 'string') {
-          try {
-            const parsed = JSON.parse(data.body);
-            sessions = Array.isArray(parsed) ? parsed : parsed.sessions || parsed.data || [];
-          } catch {
-            sessions = [];
-          }
-        }
+        const sessions = await getLearningPathway({ userToken });
+        if (cancelled) return;
+
         const unique = [...new Set(sessions.map(s => s.LearningPathway).filter(Boolean))];
         setAvailablePathways(unique);
 
@@ -73,15 +53,15 @@ const AddPathway = () => {
             setFormData(prev => ({ ...prev, session: maxSession + 1 }));
           }
         }
-      } catch (err) {
-        if (err.name !== 'CanceledError') {
+      } catch {
+        if (!cancelled) {
           setAvailablePathways([]);
           setImportPathways([]);
         }
       }
     };
     fetchAvailablePathways();
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [userToken]);
   
   const [formData, setFormData] = useState(() => {
@@ -210,6 +190,7 @@ const AddPathway = () => {
       const response = await axios.post(ADD_PATHWAY_API_URL, payload, { headers });
 
       if (response.data && (response.data.statusCode === 200 || response.data.statusCode === 201 || response.status === 201)) {
+        invalidateLearningPathway();
         navigate('/admin/learning-pathway');
       } else {
         setError('Failed to add pathway. Please try again.');

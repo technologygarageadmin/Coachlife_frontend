@@ -8,6 +8,7 @@ import {
   Zap, Target, Code2, Wrench, Star, MessageSquare, Lightbulb, User,
   FileText, List, Award, Activity,
 } from 'lucide-react';
+import { getSessionCard } from '../../utils/dataService';
 
 const statusConfig = {
   completed:  { bg: '#DCFCE7', color: '#16A34A', dot: '#22C55E', label: 'Completed' },
@@ -91,19 +92,10 @@ const ViewSessionCard = () => {
     setLoading(true);
     setError(null);
     const token = userToken || JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken;
-    const headers = { 'Content-Type': 'application/json', ...(token && { userToken: token }) };
 
-    fetch('https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ sessionCardId: cardId }),
-    })
-      .then(r => (r.ok ? r.json() : null))
-      .then(raw => {
+    getSessionCard(cardId, { userToken: token })
+      .then(card => {
         if (cancelled) return;
-        let d = raw;
-        if (d?.body && typeof d.body === 'string') { try { d = JSON.parse(d.body); } catch { d = null; } }
-        const card = d && (d.sessionCard || d.data || d);
         const isCard = card && typeof card === 'object' &&
           (card.activities || card.Topic || card.status || card.session !== undefined || card.sessionCardId || card._id);
         if (isCard) {

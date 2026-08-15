@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import StatusBadge from '../../components/StatusBadge';
 import { User, Mail, Award, TrendingUp, FileText, BookOpen, ArrowLeft, ChevronRight, Calendar, Zap, Loader, Clock, CheckCircle, Sparkles, CalendarCheck, Eye, Edit3, Play } from 'lucide-react';
+import { getSessionCards } from '../../utils/dataService';
 
 const normSt = (s) => (s || '').toLowerCase().replace(/[\s_]/g, '');
 const statusColors = (status) => {
@@ -263,38 +264,8 @@ const PlayerDetail = () => {
       try {
         setSessionsLoading(true);
         const token = userToken || JSON.parse(localStorage.getItem('coachlife_auth') || '{}').userToken;
-        const fetchedSessions = [];
-
-        for (const sessionCardId of sessionCardIds) {
-          try {
-            const response = await fetch(
-              'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'userToken': token
-                },
-                body: JSON.stringify({ sessionCardId })
-              }
-            );
-
-            if (response.ok) {
-              const responseData = await response.json();
-              const sessionCard = responseData.sessionCard || responseData;
-              fetchedSessions.push({
-                _id: sessionCardId,
-                ...sessionCard
-              });
-            } else {
-              console.error(`Failed to fetch session ${sessionCardId}`);
-            }
-          } catch (error) {
-            console.error(`Error fetching session ${sessionCardId}:`, error);
-          }
-        }
-
-        setSessions(fetchedSessions);
+        const cards = await getSessionCards(sessionCardIds, { userToken: token });
+        setSessions(sessionCardIds.map(id => cards[String(id)]).filter(Boolean));
       } catch (error) {
         console.error('Error fetching sessions:', error);
         setSessions([]);

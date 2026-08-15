@@ -4,6 +4,7 @@ import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { ChevronLeft, CheckCircle, Star, Clock, BookOpen, ArrowRight, Code, Wrench, Briefcase, BookMarked } from 'lucide-react';
+import { getSessionCard, invalidateSessionCard } from '../../utils/dataService';
 
 const ViewSessionCard = () => {
   const { sessionId, id } = useParams();
@@ -74,20 +75,7 @@ const ViewSessionCard = () => {
         }
 
         // No navigation state (Past Sessions, deep link, or page reload): fetch by id.
-        const token = getToken();
-        const res = await fetch(
-          'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(token && { userToken: token }) },
-            body: JSON.stringify({ sessionCardId: cardId }),
-          }
-        );
-        if (!res.ok) throw new Error(`Failed to load session: ${res.status}`);
-
-        let data = await res.json();
-        if (data?.body && typeof data.body === 'string') { try { data = JSON.parse(data.body); } catch { data = null; } }
-        const card = data && (data.sessionCard || data.data || data);
+        const card = await getSessionCard(cardId, { userToken: getToken() });
         const isCard = card && typeof card === 'object' &&
           (card.activities || card.Topic || card.status || card.session !== undefined || card.sessionCardId || card._id);
 
@@ -130,6 +118,7 @@ const ViewSessionCard = () => {
         throw new Error(errorData.message || `Failed: ${response.status}`);
       }
 
+      invalidateSessionCard(sessionCardId);
       setWhatsFeedbackMessage(updatedMessage);
       setEditingFeedbackId(null);
       setEditingFeedbackText('');

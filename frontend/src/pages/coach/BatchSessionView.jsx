@@ -6,6 +6,7 @@ import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
 import StatusBadge from '../../components/StatusBadge';
 import { ChevronLeft, Layers, Loader, Users, CalendarCheck, Play, CheckCircle, ArrowRight, RotateCcw, Eye, ChevronDown, Clock, Zap, Code, BookOpen, ListChecks, Sparkles, Target, Trash2, AlertTriangle, Edit3 } from 'lucide-react';
+import { getSessionCards, getCurrentCardsByPlayer, invalidateSessionCard, invalidateSessionCards, normalizeSessionCardIds } from '../../utils/dataService';
 
 const stripHtml = (s) => {
   if (typeof s !== 'string') return '';
@@ -27,7 +28,6 @@ const toLines = (v) => {
   return one ? [one] : [];
 };
 
-const VIEW_SESSIONCARD_URL    = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 const CL_GET_ATTENDANCE_URL   = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 const CL_MARK_ATTENDANCE_URL  = 'https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance';
 const CL_START_SESSION_URL    = 'https://rslqy219i9.execute-api.ap-south-1.amazonaws.com/default/CL_Start_Session';
@@ -233,13 +233,13 @@ const BatchSessionView = () => {
         const byId = {};
         allPlayers.forEach(p => {
           const id = String(p.playerId || p._id || p.id);
-          byId[id] = { name: p.playerName || p.name, LearningPathway: p.LearningPathway || '', sessionCardIds: p.sessionCardIds || [] };
+          byId[id] = { name: p.playerName || p.name, LearningPathway: p.LearningPathway || '', sessionCardIds: normalizeSessionCardIds(p) };
         });
         if (result?.success && Array.isArray(result.players)) {
           result.players.forEach(item => {
             const p = item.player || item;
             const id = String(p._id || p.id || p.playerId);
-            const ids = item.sessionCardIds || p.sessionCardIds || [];
+            const ids = normalizeSessionCardIds(item).length ? normalizeSessionCardIds(item) : normalizeSessionCardIds(p);
             const prev = byId[id] || {};
             byId[id] = {
               name: p.playerName || p.name || prev.name,
@@ -275,47 +275,7 @@ const BatchSessionView = () => {
   // Re-runs after Start Session / attendance submit (cardRefreshKey).
   useEffect(() => {
     if (batchPlayers.length === 0) return;
-    const controller = new AbortController();
-
-    const fetchCard = async (id) => {
-      try {
-        const res = await fetch(VIEW_SESSIONCARD_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'userToken': userToken },
-          body: JSON.stringify({ sessionCardId: id }),
-          signal: controller.signal,
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.sessionCard || data.data || data;
-      } catch (e) {
-        if (e.name !== 'AbortError') console.error('Card fetch failed', id, e);
-        return null;
-      }
-    };
-
-    // The player's authoritative CURRENT card, straight from the backend by
-    // playerId (same call the admin Batch Detail uses). This reflects a freshly
-    // generated card even when the cached sessionCardIds array hasn't caught up,
-    // which is why the coach view used to miss a player's new session.
-    const fetchCurrentByPlayer = async (playerId) => {
-      try {
-        const res = await fetch(VIEW_SESSIONCARD_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'userToken': userToken },
-          body: JSON.stringify({ playerId }),
-          signal: controller.signal,
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        const card = data.sessionCard || data.data || data;
-        if (!card || (card.session == null && !card.status && !card.Topic)) return null;
-        return card;
-      } catch (e) {
-        if (e.name !== 'AbortError') console.error('Current card fetch failed', playerId, e);
-        return null;
-      }
-    };
+    let cancelled = false;
 
     (async () => {
       setAllCardsLoading(true);
@@ -330,16 +290,27 @@ const BatchSessionView = () => {
         return next;
       });
 
+      // Two bulk calls for the whole batch: every known card by id, plus each
+      // player's authoritative CURRENT card by playerId. The latter reflects a
+      // freshly generated card even when the cached sessionCardIds array hasn't
+      // caught up, which is why the coach view used to miss a player's new session.
+      const [cardsById, currentByPlayer] = await Promise.all([
+        getSessionCards(batchPlayers.flatMap(p => p.sessionCardIds || []), { userToken }),
+        getCurrentCardsByPlayer(batchPlayers.map(p => p.playerId), { userToken, full: true }),
+      ]);
+      if (cancelled) return;
+
       const collected = [];
-      await Promise.all(batchPlayers.map(async (player) => {
+      batchPlayers.forEach((player) => {
         const { playerId, name, sessionCardIds } = player;
 
         // Full history from the player's sessionCardIds (may be stale/incomplete).
-        const cards = (await Promise.all((sessionCardIds || []).map(fetchCard))).filter(Boolean);
+        const cards = (sessionCardIds || []).map(id => cardsById[String(id)]).filter(Boolean);
 
-        // Authoritative current card by playerId - merge it into the history if the
-        // cached id list didn't include it (the whole reason cards went "missing").
-        const current = await fetchCurrentByPlayer(playerId);
+        const rawCurrent = currentByPlayer[playerId];
+        const current = rawCurrent && (rawCurrent.session != null || rawCurrent.status || rawCurrent.Topic)
+          ? rawCurrent
+          : null;
         const idOf = (c) => c && (c._id || c.sessionCardId);
         if (current && !cards.some(c => idOf(c) === idOf(current))) {
           cards.push(current);
@@ -386,15 +357,13 @@ const BatchSessionView = () => {
             sessionCardId: cardId,
           }
         }));
-      }));
+      });
 
-      if (!controller.signal.aborted) {
-        setAllCards(collected);
-        setAllCardsLoading(false);
-      }
+      setAllCards(collected);
+      setAllCardsLoading(false);
     })();
 
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [batchPlayers, userToken, cardRefreshKey]);
 
   // The coach does NOT generate session cards - that is the admin's job, done
@@ -457,6 +426,8 @@ const BatchSessionView = () => {
       // finishing a player would wrongly flag them as needing "Generate".
       const missingCards = presentPlayers.filter(p => !cardStatus[p.playerId]?.sessionCardId).map(p => p.name);
 
+      // Statuses just changed server-side - the refresh below must not read cache
+      invalidateSessionCards();
       setFetchKey(prev => prev + 1);
       setCardRefreshKey(prev => prev + 1);
       setClassStep('active');
@@ -499,11 +470,13 @@ const BatchSessionView = () => {
         body: JSON.stringify({ action: 'delete', batchId: batch.batchId, sessionDate: attendanceDate }),
       });
       if (!res.ok) throw new Error('delete failed');
+      invalidateSessionCards();
       setStatuses({});
       setAlreadyMarked(false);
       setClassStep('attendance');
       setShowResetConfirm(false);
       setFetchKey(prev => prev + 1);
+      setCardRefreshKey(prev => prev + 1);
       toast('Attendance cleared for ' + attendanceDate);
     } catch (e) {
       console.error('Failed to reset attendance', e);
@@ -593,6 +566,7 @@ const BatchSessionView = () => {
 
     setBatchGenDone(true);
     setBatchGenerating(false);
+    invalidateSessionCards();
     setRosterKey(prev => prev + 1);
     setCardRefreshKey(prev => prev + 1);
     toast(failed === 0 ? `Generated the next session for ${success} player${success === 1 ? '' : 's'}` : `Generated ${success}, ${failed} failed`, failed === 0 ? 'success' : 'error');
@@ -608,6 +582,7 @@ const BatchSessionView = () => {
         body: JSON.stringify({ sessionCardId: deleteCardId }),
       });
       if (!res.ok) throw new Error('delete failed');
+      invalidateSessionCard(deleteCardId);
       setDeleteCardId(null);
       setCardRefreshKey(prev => prev + 1);
       toast('Session card deleted');
@@ -643,7 +618,9 @@ const BatchSessionView = () => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button
-              onClick={() => navigate('/coach')}
+              // Return to whichever page linked here (e.g. the Calendar),
+              // falling back to the dashboard on a direct visit.
+              onClick={() => navigate(location.state?.from || '/coach')}
               style={{
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
                 borderRadius: '8px', background: 'rgba(255,255,255,0.12)',
@@ -651,7 +628,7 @@ const BatchSessionView = () => {
                 fontSize: '13px', fontWeight: '600', cursor: 'pointer', flexShrink: 0
               }}
             >
-              <ChevronLeft size={14} /> Back
+              <ChevronLeft size={14} /> {location.state?.fromLabel || 'Back'}
             </button>
             <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(255,255,255,.12)', border: '1.5px solid rgba(255,255,255,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Layers size={24} color="#fff" />

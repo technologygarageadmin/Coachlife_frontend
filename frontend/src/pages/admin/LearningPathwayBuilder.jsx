@@ -6,8 +6,8 @@ import { SkeletonContainer } from '../../components/SkeletonLoader';
 import { BookOpen, AlertCircle, Plus, Trash, SquarePen, Eye, Loader } from 'lucide-react';
 import axios from 'axios';
 import { useTheme } from '../../context/ThemeContext';
+import { getLearningPathway, invalidateLearningPathway } from '../../utils/dataService';
 
-const PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
 const DELETE_PATHWAY_API_URL = 'https://w5qtdpsr58.execute-api.ap-south-1.amazonaws.com/default/CL_Delete_Learningpathway';
 
 const getStageColor = (session) => {
@@ -42,22 +42,11 @@ const LearningPathwayBuilder = () => {
     fetchPathways();
   }, [userToken]);
 
-  const fetchPathways = async () => {
+  const fetchPathways = async (force = false) => {
     setLoading(true);
     setError('');
     try {
-      const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
-      const response = await axios.get(PATHWAY_API_URL, { headers });
-      const data = response.data || {};
-      let sessions = [];
-      if (Array.isArray(data)) sessions = data;
-      else if (data.sessions) sessions = data.sessions;
-      else if (data.data) sessions = data.data;
-      else if (data.pathways) sessions = data.pathways;
-      else if (data.body && typeof data.body === 'string') {
-        try { const p = JSON.parse(data.body); sessions = Array.isArray(p) ? p : p.sessions || p.data || []; } catch { sessions = []; }
-      }
-      setPathways(sessions);
+      setPathways(await getLearningPathway({ userToken, force }));
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to fetch pathways');
       setPathways([]);
@@ -79,7 +68,8 @@ const LearningPathwayBuilder = () => {
       if (response.data && (response.data.statusCode === 200 || response.data.statusCode === 204 || response.status === 200)) {
         setDeleteConfirmOpen(false);
         setPathwayToDelete(null);
-        await fetchPathways();
+        invalidateLearningPathway();
+        await fetchPathways(true);
       } else {
         setError(response.data?.message || 'Failed to delete pathway');
       }
@@ -105,7 +95,8 @@ const LearningPathwayBuilder = () => {
         const updatedName = trimmed;
         setRenameModal({ isOpen: false, stageName: '', newName: '', isLoading: false });
         selectPathway(updatedName);
-        await fetchPathways();
+        invalidateLearningPathway();
+        await fetchPathways(true);
       } else {
         setError(response.data?.message || 'Failed to rename pathway');
         setRenameModal(prev => ({ ...prev, isLoading: false }));

@@ -4,9 +4,7 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Card } from '../../components/Card';
 import { AlertCircle, Loader, ArrowLeft, ExternalLink, Award, BookOpen, Zap, Target, Clock, User, ChevronDown } from 'lucide-react';
-import axios from 'axios';
-
-const GET_PATHWAY_API_URL = 'https://nvouj7m5fb.execute-api.ap-south-1.amazonaws.com/default/CL_Get_LearningPathway';
+import { getLearningPathway } from '../../utils/dataService';
 
 const ViewPathway = () => {
   const { id } = useParams();
@@ -34,32 +32,7 @@ const ViewPathway = () => {
     setLoading(true);
     setError('');
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(userToken && { 'userToken': userToken })
-      };
-
-      const response = await axios.get(GET_PATHWAY_API_URL, { headers });
-      
-      let data = response.data || {};
-      if (data.body && typeof data.body === 'string') {
-        try {
-          data = JSON.parse(data.body);
-        } catch {
-          console.error('Failed to parse response body');
-        }
-      }
-
-      let pathways = [];
-      if (Array.isArray(data)) {
-        pathways = data;
-      } else if (data.sessions && Array.isArray(data.sessions)) {
-        pathways = data.sessions;
-      } else if (data.data && Array.isArray(data.data)) {
-        pathways = data.data;
-      } else if (data.pathways && Array.isArray(data.pathways)) {
-        pathways = data.pathways;
-      }
+      const pathways = await getLearningPathway({ userToken });
 
       // Find the pathway to view - try multiple matching strategies
       let foundPathway = pathways.find(p => p.mongoId === id || p._id === id);

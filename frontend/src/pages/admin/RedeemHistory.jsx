@@ -4,10 +4,10 @@ import { Gift, BarChart3, Search, ChevronDown, Zap, Users, Loader, X } from 'luc
 import { useState, useEffect, useRef, useMemo, createElement } from 'react';
 import { Toast } from '../../components/Toast';
 import { useTheme } from '../../context/ThemeContext';
+import { getRewards } from '../../utils/dataService';
 
 const API_ENDPOINTS = {
   VIEW_PLAYERS:        'https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players',
-  VIEW_REWARDS:        'https://vzcyj52ypb.execute-api.ap-south-1.amazonaws.com/default/CL_View_Reward',
   REDEEM_POINTS:       'https://s86lf3ex9c.execute-api.ap-south-1.amazonaws.com/default/CL_Redem_Points',
   VIEW_REDEEM_HISTORY: 'https://az8e86z41f.execute-api.ap-south-1.amazonaws.com/default/CL_View_Allplayer_Redeemhistory',
 };
@@ -122,12 +122,14 @@ const RedeemHistory = () => {
   const fetchAll = async () => {
     try {
       setLoading(true);
-      const [pRes, rRes, hRes] = await Promise.all([
+      // Players and history must be current (a redeem changes both); the rewards
+      // catalog is shared cache.
+      const [pRes, hRes, rewardList] = await Promise.all([
         fetch(API_ENDPOINTS.VIEW_PLAYERS,        { headers:{ 'userToken':userToken } }),
-        fetch(API_ENDPOINTS.VIEW_REWARDS,         { headers:{ 'userToken':userToken } }),
         fetch(API_ENDPOINTS.VIEW_REDEEM_HISTORY,  { headers:{ 'userToken':userToken } }),
+        getRewards({ userToken }),
       ]);
-      const [pData, rData, hData] = await Promise.all([pRes.json(), rRes.json(), hRes.json()]);
+      const [pData, hData] = await Promise.all([pRes.json(), hRes.json()]);
 
       const pick = (d, ...keys) => {
         if (Array.isArray(d)) return d;
@@ -135,7 +137,7 @@ const RedeemHistory = () => {
         return [];
       };
       setPlayers(pick(pData, 'data','players'));
-      setRewards(pick(rData, 'data','rewards'));
+      setRewards(rewardList);
       setRedeemHistory(pick(hData, 'redeemHistory','data'));
     } catch {
       showToast('Failed to load data', 'error');

@@ -4,6 +4,7 @@ import { Award, Flame, Grid3x3, List, Loader, Star, Trophy, Users } from "lucide
 import { Layout } from "../../components/Layout";
 import { useStore } from "../../context/store";
 import { useTheme } from "../../context/ThemeContext";
+import { normalizeSessionCardIds } from "../../utils/dataService";
 
 const API_ENDPOINT =
   "https://jrrnyyf9r9.execute-api.ap-south-1.amazonaws.com/default/CL_Get_All_Players";
@@ -143,7 +144,7 @@ export default function LeaderBoard() {
           progress: p.progress || 'Not Started',
           createdAt: p.createdAt || '',
           dateOfRegistration: p.dateOfRegistration || '',
-          sessionCardIds: p.sessionCardIds || []
+          sessionCardIds: normalizeSessionCardIds(p)
         }));
         setPlayers(mappedPlayers);
       }

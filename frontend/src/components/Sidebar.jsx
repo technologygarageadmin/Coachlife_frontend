@@ -21,6 +21,7 @@ import {
   X,
   FileText,
   CalendarCheck,
+  CalendarDays,
   Layers,
 } from 'lucide-react';
 
@@ -103,6 +104,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
       { label: 'Coaches',          path: '/admin/coaches',          icon: User,            color: '#60A5FA' },
       { label: 'Assign Players',   path: '/admin/assign-players',   icon: UserPen,         color: '#FBBF24' },
       { label: 'Session Card',     path: '/admin/session-card',     icon: FileText,        color: '#A78BFA' },
+      { label: 'Calendar',         path: '/admin/calendar',         icon: CalendarDays,    color: '#38BDF8' },
       { label: 'Attendance',       path: '/admin/attendance',       icon: CalendarCheck,   color: '#F472B6' },
       { label: 'Batches',          path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
       { label: 'Learning Pathway', path: '/admin/learning-pathway', icon: BookOpen,        color: '#6EE7B7' },
@@ -115,6 +117,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
       { label: 'Dashboard',    path: '/coach',               icon: LayoutDashboard, color: '#818CF8' },
       { label: 'My Players',   path: '/coach/players',       icon: Users,           color: '#34D399' },
       { label: 'Session Card', path: '/admin/session-card',  icon: FileText,        color: '#A78BFA' },
+      { label: 'Calendar',     path: '/coach/calendar',      icon: CalendarDays,    color: '#38BDF8' },
       { label: 'Batches',      path: '/admin/manage-batches',icon: Layers,          color: '#FB7185' },
       { label: 'Leaderboard',  path: '/leaderboard',         icon: Trophy,          color: '#FCD34D' },
       { label: 'Start Session',path: '/coach/start-session', icon: BookOpen,        color: '#6EE7B7' },
@@ -127,6 +130,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
       { label: 'Dashboard',       path: '/admin',                  icon: LayoutDashboard, color: '#818CF8' },
       { label: 'Players',         path: '/admin/players',          icon: Users,           color: '#34D399' },
       { label: 'Session Card',    path: '/admin/session-card',     icon: FileText,        color: '#A78BFA' },
+      { label: 'Calendar',        path: '/admin/calendar',         icon: CalendarDays,    color: '#38BDF8' },
       { label: 'Attendance',      path: '/admin/attendance',       icon: CalendarCheck,   color: '#F472B6' },
       { label: 'Batches',         path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
       { label: 'Learning Pathway',path: '/admin/learning-pathway', icon: BookOpen,        color: '#6EE7B7' },

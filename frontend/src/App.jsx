@@ -15,6 +15,9 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import Dashboard from './pages/common/Dashboard';
 import LeaderBoard from './pages/common/LeaderBoard';
 
+// Shared Pages - Lazy load
+const CalendarPage = lazy(() => import('./pages/common/Calendar'));
+
 // Admin Pages - Lazy load
 const Players = lazy(() => import('./pages/admin/Players'));
 const Coaches = lazy(() => import('./pages/admin/Coaches'));
@@ -108,6 +111,7 @@ const router = createBrowserRouter([
       { path: '/admin/rewards', element: <ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute> },
       { path: '/admin/redeem-history', element: <ProtectedRoute requiredRole="admin"><RedeemHistory /></ProtectedRoute> },
       { path: '/admin/attendance', element: <ProtectedRoute requiredRole="admin"><Attendance /></ProtectedRoute> },
+      { path: '/admin/calendar', element: <ProtectedRoute requiredRole="admin"><CalendarPage /></ProtectedRoute> },
       { path: '/admin/manage-batches', element: <ProtectedRoute requiredRoles={['admin','coach']}><ManageBatches /></ProtectedRoute> },
       { path: '/admin/batches/:batchId', element: <ProtectedRoute requiredRoles={['admin','coach']}><BatchDetail /></ProtectedRoute> },
       
@@ -122,6 +126,7 @@ const router = createBrowserRouter([
       { path: '/coach/session/:sessionId', element: <ProtectedRoute requiredRole="coach"><SessionDetail /></ProtectedRoute> },
       { path: '/coach/view-completed-session/:sessionId', element: <ProtectedRoute requiredRole="coach"><ViewSessionCard /></ProtectedRoute> },
       { path: '/coach/past-sessions', element: <ProtectedRoute requiredRole="coach"><PastSessions /></ProtectedRoute> },
+      { path: '/coach/calendar', element: <ProtectedRoute requiredRole="coach"><CalendarPage /></ProtectedRoute> },
       { path: '/coach/profile', element: <ProtectedRoute requiredRole="coach"><CoachProfile /></ProtectedRoute> },
     ],
   },

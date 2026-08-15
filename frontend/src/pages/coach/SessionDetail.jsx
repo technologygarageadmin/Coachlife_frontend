@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { Toast } from '../../components/Toast';
 import { ChevronLeft, Clock, Users, MapPin, Clock4 , BookOpen, ArrowRight, BookMarked, Wrench, Briefcase, Code, ChevronDown, MoveUpRight, MessageSquare, Info, Layers } from 'lucide-react';
+import { invalidateSessionCard } from '../../utils/dataService';
 
 const SessionDetail = () => {
   const { sessionId } = useParams();
@@ -239,14 +240,16 @@ const SessionDetail = () => {
       }
 
       const result = await response.json();
-      
+
+      invalidateSessionCard(sessionCardId);
+
       // Update session status based on API response
       setSessionData(prev => ({
         ...prev,
         status: result.status || 'in_progress',
         _id: result._id || prev._id
       }));
-      
+
       setToast({
         isVisible: true,
         message: 'Session started! Status changed to In Progress.',
@@ -297,14 +300,16 @@ const SessionDetail = () => {
           }
 
           const result = await response.json();
-          
+
+          invalidateSessionCard(sessionCardId);
+
           // Update session status
           setSessionData(prev => ({
             ...prev,
             status: result.status || 'in_progress',
             _id: result._id || prev._id
           }));
-          
+
           setToast({
             isVisible: true,
             message: 'Session started successfully! You can now add feedback.',
@@ -503,6 +508,7 @@ const SessionDetail = () => {
 
         const res = await markAttendance();
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        invalidateSessionCard(sessionCardId);
         setAttendanceStatus('Present');
         setToast(started
           ? { isVisible: true, message: 'Marked present — session started', type: 'success' }
@@ -510,6 +516,7 @@ const SessionDetail = () => {
       } else {
         const res = await markAttendance();
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        invalidateSessionCard(sessionCardId);
         setAttendanceStatus('Absent');
         setToast({ isVisible: true, message: 'Marked absent — session stays pending', type: 'success' });
       }
@@ -600,6 +607,9 @@ const SessionDetail = () => {
       }
 
       await response.json();
+
+      // The card is now completed - every list view must re-read it
+      invalidateSessionCard(sessionData._id || sessionData.cardId || sessionId);
 
       if (sessionData._id) {
         localStorage.removeItem(`session_draft_${sessionData._id}`);
@@ -758,6 +768,7 @@ const SessionDetail = () => {
         throw new Error(errorData.message || `Failed: ${response.status}`);
       }
 
+      invalidateSessionCard(sessionCardId);
       setWhatsFeedbackMessage(updatedMessage);
       setEditingFeedbackId(null);
       setEditingFeedbackText('');
@@ -3452,9 +3463,11 @@ const SessionDetail = () => {
                           console.log('Regenerate Success:', result);
                           console.log('Full Response Object:', JSON.stringify(result, null, 2));
                           
+                          invalidateSessionCard(sessionData._id || sessionData.cardId || sessionId);
+
                           // Show success toast
                           const sectionLabel = regenerateModal.sectionType === 'instructions' ? 'Instructions' : regenerateModal.sectionType === 'story' ? 'Story' : 'Code';
-                          
+
                           setToast({
                             isVisible: true,
                             message: `${sectionLabel} regenerated successfully! Refreshing content...`,

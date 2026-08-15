@@ -55,6 +55,14 @@ The app serves as the operational interface for administrators and coaches: admi
 ### Shared Features
 - **Dashboard** - Role-aware landing page (same component, different data for admin vs coach)
 - **Leaderboard** - All players ranked by total points; auto-refreshes every 10 minutes; coaches see their assigned players highlighted
+- **Calendar** (`pages/common/Calendar.jsx`) - Outlook-style month/week view of scheduled sessions. Read-only; clicking an event opens the session card (admin) or the batch class room (coach). Two kinds of entry:
+  - **Session** (solid, status-coloured) - a real session card, placed on its `sessionDate`. Cards for players in the same batch on the same date collapse into **one** event ("Batch A · Session 12 · 6 players").
+  - **Projected** (dashed, grey) - a batch's recurring slot (`batch.days` + `startTime`) on a date with no card yet. Projected **only from today forward** - back-projecting would invent classes for every batch on dates before it existed.
+  - Session cards carry a **date but no time** - the time on the calendar comes from the player's batch (`startTime`/`endTime`). Cards for unbatched players are untimed and appear in the week view's "no time" strip.
+  - Loads cards from **two** sources and merges them: every id in `sessionCardIds` (full history) **and** `getCurrentCardsByPlayer(..., { full: true })`. The second is not redundant - `sessionCardIds` lags behind a freshly generated card, so without it the newest card (the **Upcoming** one) never appears and the day shows only a dashed "not generated yet" slot. Same reason `SessionCardManage` and `BatchSessionView` do this.
+  - **Snapshots the assembled dataset** under the cache key `sessionCard:calendar:<role>:<userId>` (2 min), because two of its reads are deliberately uncached and every visit otherwise blanked the page and refetched. The key sits under the `sessionCard:` prefix so both `invalidateSessionCards()` **and** `invalidateSessionCard(id)` drop it - any card write anywhere refreshes the calendar. A **Refresh** button forces a full reload past every cache.
+  - Navigation from the calendar passes `{ from, fromLabel }` in route state; `SessionCardManage` and `BatchSessionView` render a back button from it (other destinations use `navigate(-1)`, which already returns).
+  - Admin sees every batch; a coach sees only batches whose `coachIds` include them.
 - **User Profile** - Common profile page
 
 ---
@@ -148,6 +156,7 @@ src/
 | `/admin/learning-pathway/:id/edit` | EditPathway | Edit pathway session |
 | `/admin/rewards` | Rewards | Rewards catalog CRUD |
 | `/admin/redeem-history` | RedeemHistory | Redemption log |
+| `/admin/calendar` | Calendar | Month/week view of scheduled sessions |
 
 ### Coach (requires `coach` role)
 | Route | Component | Purpose |
@@ -161,6 +170,7 @@ src/
 | `/coach/session/:sessionId` | SessionDetail | Active session card |
 | `/coach/view-completed-session/:sessionId` | ViewSessionCard | Completed session read-only |
 | `/coach/past-sessions` | PastSessions | All past sessions |
+| `/coach/calendar` | Calendar | Month/week view of their scheduled sessions |
 | `/coach/profile` | CoachProfile | Coach's own profile |
 
 ---
@@ -407,12 +417,42 @@ const { userToken, currentUser } = useStore();
 
 ---
 
+## Data Caching Layer
+
+Read-heavy endpoints go through a shared cache instead of being fetched per page.
+
+| File | Role |
+|---|---|
+| `src/utils/apiCache.js` | Generic TTL cache + in-flight de-duplication + optional `sessionStorage` persistence |
+| `src/utils/dataService.js` | Cached loaders per resource, and the matching `invalidate*` helpers |
+
+### Loaders (always pass `userToken`)
+| Function | Cached | TTL |
+|---|---|---|
+| `getLearningPathway()` | yes, persisted across reloads | 15 min |
+| `getSessionCards(ids)` | yes, per card id | 2 min |
+| `getSessionCard(id)` | yes, per card id | 2 min |
+| `getCurrentCardsByPlayer(playerIds)` | **no** - drives "what generates next" | - |
+| `getBatches()` | yes | 5 min |
+| `getRewards()` | yes | 5 min |
+
+### Rules
+- **Every mutation invalidates what it wrote** - `invalidateLearningPathway()`, `invalidateSessionCard(id)`, `invalidateSessionCards()`, `invalidateBatches()`, `invalidateRewards()`. A write with no matching invalidate is a stale-data bug.
+- **Marking attendance invalidates session cards** - `CL_Mark_Attendance` moves the card server-side (Absent → pending, Present can restore an upcoming card), so it is a card write even though it looks like an attendance-only write.
+- **`getSessionCards` is bulk** - it posts `{ sessionCardIds: [...] }` once and falls back to per-card requests only for ids the bulk response omits. Never loop `CL_View_Sessioncard` one id at a time.
+- **Never cache what is being edited** - `SessionDetail` reads its own card uncached; it only *invalidates* on start/complete/regenerate.
+- **A miss is never cached** - a failed card read must not hide a real card for the TTL.
+- **No `AbortController` on cached loaders** - requests are shared between callers, so aborting would cancel another component's fetch. Guard `setState` with a local `cancelled` flag instead.
+- Login and logout call `clearApiCache()` - cached data belongs to the user who fetched it.
+
+---
+
 ## Performance Conventions
 
 - **`useMemo` for filtered/sorted lists** - wrap any `.filter().sort()` chain that runs on every render in `useMemo` with the correct deps (e.g., `[players, searchTerm, filter, sortBy]`)
 - **`React.memo` for list-item components** - define card/row components at module level (outside the parent), wrap with `memo()`, and pass all needed values as props
 - **`useCallback` for functions passed as props to memoized children** - especially functions that close over state (e.g., `shouldShowStartButton` closes over `sessions`)
-- **`AbortController` in data-fetching `useEffect`** - always return `() => controller.abort()` as cleanup; ignore `CanceledError` in catch
+- **`AbortController` in data-fetching `useEffect`** - always return `() => controller.abort()` as cleanup; ignore `CanceledError` in catch. Does not apply to the cached loaders above - use a `cancelled` flag there.
 - **Do not use `location.key` in `useEffect` deps** - page components already unmount/remount on navigation; `location.key` causes double-fetches
 
 ---
@@ -435,6 +475,7 @@ npm run lint     # ESLint
 - **`selectedPlayer` in Zustand is persisted** - so the session card manage page remembers the last selected player across navigations; reset on page load via `location.key` effect
 - **`sessionHistory` in store has hardcoded demo data** - real session data comes from API, not this local array; the local array is used for demo/fallback only
 - **Player `name` field normalization** - API returns `playerName`, store normalizes to both `name` and `playerName` for compatibility across components
+- **A player's card ids come in TWO shapes** - `CL_Get_All_Players` / `CL_View_Assigned_Player` return either `sessionCardIds` (id strings) **or** `sessionCards` (full card objects), depending on the player. Always read them through `normalizeSessionCardIds(player)` from `utils/dataService.js` - never `p.sessionCardIds || []`. Doing the latter silently yields zero cards for players on the second shape, which is what made some players' cards vanish from the By Batch view while their profile page still showed them.
 - **401 threshold is 3 consecutive errors** - single 401s don't log out the user; only 3+ in a row trigger the modal
 - **`activityTitle` not `activityName`** - the API uses `activityTitle` as the activity name field; legacy references to `activityName` exist in some components but the canonical field is `activityTitle`
 - **`SessionCard` in SessionCardsView is `memo()`-wrapped at module level** - do not move it back inside the component body; it must stay outside to avoid being recreated on every parent render

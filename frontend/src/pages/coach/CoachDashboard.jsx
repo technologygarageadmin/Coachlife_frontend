@@ -12,6 +12,7 @@ import {
 import StatusBadge from '../../components/StatusBadge';
 import { Toast } from '../../components/Toast';
 import { Modal } from '../../components/Modal';
+import { getSessionCards, getBatches, invalidateSessionCard, normalizeSessionCardIds } from '../../utils/dataService';
 
 /* ─── constants ─────────────────────────────────────────────────────── */
 const PALETTES = [
@@ -24,8 +25,6 @@ const MONTHS = ['January','February','March','April','May','June',
   'July','August','September','October','November','December'];
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-const BATCHES_URL   = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
-const VIEW_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 const ATTEND_URL    = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 const COMPLETE_SESSION_URL = 'https://65km9yygae.execute-api.ap-south-1.amazonaws.com/default/CL_Complete_Session';
 
@@ -201,7 +200,7 @@ export default function CoachDashboard() {
             name:            p.playerName||p.name||'',
             LearningPathway: p.LearningPathway||'',
             totalPoints:     p.TotalPoints||p.totalPoints||0,
-            sessionCardIds:  item.sessionCardIds||p.sessionCardIds||[],
+            sessionCardIds:  normalizeSessionCardIds(item).length ? normalizeSessionCardIds(item) : normalizeSessionCardIds(p),
           };
         });
 
@@ -214,9 +213,7 @@ export default function CoachDashboard() {
       // background: batches + attendance (don't block the page)
       const pnames = new Set(list.map(p => (p.name||'').toLowerCase().trim()));
       const [bRes, aRes] = await Promise.allSettled([
-        fetch(BATCHES_URL, { headers: { 'Content-Type':'application/json', 'userToken': userToken } })
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null),
+        getBatches({ userToken }).catch(() => null),
         axios.post(ATTEND_URL, {}, { headers: axiosHeaders })
           .then(r => r.data)
           .catch(() => null),
@@ -224,10 +221,7 @@ export default function CoachDashboard() {
       if (cancelled) return;
 
       if (bRes.status === 'fulfilled' && bRes.value) {
-        let bd = bRes.value;
-        if (bd?.body && typeof bd.body === 'string') bd = JSON.parse(bd.body);
-        const batches = Array.isArray(bd) ? bd : (bd.batches || []);
-        const mine = batches.filter(b => b.coachIds && b.coachIds.includes(currentUser.id));
+        const mine = bRes.value.filter(b => b.coachIds && b.coachIds.includes(currentUser.id));
         setBatchCount(mine.length);
         setMyBatches(mine);
       }
@@ -251,53 +245,19 @@ export default function CoachDashboard() {
     );
     if (cardEntries.length === 0) return;
 
-    // Fetch one card; retry transient failures (the Lambda throttles request bursts).
-    const fetchCard = async (id, attempt = 0) => {
-      try {
-        const r = await axios.post(VIEW_CARD_URL, { sessionCardId: id }, { headers: cardAxiosHeaders });
-        let d = r.data;
-        if (d?.body && typeof d.body === 'string') { try { d = JSON.parse(d.body); } catch { return null; } }
-        if (!d) return null;
-        const card = d.sessionCard || d.data || d;
-        const isCard = card && typeof card === 'object' &&
-          (card.activities || card.Topic || card.status || card.session !== undefined || card.sessionCardId || card._id);
-        return isCard ? { sessionCardId: id, ...card } : null;
-      } catch {
-        if (attempt < 2 && !cancelled) {
-          await new Promise(res => setTimeout(res, 300 * (attempt + 1)));
-          return fetchCard(id, attempt + 1);
-        }
-        return null;
-      }
-    };
-
-    // Run with limited concurrency so we don't burst the API (firing every
-    // player's cards at once was throttling and silently dropping some).
-    const runPool = async (entries, limit) => {
-      const out = new Array(entries.length);
-      let idx = 0;
-      const worker = async () => {
-        while (idx < entries.length && !cancelled) {
-          const cur = idx++;
-          out[cur] = await fetchCard(entries[cur].id);
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(limit, entries.length) }, worker));
-      return out;
-    };
-
+    // One bulk read for every card on the dashboard. This used to be a
+    // concurrency-limited pool of one-card requests with retries, because
+    // firing them all at once made the Lambda throttle and drop some.
     (async () => {
       setCardsLoading(true);
       try {
-        const results = await runPool(cardEntries, 5);
+        const cards = await getSessionCards(cardEntries.map(e => e.id), { userToken });
         if (cancelled) return;
         const cMap = {};
         myPlayers.forEach(p => { cMap[String(p.playerId)] = []; });
-        results.forEach((val, i) => {
-          if (val) {
-            const pid = cardEntries[i].playerId;
-            if (cMap[pid]) cMap[pid].push(val);
-          }
+        cardEntries.forEach(({ playerId, id }) => {
+          const card = cards[String(id)];
+          if (card && cMap[playerId]) cMap[playerId].push({ sessionCardId: id, ...card });
         });
         setCardsMap(cMap);
       } finally {
@@ -432,6 +392,7 @@ export default function CoachDashboard() {
       setToastMsg(typeof credited === 'number' && credited > 0 ? `Home task done · +${credited} pts` : 'Home task marked done');
       setToastType('success');
       setHtModal(null);
+      invalidateSessionCard(row.cardId);
       setCardsRefreshKey(k => k + 1);
     } catch {
       setToastMsg('Failed to mark home task done'); setToastType('error');

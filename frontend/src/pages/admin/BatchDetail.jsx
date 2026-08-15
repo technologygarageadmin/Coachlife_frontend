@@ -12,13 +12,12 @@ import {
   Calendar, Clock, CheckCircle, Zap, Settings as SettingsIcon, CalendarCheck,
   Eye, Edit3, ChevronDown, AlertTriangle, Play,
 } from 'lucide-react';
+import { getSessionCards, getCurrentCardsByPlayer, getBatches, invalidateBatches, invalidateSessionCard, invalidateSessionCards } from '../../utils/dataService';
 
 const BRAND = '#060030ff';
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const CL_GET_BATCHES_URL     = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
 const CL_MANAGE_BATCH_URL    = 'https://rwl4dpqgu5.execute-api.ap-south-1.amazonaws.com/default/CL_Manage_Batch';
-const VIEW_SESSIONCARD_URL   = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
 const DELETE_SESSIONCARD_URL = 'https://rmauptygg5.execute-api.ap-south-1.amazonaws.com/Coachlife-com/CL_Deleting_Sessioncard';
 const CL_GET_ATTENDANCE_URL  = 'https://expqdxymlf.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Attendance';
 const CL_MARK_ATTENDANCE_URL = 'https://a5c8vbcbj4.execute-api.ap-south-1.amazonaws.com/default/CL_Mark_Attendance';
@@ -79,13 +78,16 @@ export default function BatchDetail() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadBatch = useCallback(async () => {
-    const res = await axios.get(CL_GET_BATCHES_URL, { headers });
-    let d = res.data;
-    if (d?.body && typeof d.body === 'string') d = JSON.parse(d.body);
-    const found = (d.batches || []).find(b => b.batchId === batchId);
-    setBatch(found || null);
-  }, [headers, batchId]);
+  const loadBatch = useCallback(async (force = false) => {
+    const all = await getBatches({ userToken, force });
+    setBatch(all.find(b => b.batchId === batchId) || null);
+  }, [userToken, batchId]);
+
+  // Used after a write - always goes back to the API
+  const reloadBatch = useCallback(() => {
+    invalidateBatches();
+    return loadBatch(true);
+  }, [loadBatch]);
 
   useEffect(() => {
     setLoading(true);
@@ -100,29 +102,22 @@ export default function BatchDetail() {
   const [cardInfo, setCardInfo] = useState({});
   const [cardInfoLoading, setCardInfoLoading] = useState(false);
 
+  // One bulk call for the whole batch instead of one request per player.
   const fetchCardInfo = useCallback(async (playerIds) => {
     setCardInfoLoading(true);
     const map = {};
-    await Promise.all(playerIds.map(async (pid) => {
-      try {
-        const res = await fetch(VIEW_SESSIONCARD_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', userToken },
-          body: JSON.stringify({ playerId: pid }),
-        });
-        if (!res.ok) { map[pid] = null; return; }
-        const data = await res.json();
-        const card = data.sessionCard || data.data || data;
-        map[pid] = {
-          session: card?.session ?? null,
-          sessionDate: card?.sessionDate || null,
-          status: card?.status || '',
-          cardId: card?._id || null,
-        };
-      } catch {
-        map[pid] = null;
-      }
-    }));
+    const cards = await getCurrentCardsByPlayer(playerIds, { userToken });
+    playerIds.forEach((pid) => {
+      const card = cards[pid];
+      map[pid] = card
+        ? {
+            session: card.session ?? null,
+            sessionDate: card.sessionDate || null,
+            status: card.status || '',
+            cardId: card.cardId || card._id || null,
+          }
+        : null;
+    });
     setCardInfo(map);
     setCardInfoLoading(false);
   }, [userToken]);
@@ -223,7 +218,7 @@ export default function BatchDetail() {
           <OverviewTab
             batch={batch} coaches={coaches} headers={headers} players={players}
             cardInfo={cardInfo} cardInfoLoading={cardInfoLoading}
-            reload={loadBatch} showToast={showToast} dark={dark}
+            reload={reloadBatch} showToast={showToast} dark={dark}
           />
         )}
         {tab === 'sessions' && (
@@ -242,7 +237,7 @@ export default function BatchDetail() {
         {tab === 'settings' && (
           <SettingsTab
             batch={batch} players={players} learningPathway={learningPathway} headers={headers}
-            reload={loadBatch} showToast={showToast} navigate={navigate} dark={dark}
+            reload={reloadBatch} showToast={showToast} navigate={navigate} dark={dark}
             onSaved={() => setTab('overview')}
           />
         )}
@@ -435,29 +430,27 @@ function SessionsTab({ batch, cardInfo, cardInfoLoading, players, userToken, sho
   const textMuted = dark ? 'var(--cl-text-3)' : '#94A3B8';
   const surface2 = dark ? 'var(--cl-surface-2)' : '#F8FAFC';
 
+  // Every card for every player in the batch, in one bulk (and cached) read
+  // instead of a request per card per player.
   const fetchAll = useCallback(async () => {
     if (!batch?.players?.length) { setAllCards({}); setCardsLoading(false); return; }
     setCardsLoading(true);
-    const map = {};
-    await Promise.all(batch.players.map(async (bp) => {
+
+    const idsByPlayer = {};
+    batch.players.forEach((bp) => {
       const profile = players.find(p => String(p.playerId) === String(bp.playerId));
-      const ids = Array.isArray(profile?.sessionCardIds) ? profile.sessionCardIds : [];
-      const cards = [];
-      await Promise.all(ids.map(async (id) => {
-        try {
-          const res = await fetch(VIEW_SESSIONCARD_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', userToken },
-            body: JSON.stringify({ sessionCardId: id }),
-          });
-          if (!res.ok) return;
-          const data = await res.json();
-          const card = data.sessionCard || data.data || data;
-          if (card && (card.Topic || card.activities || card.status)) cards.push({ _id: id, ...card });
-        } catch { /* skip */ }
-      }));
-      map[bp.playerId] = cards;
-    }));
+      idsByPlayer[bp.playerId] = Array.isArray(profile?.sessionCardIds) ? profile.sessionCardIds : [];
+    });
+
+    const cardsById = await getSessionCards(Object.values(idsByPlayer).flat(), { userToken });
+
+    const map = {};
+    batch.players.forEach((bp) => {
+      map[bp.playerId] = (idsByPlayer[bp.playerId] || [])
+        .map(id => cardsById[String(id)])
+        .filter(card => card && (card.Topic || card.activities || card.status));
+    });
+
     setAllCards(map);
     setCardsLoading(false);
   }, [batch, players, userToken]);
@@ -474,6 +467,7 @@ function SessionsTab({ batch, cardInfo, cardInfoLoading, players, userToken, sho
         body: JSON.stringify({ sessionCardId: deleteCardId }),
       });
       if (!res.ok) throw new Error('delete failed');
+      invalidateSessionCard(deleteCardId);
       setAllCards(prev => {
         const next = {};
         Object.keys(prev).forEach(pid => { next[pid] = prev[pid].filter(c => c._id !== deleteCardId); });
@@ -687,6 +681,9 @@ function AttendanceTab({ batch, cardInfo, headers, userToken, showToast, dark })
           }),
         });
       }));
+      // Attendance moves cards server-side (Absent → pending), so cached cards
+      // must be dropped or the Sessions tab would show the old status.
+      invalidateSessionCards();
       showToast(`Attendance saved for ${batch.players?.length || 0} player(s)`);
     } catch { showToast('Failed to save attendance', 'error'); }
     finally { setSaving(false); }
@@ -811,6 +808,7 @@ function SettingsTab({ batch, players, learningPathway, headers, reload, showToa
     setDeleting(true);
     try {
       await axios.post(CL_MANAGE_BATCH_URL, { action: 'delete', batchId: batch.batchId }, { headers });
+      invalidateBatches();
       showToast('Batch deleted');
       navigate('/admin/manage-batches');
     } catch { showToast('Failed to delete batch', 'error'); setDeleting(false); }

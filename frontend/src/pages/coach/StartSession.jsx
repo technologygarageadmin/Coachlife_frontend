@@ -5,8 +5,7 @@ import { Layout } from '../../components/Layout';
 import { Users, Search, Trophy, Zap, Layers, ArrowRight, BookOpen, Star, ChevronDown, X } from 'lucide-react';
 import { SessionCardsView } from './SessionCardsView';
 import { useTheme } from '../../context/ThemeContext';
-
-const CL_GET_BATCHES_URL = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
+import { getSessionCards, getBatches, invalidateSessionCards, normalizeSessionCardIds } from '../../utils/dataService';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -74,21 +73,18 @@ const StartSession = () => {
     return 0;
   };
 
-  const fetchSessionCardById = async (sessionCardId, token) => {
+  const resolveToken = () => {
+    if (userToken) return userToken;
     try {
-      if (!token) return null;
-      const response = await fetch(
-        'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard',
-        {
-          method: 'POST',
-          headers: { 'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json', 'userToken': token, 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ sessionCardId })
-        }
-      );
-      if (!response.ok) return null;
-      const result = await response.json();
-      return result.sessionCard || result.data || result;
-    } catch { return null; } /* ignore fetch errors */
+      const s = localStorage.getItem('coachlife_auth');
+      return s ? JSON.parse(s).userToken : null;
+    } catch { return null; }
+  };
+
+  const fetchSessionCardsFor = async (ids, token) => {
+    if (!token || !ids?.length) return [];
+    const cards = await getSessionCards(ids, { userToken: token });
+    return ids.map(id => cards[String(id)]).filter(Boolean);
   };
 
   const refreshSessionCards = async () => {
@@ -101,17 +97,9 @@ const StartSession = () => {
           return (player._id || player.playerId) === selectedPlayer.playerId;
         });
         if (playerItem && playerItem.sessionCardIds && playerItem.sessionCardIds.length > 0) {
-          let token = userToken;
-          if (!token) {
-            try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ }
-          }
+          const token = resolveToken();
           if (!token) { setIsGenerating(false); return; }
-          const cards = [];
-          for (const id of playerItem.sessionCardIds) {
-            const card = await fetchSessionCardById(id, token);
-            if (card) cards.push(card);
-          }
-          setSessions(cards);
+          setSessions(await fetchSessionCardsFor(playerItem.sessionCardIds, token));
         }
       }
       setIsGenerating(false);
@@ -123,10 +111,7 @@ const StartSession = () => {
       setIsGenerating(true);
       setGenerateError(null);
       if (!selectedPlayer?.playerId) { setGenerateError('Please select a player first.'); setIsGenerating(false); return; }
-      let token = userToken;
-      if (!token) {
-        try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ }
-      }
+      const token = resolveToken();
       if (!token) { setGenerateError('No authentication token found. Please login again.'); setIsGenerating(false); return; }
       const response = await fetch(
         'https://qz2us3dk55.execute-api.ap-south-1.amazonaws.com/default/CL_Session_Card_Generating',
@@ -139,6 +124,7 @@ const StartSession = () => {
         throw new Error(msg);
       }
       await response.json();
+      invalidateSessionCards();
       await refreshSessionCards();
     } catch (error) {
       if (error.message?.includes('Failed to fetch')) { setTimeout(() => refreshSessionCards(), 1000); }
@@ -162,7 +148,7 @@ const StartSession = () => {
               progress: convertProgressToPercentage(player.progress),
               totalPoints: player.TotalPoints || 0,
               status: player.status,
-              sessionCardIds: item.sessionCardIds || []
+              sessionCardIds: normalizeSessionCardIds(item)
             };
           });
           setPlayers(transformed);
@@ -171,10 +157,7 @@ const StartSession = () => {
             if (player) {
               setSelectedPlayer(player);
               if (player.sessionCardIds?.length > 0) {
-                let token = userToken;
-                if (!token) { try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ } }
-                const cards = await Promise.all(player.sessionCardIds.map(id => fetchSessionCardById(id, token).catch(() => null)));
-                setSessions(cards.filter(Boolean));
+                setSessions(await fetchSessionCardsFor(player.sessionCardIds, resolveToken()));
               } else { setSessions([]); }
               setGenerateError(null);
             }
@@ -187,17 +170,15 @@ const StartSession = () => {
 
   useEffect(() => {
     if (!currentUser?.id || !userToken) return;
-    const controller = new AbortController();
+    let cancelled = false;
     (async () => {
       setBatchesLoading(true);
       try {
-        const res = await fetch(CL_GET_BATCHES_URL, { signal: controller.signal, headers: { 'Content-Type': 'application/json', 'userToken': userToken } });
-        const data = await res.json();
-        const all = data.batches || [];
-        setBatches(all.filter(b => b.coachIds && b.coachIds.includes(currentUser.id)));
-      } catch (e) { if (e.name !== 'AbortError') setBatches([]); } finally { setBatchesLoading(false); }
+        const all = await getBatches({ userToken });
+        if (!cancelled) setBatches(all.filter(b => b.coachIds && b.coachIds.includes(currentUser.id)));
+      } catch { if (!cancelled) setBatches([]); } finally { if (!cancelled) setBatchesLoading(false); }
     })();
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [currentUser?.id, userToken]);
 
   const handleSelectPlayer = async (player) => {
@@ -207,10 +188,7 @@ const StartSession = () => {
     try {
       setGenerateError(null);
       if (player.sessionCardIds?.length > 0) {
-        let token = userToken;
-        if (!token) { try { const s = localStorage.getItem('coachlife_auth'); if (s) token = JSON.parse(s).userToken; } catch { /* ignore */ } }
-        const cards = await Promise.all(player.sessionCardIds.map(id => fetchSessionCardById(id, token).catch(() => null)));
-        setSessions(cards.filter(Boolean));
+        setSessions(await fetchSessionCardsFor(player.sessionCardIds, resolveToken()));
       } else { setSessions([]); }
     } catch { setSessions([]); } finally { setIsLoading(false); }
   };

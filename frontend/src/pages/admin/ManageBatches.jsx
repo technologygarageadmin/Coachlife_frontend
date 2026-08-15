@@ -11,11 +11,11 @@ import { Modal } from '../../components/Modal';
 import {
   Layers, Plus, Users, UserCheck, UserPlus, Clock, Calendar, ChevronRight, AlertTriangle, Loader, UserPen,
 } from 'lucide-react';
+import { getBatches, invalidateBatches } from '../../utils/dataService';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const BRAND = '#060030ff';
-const CL_GET_BATCHES_URL  = 'https://ts6wti3133.execute-api.ap-south-1.amazonaws.com/default/CL_Get_Batches';
 const CL_MANAGE_BATCH_URL = 'https://rwl4dpqgu5.execute-api.ap-south-1.amazonaws.com/default/CL_Manage_Batch';
 
 /* ── Design system helpers ── */
@@ -139,11 +139,8 @@ export default function ManageBatches() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadBatches = async () => {
-    const res = await axios.get(CL_GET_BATCHES_URL, { headers });
-    let d = res.data;
-    if (d?.body && typeof d.body === 'string') d = JSON.parse(d.body);
-    setBatches(d.batches || []);
+  const loadBatches = async (force = false) => {
+    setBatches(await getBatches({ userToken, force }));
   };
 
   useEffect(() => {
@@ -246,7 +243,8 @@ export default function ManageBatches() {
         endTime: batchForm.endTime || null,
         LearningPathway: batchForm.LearningPathway || null,
       }, { headers });
-      await loadBatches();
+      invalidateBatches();
+      await loadBatches(true);
       closeBatchModal();
       showToast('Batch created');
     } catch {

@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { useStore } from '../../context/store';
 import { useTheme } from '../../context/ThemeContext';
 import { Layout } from '../../components/Layout';
 import { BookOpen, CheckCircle, Clock, Star, Calendar, ChevronRight, ChevronLeft, AlertCircle } from 'lucide-react';
-
-const VIEW_SESSION_CARD_URL = 'https://kyfkhl8v4l.execute-api.ap-south-1.amazonaws.com/coachlife-com/CL_View_Sessioncard';
+import { getSessionCards } from '../../utils/dataService';
 
 const SummaryCard = ({ label, value, icon: SIcon, accent, surface, border }) => {
   const [hov, setHov] = React.useState(false);
@@ -49,7 +47,7 @@ const PastSessions = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let cancelled = false;
     const coachId = currentUser?.id || currentUser?.userId;
 
     const load = async () => {
@@ -68,23 +66,9 @@ const PastSessions = () => {
           return;
         }
 
-        const headers = { 'Content-Type': 'application/json', ...(userToken && { userToken }) };
-        const cards = await Promise.all(
-          allIds.map(id =>
-            axios.post(VIEW_SESSION_CARD_URL, { sessionCardId: id }, { headers, signal: controller.signal })
-              .then(r => {
-                const d = r.data;
-                if (d?.sessionCard) return d.sessionCard;
-                if (d?.data) return d.data;
-                if (d?.session) return d.session;
-                if (d && !d.message) return d;
-                return null;
-              })
-              .catch(() => null)
-          )
-        );
+        const cards = Object.values(await getSessionCards(allIds, { userToken }));
 
-        if (!controller.signal.aborted) {
+        if (!cancelled) {
           const normalizeStatus = s => (s || '').toLowerCase().replace(/_/g, ' ');
           const completed = cards.filter(c => c && ['completed', 'submitted'].includes(normalizeStatus(c.status)));
           completed.sort((a, b) => (b.session || 0) - (a.session || 0));
@@ -103,15 +87,15 @@ const PastSessions = () => {
           setSessions(enriched);
           setLoading(false);
         }
-      } catch (err) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      } catch {
+        if (cancelled) return;
         setError('Failed to load past sessions');
         setLoading(false);
       }
     };
 
     load();
-    return () => controller.abort();
+    return () => { cancelled = true; };
   }, [currentUser?.id, userToken]);
 
   const avgRating = sessions.length > 0
