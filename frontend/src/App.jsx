@@ -33,6 +33,7 @@ const EditSessionCard = lazy(() => import('./pages/admin/EditSessionCard'));
 const CustomCardGenerate = lazy(() => import('./pages/admin/customCardGenerate'));
 const Attendance = lazy(() => import('./pages/admin/Attendance'));
 const ManageBatches = lazy(() => import('./pages/admin/ManageBatches'));
+const SessionSlots = lazy(() => import('./pages/admin/SessionSlots'));
 const BatchDetail = lazy(() => import('./pages/admin/BatchDetail'));
 
 // Coach Pages - Lazy load
@@ -107,6 +108,7 @@ const router = createBrowserRouter([
       { path: '/admin/learning-pathway/:id/edit', element: <ProtectedRoute requiredRole="admin"><EditPathway /></ProtectedRoute> },
       { path: '/admin/rewards', element: <ProtectedRoute requiredRole="admin"><Rewards /></ProtectedRoute> },
       { path: '/admin/redeem-history', element: <ProtectedRoute requiredRole="admin"><RedeemHistory /></ProtectedRoute> },
+      { path: '/admin/session-slots', element: <ProtectedRoute requiredRole="admin"><SessionSlots /></ProtectedRoute> },
       { path: '/admin/attendance', element: <ProtectedRoute requiredRole="admin"><Attendance /></ProtectedRoute> },
       { path: '/admin/manage-batches', element: <ProtectedRoute requiredRoles={['admin','coach']}><ManageBatches /></ProtectedRoute> },
       { path: '/admin/batches/:batchId', element: <ProtectedRoute requiredRoles={['admin','coach']}><BatchDetail /></ProtectedRoute> },
