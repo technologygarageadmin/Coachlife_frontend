@@ -1,5 +1,7 @@
 # CoachLife - Project Reference
 
+> **Cross-project work (CoachLife ⇄ Technology Garage):** read [`CROSS_PROJECT.md`](CROSS_PROJECT.md) first. It is the shared status + rules file for both repos and is kept identical in both. Update it (in both repos) when you change anything that touches the other project.
+
 ## What This Is
 
 CoachLife is a web application for **Technology Garage**, an online learning studio for technology education. Students enrolled in the studio are called **Players**. The instructors who run sessions with them are **Coaches**. The curriculum is structured into **Learning Pathways** (e.g., "AI Foundation for Kids"), each containing numbered sessions with activities.
