@@ -100,6 +100,8 @@ backend/
 | `CL_Manage_Batch` | POST create / update / delete a batch (`action` field) |
 | `CL_Get_Attendance` | POST get attendance records, optionally filtered by `batchId` |
 | `CL_Mark_Attendance` | POST upsert single attendance record; bulk mode via `bulkStatus` field |
+| `CL_Manage_Slots` | CoachLife admin: GET list slots (mirrors batch times into `Slots` without names; the list response adds batch name / coaches / player names for the signed-in admin, scoped for non-super admins); POST `action`: `add` / `update` / `delete` open-or-blocked slots, `settings` (max students per batch). Read-only `GET ?view=available&minLength=60` (day/start/end/priority only) also accepts a Technology Garage Leads CRM bearer token (signed with the shared `AUTH_SECRET`); that token can do nothing else |
+| `CL_Sync_Registrations` | Imports paid Technology Garage registrations (`Online_Session.Registration`, read-only) into `CoachLife.NewPlayers` once each, flags possible duplicates. `GET ?status=` list; POST `action`: `sync` / `list` / `setStatus` / `markPlaced`. Admin / coach. Deployed; API route to be created |
 
 ### Leaderboard & Misc
 | Folder | Purpose |
