@@ -4,6 +4,7 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Users, Star, Search, Filter, GridIcon, ListIcon, ChevronRight, CheckCircle2, Trophy } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
+import NewPaidPlayers from '../../components/NewPaidPlayers';
 
 const PALETTES = [
   ['#6366F1','#818CF8'], ['#10B981','#34D399'], ['#F59E0B','#FBBF24'],
@@ -216,6 +217,8 @@ const MyPlayers = () => {
             </button>
           </div>
         </div>
+
+        <NewPaidPlayers />
 
         {/* Summary Cards */}
         {isLoading ? (

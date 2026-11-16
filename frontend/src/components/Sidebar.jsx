@@ -1,5 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { startNewPlayersAutoSync } from '../utils/newPlayersApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../context/store';
 import { useTheme } from '../context/ThemeContext';
@@ -22,6 +24,7 @@ import {
   FileText,
   CalendarCheck,
   Layers,
+  Clock,
 } from 'lucide-react';
 
 // Pages that live under /admin but are also reachable from the coach menu. Landing
@@ -45,6 +48,35 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const [newPlayerCount, setNewPlayerCount] = useState(0);
+  const userToken = useStore((s) => s.userToken);
+
+  useEffect(() => {
+    if (!userToken) return undefined;
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const res = await axios.get('https://5bfx0r5tcg.execute-api.ap-south-1.amazonaws.com/default/CL_Sync_Registrations?status=new', {
+          headers: { userToken }, signal: controller.signal,
+        });
+        let d = res.data;
+        if (d?.body && typeof d.body === 'string') d = JSON.parse(d.body);
+        setNewPlayerCount(Number(d?.counts?.new) || 0);
+      } catch { /* badge is optional - ignore failures */ }
+    };
+    load();
+    window.addEventListener('newplayers:changed', load);
+    return () => { controller.abort(); window.removeEventListener('newplayers:changed', load); };
+  }, [userToken]);
+
+  const canSeeNewPlayers = (currentUser?.roles || [currentUser?.role]).some((r) => r === 'admin' || r === 'superadmin' || r === 'coach');
+  useEffect(() => {
+    if (!userToken || !canSeeNewPlayers) return undefined;
+    return startNewPlayersAutoSync(userToken, (d) => {
+      setNewPlayerCount(Number(d?.counts?.new) || 0);
+      if (d?.imported > 0) window.dispatchEvent(new Event('newplayers:refresh'));
+    });
+  }, [userToken, canSeeNewPlayers]);
 
   const userRoles = currentUser?.roles || [currentUser?.role].filter(Boolean);
   const isSuperAdmin = userRoles.includes('superadmin');
@@ -99,12 +131,13 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
   const menuItems = {
     admin: [
       { label: 'Dashboard',       path: '/admin',                  icon: LayoutDashboard, color: '#818CF8' },
-      { label: 'Players',          path: '/admin/players',          icon: Users,           color: '#34D399' },
+      { label: 'Players',          path: '/admin/players',          icon: Users,           color: '#34D399', badge: true },
       { label: 'Coaches',          path: '/admin/coaches',          icon: User,            color: '#60A5FA' },
       { label: 'Assign Players',   path: '/admin/assign-players',   icon: UserPen,         color: '#FBBF24' },
       { label: 'Session Card',     path: '/admin/session-card',     icon: FileText,        color: '#A78BFA' },
       { label: 'Attendance',       path: '/admin/attendance',       icon: CalendarCheck,   color: '#F472B6' },
       { label: 'Batches',          path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
+      { label: 'Session Scheduled', path: '/admin/session-slots',  icon: Clock,           color: '#38BDF8' },
       { label: 'Learning Pathway', path: '/admin/learning-pathway', icon: BookOpen,        color: '#6EE7B7' },
       { label: 'Leaderboard',      path: '/leaderboard',            icon: Trophy,          color: '#FCD34D' },
       { label: 'Rewards',          path: '/admin/rewards',          icon: Gift,            color: '#C084FC' },
@@ -113,7 +146,7 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
     ],
     coach: [
       { label: 'Dashboard',    path: '/coach',               icon: LayoutDashboard, color: '#818CF8' },
-      { label: 'My Players',   path: '/coach/players',       icon: Users,           color: '#34D399' },
+      { label: 'My Players',   path: '/coach/players',       icon: Users,           color: '#34D399', badge: true },
       { label: 'Session Card', path: '/admin/session-card',  icon: FileText,        color: '#A78BFA' },
       { label: 'Batches',      path: '/admin/manage-batches',icon: Layers,          color: '#FB7185' },
       { label: 'Leaderboard',  path: '/leaderboard',         icon: Trophy,          color: '#FCD34D' },
@@ -125,10 +158,11 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
     // assigned players/batches.
     restrictedAdmin: [
       { label: 'Dashboard',       path: '/admin',                  icon: LayoutDashboard, color: '#818CF8' },
-      { label: 'Players',         path: '/admin/players',          icon: Users,           color: '#34D399' },
+      { label: 'Players',         path: '/admin/players',          icon: Users,           color: '#34D399', badge: true },
       { label: 'Session Card',    path: '/admin/session-card',     icon: FileText,        color: '#A78BFA' },
       { label: 'Attendance',      path: '/admin/attendance',       icon: CalendarCheck,   color: '#F472B6' },
       { label: 'Batches',         path: '/admin/manage-batches',   icon: Layers,          color: '#FB7185' },
+      { label: 'Session Scheduled', path: '/admin/session-slots',  icon: Clock,           color: '#38BDF8' },
       { label: 'Learning Pathway',path: '/admin/learning-pathway', icon: BookOpen,        color: '#6EE7B7' },
       { label: 'Leaderboard',     path: '/leaderboard',            icon: Trophy,          color: '#FCD34D' },
       { label: 'Rewards',         path: '/admin/rewards',          icon: Gift,            color: '#C084FC' },
@@ -346,6 +380,12 @@ export const Sidebar = ({ onClose, isOpen = true }) => {
                     <Icon size={14} />
                   </div>
                   <span style={{ letterSpacing: '0.1px' }}>{item.label}</span>
+                  {item.badge && newPlayerCount > 0 && (
+                    <span title={`${newPlayerCount} new player${newPlayerCount === 1 ? '' : 's'} to place`} style={{
+                      minWidth: 18, height: 18, padding: '0 6px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, fontWeight: 800, color: '#fff', background: '#F59E0B', marginLeft: 2,
+                    }}>{newPlayerCount}</span>
+                  )}
                 </div>
 
                 {/* Animated active dot */}

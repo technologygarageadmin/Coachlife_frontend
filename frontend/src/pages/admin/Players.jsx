@@ -4,6 +4,9 @@ import { useStore } from '../../context/store';
 import { Layout } from '../../components/Layout';
 import { Modal } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
+import NewPaidPlayers from '../../components/NewPaidPlayers';
+import { markNewPlayerPlaced } from '../../utils/newPlayersApi';
+import { normKey, matchPathway as matchNewPlayerPathway, courseName } from '../../utils/pathwayMatch';
 import {
   Users, Plus, Search, Trash2, Edit3, Eye, Award, Target,
   AlertCircle, Loader, ChevronDown, Phone,
@@ -233,7 +236,7 @@ const Players = () => {
   const location = useLocation();
   const {
     players, fetchPlayers, addPlayerRemote, updatePlayerRemote,
-    deletePlayerRemote, learningPathway, fetchLearningPathway,
+    deletePlayerRemote, learningPathway, fetchLearningPathway, userToken,
   } = useStore();
   const { theme } = useTheme();
   const dark = theme === 'dark';
@@ -255,6 +258,7 @@ const Players = () => {
   const [isModalOpen, setIsModalOpen]   = useState(false);
   const [isEditMode, setIsEditMode]     = useState(false);
   const [editingPlayerId, setEditingPlayerId] = useState(null);
+  const [pendingNew, setPendingNew]     = useState(null);
   const initialFetchRef = useRef(false);
 
   const emptyForm = {
@@ -328,7 +332,37 @@ const Players = () => {
     setFormError('');
   };
 
-  const openAdd = () => { setFormData(emptyForm); setIsEditMode(false); setEditingPlayerId(null); setFormError(''); setIsModalOpen(true); };
+  const openAdd = () => { setFormData(emptyForm); setPendingNew(null); setIsEditMode(false); setEditingPlayerId(null); setFormError(''); setIsModalOpen(true); };
+  // From the New players section: same Add Player form, filled from the registration.
+  // Same matching the New players list uses to flag a pathway CoachLife does not have yet.
+  const matchPathway = (np) => matchNewPlayerPathway(np, pathwayOptions);
+  const toDateInput = (v) => {
+    const raw = String(v || '').trim();
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const dmy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    return dmy ? `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}` : '';
+  };
+  const openAddFromNew = (np) => {
+    setPendingNew(np);
+    setIsEditMode(false); setEditingPlayerId(null); setFormError('');
+    // Technology Garage keeps a single parent name. Use it as Father's name unless it is just the player's own
+    // name (an adult registering themselves).
+    const parentIsOther = np.parentName && normKey(np.parentName) !== normKey(np.name);
+    setFormData({
+      ...emptyForm,
+      playerName: np.name || '',
+      fatherName: np.fatherName || (parentIsOther ? np.parentName : ''),
+      motherName: np.motherName || '',
+      dateOfBirth: toDateInput(np.dateOfBirth),
+      address: np.address || '',
+      phone: String(np.phone || '').replace(/[^0-9+-]/g, ''),
+      alternativeNumber: String(np.alternativeNumber || '').replace(/[^0-9+-]/g, ''),
+      age: np.age ? String(np.age) : '',
+      LearningPathway: matchPathway(np),
+    });
+    setIsModalOpen(true);
+  };
   const openEdit = row => {
     setIsEditMode(true); setEditingPlayerId(row.playerId);
     setFormData({
@@ -341,7 +375,7 @@ const Players = () => {
     });
     setFormError(''); setIsModalOpen(true);
   };
-  const closeModal = () => { setIsModalOpen(false); setFormData(emptyForm); setIsEditMode(false); setEditingPlayerId(null); setFormError(''); };
+  const closeModal = () => { setIsModalOpen(false); setFormData(emptyForm); setPendingNew(null); setIsEditMode(false); setEditingPlayerId(null); setFormError(''); };
 
   // Deep-link: another page (e.g. a batch's pathway-mismatch prompt) can send us
   // here with { editPlayerId } to open that player's edit form straight away.
@@ -374,6 +408,16 @@ const Players = () => {
       const res = isEditMode ? await updatePlayerRemote(editingPlayerId, payload) : await addPlayerRemote(payload);
       if (res.success) {
         if (!isEditMode) await fetchPlayers();
+        if (!isEditMode && pendingNew) {
+          const newId = res.player?.playerId;
+          try {
+            await markNewPlayerPlaced(userToken, pendingNew.newPlayerId, /^[0-9a-f]{24}$/i.test(String(newId || '')) ? newId : undefined);
+            window.dispatchEvent(new Event('newplayers:refresh'));
+            window.dispatchEvent(new Event('newplayers:changed'));
+          } catch {
+            showToast('Player added, but the New players list could not be updated. Dismiss it there.', 'error');
+          }
+        }
         showToast(isEditMode ? 'Player updated' : 'Player added');
         setTimeout(closeModal, 1000);
       } else { setFormError(res.error || (isEditMode ? 'Update failed' : 'Create failed')); }
@@ -431,6 +475,8 @@ const Players = () => {
             <Plus size={16} /> Add Player
           </button>
         </div>
+
+        <NewPaidPlayers onAddPlayer={openAddFromNew} />
 
         {/* ── Summary stats ── */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:'14px', marginBottom:'24px' }} className="pl-stats">
@@ -705,6 +751,13 @@ const Players = () => {
           {formError && (
             <div style={{ display:'flex', alignItems:'center', gap:'9px', background:'#FEF2F2', border:'1px solid #FECACA', borderRadius:'10px', padding:'11px 14px', marginBottom:'16px', fontSize:'13px', color:'#B91C1C', fontWeight:'500' }}>
               <AlertCircle size={15} /> {formError}
+            </div>
+          )}
+
+          {pendingNew && !isEditMode && (
+            <div style={{ display:'flex', alignItems:'flex-start', gap:'9px', background:'#EEF2FF', border:'1px solid #C7D2FE', borderRadius:'10px', padding:'10px 14px', marginBottom:'16px', fontSize:'12.5px', color:'#3730A3', fontWeight:'500', lineHeight:1.45 }}>
+              <AlertCircle size={15} style={{ flexShrink:0, marginTop:1 }} />
+              <span>Filled in from the Technology Garage registration of <b>{pendingNew.name}</b>. Check the details{formData.LearningPathway ? '' : ' and choose the Learning Pathway'}, then save. The registration leaves New players once the player is added.{!formData.LearningPathway && pendingNew.course ? <> <b>{courseName(pendingNew.course)}</b> is not a pathway in CoachLife yet. Ask a coach to add it on the Learning Pathway page, then choose it here.</> : null}</span>
             </div>
           )}
 
